@@ -1,0 +1,68 @@
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+
+# =========================
+# Virtual Environments
+# =========================
+.venv/
+venv/
+env/
+
+# =========================
+# Environment Secrets
+# =========================
+.env
+!.env.example
+
+# =========================
+# IDE / Editor
+# =========================
+.vscode/
+.idea/
+.windsurf/
+*.swp
+*.swo
+*~
+
+# =========================
+# OS
+# =========================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# =========================
+# Testing
+# =========================
+test_results.txt
+.pytest_cache/
+htmlcov/
+.coverage
+
+# =========================
+# Ad-hoc Scripts (legacy)
+# =========================
+backend/fix_db.py
+backend/check_db.py
+backend/create_tables.py
+backend/create_tables_debug.py
+backend/create_tables_raw.py
+backend/create_tables_sync.py
+backend/create_step2_tables.py
+backend/test_connection.py
+backend/test_single_table.py
+
+# =========================
+# Docker
+# =========================
+postgres_data/
+redis_data/
