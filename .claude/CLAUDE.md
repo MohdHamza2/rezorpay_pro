@@ -1,0 +1,113 @@
+# InvoiceSaaS — Project Intelligence
+
+> This file is the single source of truth for all AI agents working on this project.
+> Read this FIRST before making any changes.
+
+## Project Identity
+
+- **Name**: InvoiceSaaS (rezorpay_pro)
+- **Type**: Multi-tenant SaaS backend for invoice automation and cashflow intelligence
+- **Stack**: FastAPI + SQLModel + PostgreSQL 16 + asyncpg + Alembic + Redis (planned)
+- **Architecture**: Monolithic backend with service-layer abstraction, async-first
+- **Python**: 3.11
+- **Auth**: JWT (access + refresh tokens) via python-jose + passlib/bcrypt
+- **Multi-tenancy**: Workspace-scoped via `workspace_id` on every entity
+
+## Critical Rules (MUST FOLLOW)
+
+### Database Rules
+1. **NEVER use SQLite** for testing — PostgreSQL ENUM types, row locks, and async behavior REQUIRE real PostgreSQL
+2. **NEVER modify schema without Alembic** — run `alembic revision --autogenerate -m "description"` then `alembic upgrade head`
+3. **NEVER use `SQLModel.metadata.create_all` in production** — Alembic manages all schema changes
+4. **All financial fields use `Decimal(12,2)`** — NEVER use float for money
+5. **Invoice numbers are gapless** — `INV-YYYY-XXXX` format, enforced via `SELECT FOR UPDATE` row locks
+6. **Payments are immutable** — never update or delete payment records (financial audit trail)
+7. **Soft deletes only** — use `deleted_at` timestamp, never hard-delete business entities
+
+### API Rules
+1. **All responses follow the wrapper pattern**: `{"success": true/false, "data": ..., "error": ...}`
+2. **All list endpoints use pagination**: `page`, `per_page`, with `PaginationMeta`
+3. **All payment endpoints require `Idempotency-Key` header** — 48-hour TTL
+4. **Invoice edits blocked unless status is `DRAFT`** — enforced at service layer
+5. **Overpayments rejected** — `amount > balance_due` returns 400
+
+### Code Quality Rules
+1. **All imports at top of file** — no mid-file imports (E402)
+2. **Format with `black`** — target Python 3.11
+3. **Lint with `ruff`** — fix violations before committing
+4. **Pre-commit hooks are installed** — they run automatically on `git commit`
+5. **Structured JSON logging only** — use `logger.info("msg", extra={...})`, never `print()`
+6. **No sensitive data in logs** — redact JWT tokens, passwords, user objects
+
+### State Machine Rules
+```
+DRAFT → SENT (via /send endpoint)
+DRAFT → CANCELLED (via /void endpoint)
+DRAFT → [soft-deleted] (via DELETE)
+SENT → PARTIALLY_PAID (automatic on partial payment)
+SENT → PAID (automatic on full payment)
+SENT → CANCELLED (via /void)
+PARTIALLY_PAID → PAID (automatic on final payment)
+PARTIALLY_PAID → CANCELLED (via /void)
+PAID → CANCELLED (via /void)
+CANCELLED → [terminal, no transitions]
+```
+
+## Architecture Patterns
+
+### Service Layer
+- **Routers** handle HTTP concerns only (parse request, return response)
+- **Services** contain all business logic (validation, state transitions, calculations)
+- **Models** are pure data definitions (no business logic)
+- **Schemas** handle API validation (Pydantic models)
+
+### Concurrency Safety
+- Invoice number generation uses `SELECT FOR UPDATE` row locks
+- Payment recording uses row-level locks on the invoice
+- Idempotency keys prevent duplicate payment processing
+
+### Multi-Tenancy
+- Every query MUST filter by `workspace_id`
+- Cross-workspace data access is a security violation
+- `workspace_id` comes from the authenticated JWT token
+
+## Directory Structure
+```
+rezorpay_pro/
+├── .github/workflows/ci.yml    # GitHub Actions (lint → test → security)
+├── .pre-commit-config.yaml     # black + ruff + hygiene hooks
+├── .gitignore
+├── docker-compose.yml          # api + postgres + redis
+├── .claude/                    # Claude Code configuration
+│   ├── CLAUDE.md              # THIS FILE
+│   ├── settings.json          # Local settings
+│   └── commands/              # Custom slash commands
+├── .agents/                    # Multi-agent instructions
+│   ├── backend-agent.md       # Backend development rules
+│   ├── frontend-agent.md      # Frontend development rules
+│   └── database-agent.md      # Database & migration rules
+└── backend/
+    ├── Dockerfile
+    ├── .env / .env.example
+    ├── requirements.txt
+    ├── alembic.ini
+    ├── alembic/                # Migration scripts
+    ├── app/
+    │   ├── main.py            # FastAPI entrypoint
+    │   ├── config.py          # Pydantic Settings
+    │   ├── database.py        # Async engine + sessions
+    │   ├── logging.py         # Structured JSON logging
+    │   ├── auth/              # JWT authentication
+    │   ├── models/            # SQLModel ORM entities
+    │   ├── schemas/           # Pydantic request/response
+    │   ├── routers/           # API endpoint handlers
+    │   └── services/          # Business logic layer
+    └── tests/                 # Test suites
+```
+
+## Known Issues (As of Aug 2026)
+1. `InvoiceStatus.VOIDED` referenced but not defined (enum has `CANCELLED`)
+2. Audit metadata silently dropped (`context=` vs `metadata_log=`)
+3. CI pipeline broken (no server started before integration tests)
+4. `tax_id` in schema but not in Client model
+5. `Client.email` nullability mismatch between schema and model

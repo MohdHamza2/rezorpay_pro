@@ -1,6 +1,5 @@
 import json
 import logging
-import traceback
 import sys
 from contextvars import ContextVar
 from typing import Any, Dict
@@ -8,10 +7,12 @@ from typing import Any, Dict
 # Context variable to store request ID
 request_id_ctx: ContextVar[str] = ContextVar("request_id", default="")
 
+
 class JSONFormatter(logging.Formatter):
     """
     Formatter that outputs JSON strings.
     """
+
     def format(self, record: logging.LogRecord) -> str:
         log_obj: Dict[str, Any] = {
             "timestamp": self.formatTime(record, self.datefmt),
@@ -31,14 +32,36 @@ class JSONFormatter(logging.Formatter):
 
         # Merge extra arguments if provided
         if hasattr(record, "extra") and isinstance(record.extra, dict):
-             log_obj.update(record.extra)
-             
+            log_obj.update(record.extra)
+
         # Add kwargs if they exist and are dict
         for key, value in record.__dict__.items():
-            if key not in ['args', 'asctime', 'created', 'exc_info', 'exc_text', 'filename', 
-                           'funcName', 'levelname', 'levelno', 'lineno', 'message', 'module', 
-                           'msecs', 'msg', 'name', 'pathname', 'process', 'processName', 
-                           'relativeCreated', 'stack_info', 'thread', 'threadName', 'taskName', 'extra']:
+            if key not in [
+                "args",
+                "asctime",
+                "created",
+                "exc_info",
+                "exc_text",
+                "filename",
+                "funcName",
+                "levelname",
+                "levelno",
+                "lineno",
+                "message",
+                "module",
+                "msecs",
+                "msg",
+                "name",
+                "pathname",
+                "process",
+                "processName",
+                "relativeCreated",
+                "stack_info",
+                "thread",
+                "threadName",
+                "taskName",
+                "extra",
+            ]:
                 # Basic check to avoid serialization errors
                 try:
                     json.dumps(value)
@@ -48,8 +71,22 @@ class JSONFormatter(logging.Formatter):
 
         return json.dumps(log_obj)
 
-def setup_logging(level=logging.INFO):
-    """Set up structured JSON logging."""
+
+_ENV_LOG_LEVELS = {
+    "development": logging.DEBUG,
+    "staging": logging.INFO,
+    "production": logging.INFO,
+    "test": logging.WARNING,
+}
+
+
+def setup_logging(environment: str = "development"):
+    """Set up structured JSON logging with environment-aware log levels.
+
+    Args:
+        environment: One of 'development', 'staging', 'production', 'test'.
+    """
+    level = _ENV_LOG_LEVELS.get(environment, logging.INFO)
     logger = logging.getLogger()
     logger.setLevel(level)
 
@@ -66,5 +103,5 @@ def setup_logging(level=logging.INFO):
         uvicorn_logger = logging.getLogger(logger_name)
         uvicorn_logger.handlers = [handler]
         uvicorn_logger.propagate = False
-        
+
     return logger

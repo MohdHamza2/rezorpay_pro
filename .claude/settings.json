@@ -1,0 +1,59 @@
+{
+  "project": {
+    "name": "InvoiceSaaS",
+    "type": "backend-saas",
+    "language": "python",
+    "framework": "fastapi",
+    "python_version": "3.11"
+  },
+  "preferences": {
+    "format_on_save": true,
+    "formatter": "black",
+    "linter": "ruff",
+    "test_runner": "pytest",
+    "auto_commit": false
+  },
+  "paths": {
+    "backend": "backend/",
+    "models": "backend/app/models/",
+    "routers": "backend/app/routers/",
+    "services": "backend/app/services/",
+    "schemas": "backend/app/schemas/",
+    "migrations": "backend/alembic/",
+    "tests": "backend/tests/",
+    "docker": "docker-compose.yml"
+  },
+  "conventions": {
+    "response_wrapper": true,
+    "soft_delete": true,
+    "structured_logging": true,
+    "multi_tenant": true,
+    "financial_decimal_precision": "12,2"
+  },
+  "launch": {
+    "dev_server": {
+      "command": "cd backend && ../.venv/Scripts/python.exe -m uvicorn app.main:app --reload",
+      "port": 8000,
+      "env_file": "backend/.env"
+    },
+    "docker": {
+      "command": "docker-compose up -d",
+      "services": ["api", "postgres", "redis"]
+    },
+    "tests": {
+      "unit": "cd backend && ../.venv/Scripts/python.exe -m pytest tests/",
+      "integration": "cd backend && ../.venv/Scripts/python.exe test_step2_production.py",
+      "note": "Integration tests require a running server on port 8000"
+    },
+    "migrations": {
+      "generate": "cd backend && ../.venv/Scripts/alembic revision --autogenerate -m \"description\"",
+      "apply": "cd backend && ../.venv/Scripts/alembic upgrade head",
+      "rollback": "cd backend && ../.venv/Scripts/alembic downgrade -1"
+    },
+    "lint": {
+      "check": "cd backend && ../.venv/Scripts/ruff check app/",
+      "format": "cd backend && ../.venv/Scripts/black app/",
+      "pre_commit": "cd . && .venv/Scripts/pre-commit run --all-files"
+    }
+  }
+}
