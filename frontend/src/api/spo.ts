@@ -1,5 +1,4 @@
 import { apiClient } from './client';
-import type { SuccessResponse } from '../types/api';
 
 export interface SPOItem {
   id: string;
@@ -65,7 +64,7 @@ export interface SPO {
 export const getSPOs = async (workspaceId?: string): Promise<SPO[]> => {
   const params = workspaceId ? { workspace_id: workspaceId } : {};
   const response = await apiClient.get<SPO[]>('/api/v1/spos', { params });
-  // Some endpoints might return SuccessResponse wrapped, but usually FastAPI returns the model directly unless wrapped. 
+  // Some endpoints might return SuccessResponse wrapped, but usually FastAPI returns the model directly unless wrapped.
   // Based on the schema provided, the backend returns SPOResponse (which is just the object) directly, not wrapped.
   // We'll return response.data directly assuming it's an array for list.
   return Array.isArray(response.data) ? response.data : (response.data as any).data;

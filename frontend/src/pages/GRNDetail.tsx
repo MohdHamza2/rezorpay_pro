@@ -1,12 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm, Controller } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { getGRNReconciliation, startReceiving, stageForInspection, recordDisposition, addGRNItem } from '../api/grn';
-import type { GRN, GRNItem, GRNDispositionRequest, GRNItemCreate } from '../api/grn';
+import type { GRNDispositionRequest, GRNItemCreate } from '../api/grn';
 import { getSPO } from '../api/spo';
-import type { SPO } from '../api/spo';
 import styles from './Suppliers.module.css';
 
 interface DispositionFormData {
@@ -36,7 +35,7 @@ export const GRNDetail = () => {
     enabled: !!grn?.spo_id,
   });
 
-  const { control, handleSubmit, watch, reset } = useForm<DispositionFormData>();
+  const { control, handleSubmit } = useForm<DispositionFormData>();
   const [selectedSpoItemId, setSelectedSpoItemId] = useState<string>('');
   const [qtyReceivedInput, setQtyReceivedInput] = useState<number>(0);
 
@@ -83,24 +82,24 @@ export const GRNDetail = () => {
   const handleDispositionSubmit = (itemId: string, data: any) => {
     const itemData = data[itemId];
     if (!itemData) return;
-    
+
     const qty_accepted = Number(itemData.quantity_accepted || 0);
     const qty_damaged = Number(itemData.quantity_damaged || 0);
     const qty_rejected = Number(itemData.quantity_rejected || 0);
-    
+
     const grnItem = grn.items.find(i => i.id === itemId);
     if (!grnItem) return;
-    
+
     if (qty_accepted + qty_damaged + qty_rejected !== Number(grnItem.quantity_received)) {
       toast.error(`Quantities must sum up to total quantity received (${grnItem.quantity_received}).`);
       return;
     }
-    
+
     if (qty_damaged > 0 && (!itemData.damage_reason || itemData.damage_reason.length < 10)) {
       toast.error('Damage reason is required (min 10 chars) if damaged > 0');
       return;
     }
-    
+
     if (qty_rejected > 0 && (!itemData.rejection_reason || itemData.rejection_reason.length < 10)) {
       toast.error('Rejection reason is required (min 10 chars) if rejected > 0');
       return;
@@ -125,11 +124,11 @@ export const GRNDetail = () => {
     }
     const spoItem = spo?.items.find((i: any) => i.id === selectedSpoItemId);
     if (!spoItem) return;
-    
+
     addItemMutation.mutate({
       spo_item_id: spoItem.id,
       product_id: spoItem.product_id,
-      internal_sku: spoItem.internal_sku,
+      internal_sku: spoItem.internal_sku ?? '',
       description: spoItem.description,
       uom_id: spoItem.uom_id,
       quantity_received: qtyReceivedInput
@@ -215,7 +214,7 @@ export const GRNDetail = () => {
                 </td>
                 <td>{Number(item.quantity_ordered_snapshot)} / {Number(item.quantity_confirmed_snapshot)}</td>
                 <td><strong>{Number(item.quantity_received)}</strong></td>
-                
+
                 {grn.status === 'PENDING_INSPECTION' && !item.status?.includes('ACCEPTED') && !item.status?.includes('REJECTED') && (
                   <>
                     <td style={{ minWidth: '400px' }}>
@@ -269,7 +268,7 @@ export const GRNDetail = () => {
                     <span style={{ color: '#991b1b', fontWeight: 'bold' }}>{Number(item.quantity_rejected)}</span>
                   </td>
                 )}
-                
+
                 {['PARTIALLY_ACCEPTED', 'ACCEPTED', 'PARTIALLY_REJECTED', 'REJECTED'].includes(grn.status) && (
                   <td>
                     <span style={{ color: '#166534', fontWeight: 'bold' }}>{Number(item.quantity_accepted)}</span> /{' '}

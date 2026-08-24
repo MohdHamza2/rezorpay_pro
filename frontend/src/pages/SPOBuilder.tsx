@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { useForm, useFieldArray, Controller } from 'react-hook-form';
+import { useForm, useFieldArray } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 import { createSPO } from '../api/spo';
 import toast from 'react-hot-toast';
@@ -7,7 +6,7 @@ import styles from './Suppliers.module.css'; // Reusing styles
 
 export const SPOBuilder = () => {
   const navigate = useNavigate();
-  const { register, control, handleSubmit, formState: { errors } } = useForm({
+  const { register, control, handleSubmit } = useForm({
     defaultValues: {
       supplier_id: '',
       procurement_method: 'DIRECT',

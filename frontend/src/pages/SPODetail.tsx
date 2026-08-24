@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getSPO, submitSPO, approveSPO, sendSPO, acknowledgeSPO, cancelSPO } from '../api/spo';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { getSPO, submitSPO, approveSPO, sendSPO, acknowledgeSPO } from '../api/spo';
 import { Skeleton } from '../components/Skeleton';
 import toast from 'react-hot-toast';
 import styles from './Suppliers.module.css';
@@ -102,33 +102,33 @@ export const SPODetail = () => {
                 { (spo.status === 'SENT' || spo.status === 'PARTIALLY_ACKNOWLEDGED') && (
                   <>
                     <td>
-                      <input 
-                        type="number" 
+                      <input
+                        type="number"
                         defaultValue={item.quantity_ordered}
                         onChange={(e) => setAckLines({
-                          ...ackLines, 
-                          [item.id]: { 
-                            ...ackLines[item.id], 
+                          ...ackLines,
+                          [item.id]: {
+                            ...ackLines[item.id],
                             quantity_confirmed: Number(e.target.value),
                             unit_price: ackLines[item.id]?.unit_price || item.unit_price
                           }
-                        })} 
+                        })}
                         style={{ width: '80px' }}
                       />
                     </td>
                     <td>
-                      <input 
-                        type="number" 
+                      <input
+                        type="number"
                         step="0.01"
                         defaultValue={item.unit_price}
                         onChange={(e) => setAckLines({
-                          ...ackLines, 
-                          [item.id]: { 
-                            ...ackLines[item.id], 
+                          ...ackLines,
+                          [item.id]: {
+                            ...ackLines[item.id],
                             unit_price: Number(e.target.value),
                             quantity_confirmed: ackLines[item.id]?.quantity_confirmed || item.quantity_ordered
                           }
-                        })} 
+                        })}
                         style={{ width: '80px' }}
                       />
                     </td>

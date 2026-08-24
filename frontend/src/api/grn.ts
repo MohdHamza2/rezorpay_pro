@@ -31,6 +31,7 @@ export interface GRN {
   status: 'DRAFT' | 'RECEIVING' | 'PENDING_INSPECTION' | 'PARTIALLY_ACCEPTED' | 'ACCEPTED' | 'PARTIALLY_REJECTED' | 'REJECTED' | 'CANCELLED';
   received_date: string;
   delivery_reference: string | null;
+  stock_posted: boolean;
   items: GRNItem[];
 }
 

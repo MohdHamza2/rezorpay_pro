@@ -1,7 +1,6 @@
-﻿from pydantic import BaseModel
+from pydantic import BaseModel
 from decimal import Decimal
-import uuid
-from typing import Dict, Any
+
 
 class DashboardStatsResponse(BaseModel):
     total_invoices: int

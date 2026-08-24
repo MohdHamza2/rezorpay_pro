@@ -36,6 +36,21 @@
 
 **Deferred to P3:** a dedicated cross-tenant regression test (needs 2 workspaces → 2 registrations; will be added alongside the rate-limit test isolation / `conftest.py` work to avoid flaky 429s now). The fix itself is correct-by-construction against the proven `list_spos` reference pattern.
 
-## P2 — Builds & imports clean            — pending
+## P2 — Builds & imports clean — ✅ DONE (P2 boundary commit on `stabilization/wave-sync`)
+**Frontend (21 TS errors → 0):**
+- Removed 13 unused imports/vars across `SPO.tsx` (`useState`, `Printer`, `Truck`), `SPOBuilder.tsx` (`useState`, `Controller`, `formState.errors`), `SPODetail.tsx` (`useMutation`, `cancelSPO`), `GRNDetail.tsx` (`useEffect`, `GRN`, `GRNItem`, `SPO` type, `watch`, `reset`), `spo.ts` (`SuccessResponse` — genuinely unused; see wiring flag #1).
+- **GRN type-drift → aligned to backend contract:** `GRN.tsx` now uses `grn.stock_posted` (was non-existent `status === 'POSTED'`), `grn.received_date` (was `receipt_date`), `grn.delivery_reference` (was `supplier_delivery_note`). Added missing `stock_posted: boolean` to the `GRN` interface in `api/grn.ts`.
+- Null-safety: `GRNDetail.tsx` `internal_sku: spoItem.internal_sku ?? ''` (`SPOItem.internal_sku` is `string | null`; `GRNItemCreate.internal_sku` is `string`).
+- **Env-driven API base URL:** `client.ts` `BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'`; added `src/vite-env.d.ts` (`vite/client` ref) so `import.meta.env` type-checks; added `frontend/.env.example`. Also hoisted a mid-file import in `client.ts` to the top (CLAUDE.md "imports at top").
+
+**Verification:**
+- `npx tsc -b` → exit 0. `npm run build` (`tsc -b && vite build`) → exit 0, 2152 modules, `dist/` emitted. (Only a >500 kB chunk-size *advisory* — perf, not an error; code-splitting deferred.)
+- Backend: `from app.main import app; from app.models import *` in-container → **BACKEND IMPORT OK**. (No backend files changed since P1.)
+
+**Wiring flags discovered during P2 (NOT runtime breaks — each frontend↔backend pairing is internally consistent — deferred to P4 consistency):**
+1. **SPO envelope divergence (CLAUDE.md API Rule #1):** `spo.py` is the *only* router returning **raw** models (`SPOResponse` / `List[SPOResponse]`); all 14 other routers wrap in `SuccessResponse[...]` / `PaginatedResponse`. `spo.ts` correctly does *not* unwrap, so SPO works — but it violates the "all responses use the `{success,data,error}` wrapper" rule. Fix = wrap SPO endpoints + add unwrap in `spo.ts` + update SPO tests (coordinated 3-way change).
+2. **`SPOBuilder.tsx` dead mock workspace:** passes hardcoded `'00000000-…'` to `createSPO(workspaceId, data)`, but the backend `POST /spos/` now derives `workspace_id` from JWT (P1). The arg is silently ignored (FastAPI drops unknown query params) → not broken, but misleading. Cleanup `createSPO` signature + callers.
+3. **`client.ts:getDashboardMetrics` dead code:** unused fn hitting non-existent `/api/v1/dashboard/metrics`. The live dashboard uses `dashboard.ts:getDashboardStats` → `/api/v1/dashboard/stats` (correct). Remove the dead fn.
 ## P3 — Tests & CI green                   — pending
 ## P4 — Consistency & hygiene              — pending
+*Carry-in from P2 wiring flags:* (1) wrap SPO endpoints in `SuccessResponse` + unwrap in `spo.ts` + update tests; (2) drop dead mock `workspaceId` from `createSPO` + callers; (3) remove dead `client.ts:getDashboardMetrics`. Plus the originally-scoped P4 work: unify `alembic.ini` ↔ `config.py` + secrets to env, ENUM case reconciliation, consolidate `get_current_workspace_id`, export wave services in `services/__init__.py`, standardize auth import paths, fix supplier_invoices eager-load, add `.gitattributes`, refresh stale docs (CLAUDE.md Known Issues, reports index, `edge-cases.md` F-2).

@@ -1,8 +1,7 @@
-import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getSPOs } from '../api/spo';
 import { Skeleton } from '../components/Skeleton';
-import { Plus, Printer, Truck, Eye } from 'lucide-react';
+import { Plus, Eye } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import styles from './Suppliers.module.css';
 
@@ -49,7 +48,7 @@ export const PurchaseOrders = () => {
               <tr key={spo.id}>
                 <td><strong>{spo.spo_number}</strong></td>
                 <td>
-                  <span style={{ 
+                  <span style={{
                     padding: '2px 8px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 'bold',
                     backgroundColor: spo.status === 'DRAFT' ? '#f3f4f6' : '#dbeafe',
                     color: spo.status === 'DRAFT' ? '#374151' : '#1e40af'

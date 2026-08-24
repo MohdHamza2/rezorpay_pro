@@ -47,22 +47,22 @@ export const GoodsReceiptNotes = () => {
               <tr key={grn.id}>
                 <td><strong>{grn.grn_number}</strong></td>
                 <td>
-                  <span style={{ 
+                  <span style={{
                     padding: '2px 8px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 'bold',
-                    backgroundColor: grn.status === 'DRAFT' ? '#f3f4f6' : (grn.status === 'POSTED' ? '#dcfce7' : '#fef9c3'),
-                    color: grn.status === 'DRAFT' ? '#374151' : (grn.status === 'POSTED' ? '#166534' : '#854d0e')
+                    backgroundColor: grn.status === 'DRAFT' ? '#f3f4f6' : (grn.stock_posted ? '#dcfce7' : '#fef9c3'),
+                    color: grn.status === 'DRAFT' ? '#374151' : (grn.stock_posted ? '#166534' : '#854d0e')
                   }}>
                     {grn.status}
                   </span>
                 </td>
-                <td>{new Date(grn.receipt_date).toLocaleDateString()}</td>
-                <td>{grn.supplier_delivery_note || '-'}</td>
+                <td>{new Date(grn.received_date).toLocaleDateString()}</td>
+                <td>{grn.delivery_reference || '-'}</td>
                 <td>{grn.items.length}</td>
                 <td>
                   <button className={styles.actionBtn} title="Inspect Goods" onClick={() => navigate(`/grn/${grn.id}`)}>
                     <PackageSearch size={16} />
                   </button>
-                  {grn.status !== 'POSTED' && (
+                  {!grn.stock_posted && (
                     <button className={styles.actionBtn} title="Post to Inventory">
                       <CheckCircle size={16} />
                     </button>

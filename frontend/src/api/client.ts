@@ -1,9 +1,10 @@
 import axios, { AxiosError } from 'axios';
 import type { InternalAxiosRequestConfig } from 'axios';
 import type { AuthTokens } from '../types/auth';
+import type { SuccessResponse, DashboardMetricsResponse } from '../types/api';
 import toast from 'react-hot-toast';
 
-const BASE_URL = 'http://localhost:8000';
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 export const apiClient = axios.create({
   baseURL: BASE_URL,
@@ -55,7 +56,7 @@ apiClient.interceptors.response.use(
               // Let's assume response.data.data has the tokens
               const newTokens: AuthTokens = response.data.data;
               localStorage.setItem('auth_tokens', JSON.stringify(newTokens));
-              
+
               // Update authorization header
               originalRequest.headers.Authorization = `Bearer ${newTokens.access_token}`;
               return apiClient(originalRequest);
@@ -81,8 +82,6 @@ apiClient.interceptors.response.use(
     return Promise.reject(error);
   }
 );
-
-import type { SuccessResponse, DashboardMetricsResponse } from '../types/api';
 
 export const getDashboardMetrics = async (): Promise<DashboardMetricsResponse> => {
   const response = await apiClient.get<SuccessResponse<DashboardMetricsResponse>>('/api/v1/dashboard/metrics');
