@@ -4,9 +4,8 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer
-from pydantic import BaseModel, EmailStr, field_validator
-from slowapi import Limiter
-from slowapi.util import get_remote_address
+from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
+
 from sqlalchemy import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -28,8 +27,7 @@ from app.schemas.common import SuccessResponse
 router = APIRouter(prefix="/auth", tags=["authentication"])
 security = HTTPBearer(auto_error=False)
 
-# Rate limiter
-limiter = Limiter(key_func=get_remote_address)
+from app.limiter import limiter
 
 settings = get_settings()
 
@@ -55,6 +53,8 @@ class UserLogin(BaseModel):
 
 
 class UserResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: uuid.UUID
     email: str
     name: str
@@ -62,9 +62,6 @@ class UserResponse(BaseModel):
     workspace_id: uuid.UUID
     is_active: bool
     created_at: Optional[str] = None
-
-    class Config:
-        from_attributes = True
 
 
 class TokenResponse(BaseModel):

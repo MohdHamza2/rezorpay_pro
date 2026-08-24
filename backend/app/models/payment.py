@@ -1,35 +1,35 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 from decimal import Decimal
 from enum import Enum
 from typing import Optional, TYPE_CHECKING
 
-from sqlalchemy import Column, DateTime, Numeric, String, CheckConstraint
+from sqlalchemy import Column, DateTime, Date, Numeric, String, CheckConstraint
 from sqlmodel import Field, Relationship, SQLModel
 
 if TYPE_CHECKING:
     from app.models.invoice import Invoice
 
+class PaymentMethod(str, Enum):
+    CASH = "CASH"
+    BANK_TRANSFER = "BANK_TRANSFER"
+    CHEQUE = "CHEQUE"
+    PDC = "PDC"
+    CREDIT_CARD = "CREDIT_CARD"
 
-class PaymentGateway(str, Enum):
-    RAZORPAY = "razorpay"
-    STRIPE = "stripe"
-    MANUAL = "manual"
-
+class PDCStatus(str, Enum):
+    RECEIVED = "RECEIVED"
+    DEPOSITED = "DEPOSITED"
+    CLEARED = "CLEARED"
+    BOUNCED = "BOUNCED"
+    RETURNED = "RETURNED"
 
 class PaymentStatus(str, Enum):
-    """
-    Payment status enum.
-    
-    Only SUCCESS payments count toward invoice balance.
-    FAILED payments are kept for audit trail but don't affect balance.
-    """
-    PENDING = "pending"      # Gateway processing
-    SUCCESS = "success"      # ✅ Counts toward balance
-    FAILED = "failed"        # ❌ Audit trail only
-    CANCELLED = "cancelled"  # ❌ Cancelled before completion
-    REFUNDED = "refunded"    # ❌ Subtract from total (future use)
-
+    PENDING = "PENDING"
+    SUCCESS = "SUCCESS"
+    FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
+    REFUNDED = "REFUNDED"
 
 class Payment(SQLModel, table=True):
     __tablename__ = "payments"
@@ -42,14 +42,24 @@ class Payment(SQLModel, table=True):
     invoice_id: uuid.UUID = Field(foreign_key="invoices.id", nullable=False, index=True)
     
     amount: Decimal = Field(sa_column=Column(Numeric(12, 2), nullable=False))
-    gateway: Optional[PaymentGateway] = Field(default=None)
-    # Nullable only for manual; backend enforces NOT NULL for external gateways
+    payment_date: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    
+    payment_method: PaymentMethod = Field(default=PaymentMethod.BANK_TRANSFER)
+    status: PaymentStatus = Field(default=PaymentStatus.PENDING)
+    
+    # Method-Specific Fields
+    reference_number: Optional[str] = Field(default=None, max_length=100) # Cheque # or Txn ID
+    bank_name: Optional[str] = Field(default=None, max_length=255)
+    
+    # PDC Specific Fields
+    pdc_date: Optional[date] = Field(default=None, sa_column=Column(Date))
+    pdc_status: Optional[PDCStatus] = Field(default=None)
+    
+    # Optional legacy Gateway field
     gateway_transaction_id: Optional[str] = Field(
         default=None,
         sa_column=Column(String(255), unique=True, nullable=True, index=True)
     )
-    status: PaymentStatus = Field(default=PaymentStatus.PENDING)
-    payment_date: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
     
     # Timestamps
     created_at: datetime = Field(
@@ -61,7 +71,4 @@ class Payment(SQLModel, table=True):
         sa_column=Column(DateTime(timezone=True), nullable=False)
     )
     
-    # No soft delete - immutable financial records
-    
-    # Relationships
     invoice: "Invoice" = Relationship(back_populates="payments")

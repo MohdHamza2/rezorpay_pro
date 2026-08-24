@@ -27,10 +27,11 @@
 
 ## Coordination Rules
 
-1. **Schema changes** → Database Agent creates model + migration → Backend Agent updates router/service/schema
-2. **New feature** → Backend Agent builds API → Frontend Agent consumes it
-3. **Bug fix** → Route to the owning agent based on which layer the bug exists in
-4. **Cross-cutting changes** (e.g., new entity end-to-end) → Database Agent first, then Backend Agent, then Frontend Agent
+1. **Mandatory Activity Reporting**: Every agent MUST document their actions, code edits, and implementation steps in a dedicated report file (e.g., `backend-execution-report.md`) within `.agents/reports/`. This must be updated continuously as work progresses to maintain complete traceability.
+2. **Schema changes** → Database Agent creates model + migration → Backend Agent updates router/service/schema
+3. **New feature** → Backend Agent builds API → Frontend Agent consumes it
+4. **Bug fix** → Route to the owning agent based on which layer the bug exists in
+5. **Cross-cutting changes** (e.g., new entity end-to-end) → Database Agent first, then Backend Agent, then Frontend Agent
 
 ## Shared Context
 

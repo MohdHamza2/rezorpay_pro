@@ -85,7 +85,7 @@ class AuditService:
             previous_status=previous_status,
             new_status=new_status,
             changed_by=user_id,
-            context=metadata or {}
+            metadata_log=metadata or {}
         )
         
         session.add(event)

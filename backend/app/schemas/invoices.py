@@ -8,7 +8,7 @@ from enum import Enum
 from typing import List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.invoice import InvoiceStatus
 
@@ -42,14 +42,13 @@ class InvoiceItemUpdate(BaseModel):
 
 class InvoiceItemResponse(InvoiceItemBase):
     """Schema for invoice item response."""
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     invoice_id: UUID
     total_price: Decimal
     created_at: datetime
     updated_at: datetime
-    
-    class Config:
-        from_attributes = True
 
 
 class InvoiceBase(BaseModel):
@@ -97,6 +96,8 @@ class InvoiceUpdate(BaseModel):
 
 class InvoiceResponse(InvoiceBase):
     """Schema for invoice response."""
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     workspace_id: UUID
     client_id: UUID
@@ -109,13 +110,12 @@ class InvoiceResponse(InvoiceBase):
     created_at: datetime
     updated_at: datetime
     deleted_at: Optional[datetime] = None
-    
-    class Config:
-        from_attributes = True
 
 
 class InvoiceListItem(BaseModel):
     """Schema for invoice list item (without full items)."""
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     client_id: UUID
     invoice_number: str
@@ -124,9 +124,6 @@ class InvoiceListItem(BaseModel):
     issue_date: date
     due_date: date
     created_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class InvoiceListResponse(BaseModel):

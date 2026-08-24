@@ -282,11 +282,11 @@ class InvoiceService:
         
         Creates audit trail for accounting purposes.
         """
-        if invoice.status in [InvoiceStatus.VOIDED]:
+        if invoice.status in [InvoiceStatus.CANCELLED]:
             raise ValueError("Invoice is already voided")
         
         old_status = invoice.status
-        invoice.status = InvoiceStatus.VOIDED
+        invoice.status = InvoiceStatus.CANCELLED
         invoice.updated_at = datetime.now(timezone.utc)
         
         await AuditService.log_invoice_voided(

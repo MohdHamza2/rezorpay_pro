@@ -2,7 +2,6 @@ import logging
 import time
 import uuid
 from contextlib import asynccontextmanager
-from uuid import UUID
 
 from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
@@ -10,15 +9,15 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from jose import jwt
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from slowapi.util import get_remote_address
 from sqlmodel import SQLModel
 from starlette.exceptions import HTTPException
 
 from app.auth.router import router as auth_router
 from app.config import get_settings
 from app.database import engine
+from app.limiter import limiter
 from app.logging import request_id_ctx, setup_logging
 from app.routers import (
     clients_router,
@@ -26,6 +25,16 @@ from app.routers import (
     invoices_router,
     payments_router,
 )
+from app.routers.dashboard import router as dashboard_router
+from app.routers.workspaces import router as workspaces_router
+from app.routers.products import router as products_router
+from app.routers.suppliers import router as suppliers_router
+from app.routers.inventory import router as inventory_router
+from app.routers.procurement import router as procurement_router
+from app.routers.rfq import router as rfq_router
+from app.routers.spo import router as spo_router
+from app.routers.grn import router as grn_router
+from app.routers.supplier_invoices import router as supplier_invoices_router
 
 settings = get_settings()
 logger = logging.getLogger("uvicorn.error")
@@ -35,8 +44,6 @@ logger = logging.getLogger("uvicorn.error")
 async def lifespan(app: FastAPI):
     # Startup
     setup_logging(settings.ENVIRONMENT)
-    async with engine.begin() as conn:
-        await conn.run_sync(SQLModel.metadata.create_all)
     yield
     # Shutdown
     await engine.dispose()
@@ -73,14 +80,22 @@ async def request_id_middleware(request: Request, call_next):
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure properly for production
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://localhost:5175",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:5174",
+        "http://127.0.0.1:5175",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Rate limiting - register limiter and exception handler
-limiter = Limiter(key_func=get_remote_address)
+# Rate limiting
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
@@ -131,69 +146,6 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 
 # ============================
-# JWT Auth Middleware
-# ============================
-
-
-@app.middleware("http")
-async def auth_middleware(request: Request, call_next):
-    """Extract user and workspace from JWT for protected routes."""
-    protected_paths = ["/api/v1/clients", "/api/v1/invoices", "/api/v1/payments"]
-
-    # Skip auth for non-protected routes
-    if not any(str(request.url.path).startswith(path) for path in protected_paths):
-        return await call_next(request)
-
-    # Extract token from Authorization header
-    auth_header = request.headers.get("Authorization")
-
-    if not auth_header or not auth_header.startswith("Bearer "):
-        request.state.user = None
-        request.state.workspace_id = None
-        return await call_next(request)
-
-    token = auth_header.replace("Bearer ", "")
-
-    try:
-        payload = jwt.decode(
-            token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
-        )
-
-        user_id = payload.get("sub")
-
-        # Fetch full User object from database
-        from app.database import async_session_maker
-        from app.models.user import User
-        from sqlmodel import select  # noqa: E402
-
-        async with async_session_maker() as session:
-            result = await session.execute(select(User).where(User.id == UUID(user_id)))
-            user = result.scalar_one_or_none()
-            if user and user.is_active:
-                request.state.user = user
-                request.state.workspace_id = user.workspace_id
-                # Safe logging
-                logger.info(
-                    "Authenticated request",
-                    extra={
-                        "user_id": str(user.id),
-                        "workspace_id": str(user.workspace_id),
-                        "path": request.url.path,
-                    },
-                )
-            else:
-                request.state.user = None
-                request.state.workspace_id = None
-
-    except Exception as e:
-        logger.warning(f"Auth error: {type(e).__name__}")
-        request.state.user = None
-        request.state.workspace_id = None
-
-    return await call_next(request)
-
-
-# ============================
 # Routers
 # ============================
 
@@ -202,6 +154,16 @@ app.include_router(health_router)
 app.include_router(clients_router, prefix="/api/v1")
 app.include_router(invoices_router, prefix="/api/v1")
 app.include_router(payments_router, prefix="/api/v1")
+app.include_router(dashboard_router, prefix="/api/v1")
+app.include_router(workspaces_router, prefix="/api/v1")
+app.include_router(products_router, prefix="/api/v1")
+app.include_router(suppliers_router, prefix="/api/v1")
+app.include_router(inventory_router, prefix="/api/v1")
+app.include_router(procurement_router, prefix="/api/v1")
+app.include_router(rfq_router, prefix="/api/v1")
+app.include_router(spo_router, prefix="/api/v1")
+app.include_router(grn_router, prefix="/api/v1")
+app.include_router(supplier_invoices_router, prefix="/api/v1")
 
 
 @app.get("/")

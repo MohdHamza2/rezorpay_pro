@@ -27,26 +27,16 @@ from app.schemas.common import ErrorDetail, ErrorResponse, PaginationMeta, Pagin
 router = APIRouter(prefix="/clients", tags=["Clients"])
 
 
-async def get_current_user(request: Request) -> User:
-    """Get current authenticated user from request state."""
-    user = request.state.user
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated"
-        )
-    return user
+from app.auth.dependencies import get_current_user
 
-
-async def get_current_workspace_id(request: Request) -> UUID:
-    """Get current workspace ID from request state."""
-    workspace_id = request.state.workspace_id
-    if not workspace_id:
+async def get_current_workspace_id(user: User = Depends(get_current_user)) -> UUID:
+    """Get current workspace ID from user."""
+    if not user.workspace_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No workspace access"
         )
-    return workspace_id
+    return user.workspace_id
 
 
 @router.post("", response_model=SuccessResponse[ClientResponse], status_code=status.HTTP_201_CREATED)

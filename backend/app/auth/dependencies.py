@@ -82,3 +82,8 @@ async def get_current_workspace(
         )
     
     return workspace
+
+async def get_current_workspace_id(
+    current_user: User = Depends(get_current_active_user)
+) -> uuid.UUID:
+    return current_user.workspace_id

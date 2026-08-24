@@ -15,12 +15,12 @@ if TYPE_CHECKING:
 
 
 class InvoiceStatus(str, Enum):
-    DRAFT = "draft"
-    SENT = "sent"
-    PARTIALLY_PAID = "partially_paid"
-    PAID = "paid"
-    OVERDUE = "overdue"
-    CANCELLED = "cancelled"
+    DRAFT = "DRAFT"
+    SENT = "SENT"
+    PARTIALLY_PAID = "PARTIALLY_PAID"
+    PAID = "PAID"
+    OVERDUE = "OVERDUE"
+    CANCELLED = "CANCELLED"
 
 
 class Invoice(SQLModel, table=True):
@@ -76,3 +76,15 @@ class Invoice(SQLModel, table=True):
     items: list["InvoiceItem"] = Relationship(back_populates="invoice")
     payments: list["Payment"] = Relationship(back_populates="invoice")
     events: list["InvoiceEvent"] = Relationship(back_populates="invoice")
+
+    @property
+    def amount_paid(self) -> Decimal:
+        from app.models.payment import PaymentStatus
+        if not getattr(self, 'payments', None):
+            return Decimal('0')
+        return sum((p.amount for p in self.payments if p.status == PaymentStatus.SUCCESS), Decimal('0'))
+
+    @property
+    def balance_due(self) -> Decimal:
+        return self.total_amount - self.amount_paid
+

@@ -19,7 +19,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.models.idempotency_key import IdempotencyKey
 from app.models.invoice import Invoice
-from app.models.payment import Payment, PaymentGateway, PaymentStatus
+from app.models.payment import Payment, PaymentMethod, PaymentStatus, PDCStatus
 from app.services.invoice_service import InvoiceService
 from app.services.audit_service import AuditService
 
@@ -47,9 +47,13 @@ class PaymentService:
         user_id: uuid.UUID,
         amount: Decimal,
         idempotency_key: str,
-        gateway: Optional[PaymentGateway] = None,
-        gateway_transaction_id: Optional[str] = None,
-        payment_date: Optional[date] = None
+        payment_method: PaymentMethod = PaymentMethod.BANK_TRANSFER,
+        payment_date: Optional[date] = None,
+        reference_number: Optional[str] = None,
+        bank_name: Optional[str] = None,
+        pdc_date: Optional[date] = None,
+        pdc_status: Optional[PDCStatus] = None,
+        gateway_transaction_id: Optional[str] = None
     ) -> Payment:
         """
         Record a payment for an invoice with full concurrency safety.
@@ -147,7 +151,11 @@ class PaymentService:
         payment = Payment(
             invoice_id=invoice_id,
             amount=amount,
-            gateway=gateway,
+            payment_method=payment_method,
+            reference_number=reference_number,
+            bank_name=bank_name,
+            pdc_date=pdc_date,
+            pdc_status=pdc_status,
             gateway_transaction_id=gateway_transaction_id,
             status=PaymentStatus.SUCCESS,
             payment_date=datetime.combine(payment_date, datetime.min.time()).replace(tzinfo=timezone.utc),
@@ -178,7 +186,7 @@ class PaymentService:
             invoice_id=invoice.id,
             user_id=user_id,
             payment_amount=amount,
-            payment_gateway=gateway.value if gateway else "manual",
+            payment_gateway=payment_method.value,
             gateway_transaction_id=gateway_transaction_id,
             previous_status=invoice.status.value if not status_changed else "sent",
             new_status=invoice.status.value

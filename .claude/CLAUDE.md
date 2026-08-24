@@ -31,13 +31,14 @@
 4. **Invoice edits blocked unless status is `DRAFT`** — enforced at service layer
 5. **Overpayments rejected** — `amount > balance_due` returns 400
 
-### Code Quality Rules
-1. **All imports at top of file** — no mid-file imports (E402)
-2. **Format with `black`** — target Python 3.11
-3. **Lint with `ruff`** — fix violations before committing
-4. **Pre-commit hooks are installed** — they run automatically on `git commit`
-5. **Structured JSON logging only** — use `logger.info("msg", extra={...})`, never `print()`
-6. **No sensitive data in logs** — redact JWT tokens, passwords, user objects
+### Code Quality & Tracking Rules
+1. **MANDATORY REPORTING**: Every agent MUST document every single action, code edit, and implementation detail in a dedicated report file (e.g., `backend-execution-report.md`) within the `.agents/reports/` directory. No changes are to be made without tracking them in the report first.
+2. **All imports at top of file** — no mid-file imports (E402)
+3. **Format with `black`** — target Python 3.11
+4. **Lint with `ruff`** — fix violations before committing
+5. **Pre-commit hooks are installed** — they run automatically on `git commit`
+6. **Structured JSON logging only** — use `logger.info("msg", extra={...})`, never `print()`
+7. **No sensitive data in logs** — redact JWT tokens, passwords, user objects
 
 ### State Machine Rules
 ```

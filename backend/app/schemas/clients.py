@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class ClientBase(BaseModel):
@@ -34,14 +34,13 @@ class ClientUpdate(BaseModel):
 
 class ClientResponse(ClientBase):
     """Schema for client response."""
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     workspace_id: UUID
     created_at: datetime
     updated_at: datetime
     deleted_at: Optional[datetime] = None
-    
-    class Config:
-        from_attributes = True
 
 
 class ClientListResponse(BaseModel):

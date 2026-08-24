@@ -11,9 +11,9 @@ if TYPE_CHECKING:
 
 
 class UserRole(str, Enum):
-    OWNER = "owner"
-    ADMIN = "admin"
-    MEMBER = "member"
+    OWNER = "OWNER"
+    ADMIN = "ADMIN"
+    MEMBER = "MEMBER"
 
 
 class User(SQLModel, table=True):

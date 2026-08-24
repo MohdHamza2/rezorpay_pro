@@ -1,0 +1,31 @@
+﻿# State Machines
+*InvoiceSaaS B2B Trading Platform*
+*Wave 0 Specification*
+
+## 1. Supplier Master (C-06 Locked)
+**Valid States:** DRAFT, ACTIVE, INACTIVE, ON_HOLD, BLOCKED, BLACKLISTED
+
+**Transitions:**
+- NEW → DRAFT (if equire_supplier_approval = true)
+- DRAFT / NEW → ACTIVE
+- ACTIVE → ON_HOLD / INACTIVE / BLOCKED
+
+## 2. RFQ (Header)
+**Valid States:** DRAFT, SENT, PARTIALLY_RESPONDED, FULLY_RESPONDED, UNDER_EVALUATION, AWARDED, PARTIALLY_AWARDED, CLOSED, EXPIRED, CANCELLED
+
+**Transitions:**
+- DRAFT → SENT → PARTIALLY_RESPONDED → FULLY_RESPONDED
+- FULLY_RESPONDED → UNDER_EVALUATION → PARTIALLY_AWARDED / AWARDED
+- SENT → EXPIRED (0 quotes at deadline)
+
+## 3. SupplierRFQResponse (The Quote)
+**Valid States:** PENDING, RECEIVED, SHORTLISTED, SELECTED, PARTIALLY_SELECTED, NOT_SELECTED, DECLINED, NO_RESPONSE, EXPIRED, SUPERSEDED, WITHDRAWN
+
+**Transitions:**
+- PENDING → RECEIVED → SHORTLISTED → SELECTED / PARTIALLY_SELECTED (C-11 Split awards allowed)
+- RECEIVED → EXPIRED (if alid_until < today) → RECEIVED (if revalidated)
+- PENDING → SUPERSEDED (if RFQ is revised)
+
+## 4. RFQAward
+**Valid States:** DRAFT, PENDING_APPROVAL, APPROVED, REJECTED, CONVERTED, CANCELLED
+- CONVERTED: Triggers SPO generation.

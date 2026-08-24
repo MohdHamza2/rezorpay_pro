@@ -39,26 +39,16 @@ from app.services.invoice_service import InvoiceService
 router = APIRouter(prefix="/invoices", tags=["Invoices"])
 
 
-async def get_current_user(request: Request) -> User:
-    """Get current authenticated user from request state."""
-    user = request.state.user
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated"
-        )
-    return user
+from app.auth.dependencies import get_current_user
 
-
-async def get_current_workspace_id(request: Request) -> UUID:
-    """Get current workspace ID from request state."""
-    workspace_id = request.state.workspace_id
-    if not workspace_id:
+async def get_current_workspace_id(user: User = Depends(get_current_user)) -> UUID:
+    """Get current workspace ID from user."""
+    if not user.workspace_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No workspace access"
         )
-    return workspace_id
+    return user.workspace_id
 
 
 @router.post("", response_model=SuccessResponse[InvoiceResponse], status_code=status.HTTP_201_CREATED)
@@ -131,7 +121,7 @@ async def list_invoices(
     List invoices with filters and pagination.
     """
     # Base query with eager loading for performance
-    query = select(Invoice).where(Invoice.workspace_id == workspace_id)
+    query = select(Invoice).options(selectinload(Invoice.payments)).where(Invoice.workspace_id == workspace_id)
     
     # Exclude deleted by default
     if not include_deleted:

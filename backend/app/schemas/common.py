@@ -7,7 +7,6 @@ All API responses follow a consistent format for easy frontend parsing.
 from typing import Any, Dict, Generic, List, Optional, TypeVar
 
 from pydantic import BaseModel, Field
-from pydantic.generics import GenericModel
 
 # Generic type for typed responses
 T = TypeVar("T")
@@ -23,7 +22,7 @@ class ErrorDetail(BaseModel):
 # -----------------------------
 # SUCCESS RESPONSE (GENERIC)
 # -----------------------------
-class SuccessResponse(GenericModel, Generic[T]):
+class SuccessResponse(BaseModel, Generic[T]):
     """Standardized success response wrapper."""
     success: bool = True
     data: T
@@ -51,7 +50,7 @@ class PaginationMeta(BaseModel):
     has_prev: bool = Field(..., description="Whether there are previous pages")
 
 
-class PaginatedResponse(GenericModel, Generic[T]):
+class PaginatedResponse(BaseModel, Generic[T]):
     """Standardized paginated response."""
     success: bool = True
     data: List[T]
@@ -61,7 +60,7 @@ class PaginatedResponse(GenericModel, Generic[T]):
 # -----------------------------
 # GENERIC API RESPONSE
 # -----------------------------
-class APIResponse(GenericModel, Generic[T]):
+class APIResponse(BaseModel, Generic[T]):
     """
     Generic API response wrapper.
     

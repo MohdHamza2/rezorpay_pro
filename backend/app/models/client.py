@@ -16,8 +16,9 @@ class Client(SQLModel, table=True):
     workspace_id: uuid.UUID = Field(foreign_key="workspaces.id", nullable=False, index=True)
     
     name: str = Field(max_length=255)
-    email: str = Field(max_length=255)
+    email: Optional[str] = Field(default=None, max_length=255)
     phone: Optional[str] = Field(default=None, max_length=50)
+    tax_id: Optional[str] = Field(default=None, max_length=50)
     address: Optional[str] = Field(
         default=None,
         sa_column=Column(Text, nullable=True)

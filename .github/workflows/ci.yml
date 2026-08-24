@@ -90,6 +90,12 @@ jobs:
           # Override alembic.ini URL with env var via env.py
           alembic upgrade head
 
+      - name: Check for missing migrations
+        run: alembic check
+
+      - name: Run pytest
+        run: pytest
+
       - name: Run production test suite
         run: python test_step2_production.py
 

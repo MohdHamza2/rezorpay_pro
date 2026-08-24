@@ -22,39 +22,26 @@ from app.models.invoice import Invoice
 from app.models.payment import Payment, PaymentStatus
 from app.models.user import User
 from app.schemas.common import ErrorDetail, PaginatedResponse, PaginationMeta, SuccessResponse
-from app.schemas.payments import BalanceDueResponse, PaymentCreate, PaymentListResponse, PaymentResponse
+from app.schemas.payments import BalanceDueResponse, PaymentCreate, PaymentUpdate, PaymentListResponse, PaymentResponse
 from app.services.invoice_service import InvoiceService
 from app.services.payment_service import PaymentService
 
 router = APIRouter(tags=["Payments"])
 
 
-async def get_current_user(request: Request) -> User:
-    """Get current authenticated user from request state."""
-    user = request.state.user
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated"
-        )
-    return user
+from app.auth.dependencies import get_current_user
 
-
-async def get_current_workspace_id(request: Request) -> UUID:
-    """Get current workspace ID from request state."""
-    workspace_id = request.state.workspace_id
-    if not workspace_id:
+async def get_current_workspace_id(user: User = Depends(get_current_user)) -> UUID:
+    """Get current workspace ID from user."""
+    if not user.workspace_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No workspace access"
         )
-    return workspace_id
+    return user.workspace_id
 
 
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-
-limiter = Limiter(key_func=get_remote_address)
+from app.limiter import limiter
 
 
 @router.post("/invoices/{invoice_id}/payments", response_model=SuccessResponse[PaymentResponse])
@@ -109,9 +96,13 @@ async def create_payment(
             user_id=user.id,
             amount=payment_data.amount,
             idempotency_key=idempotency_key,
-            gateway=payment_data.gateway,
-            gateway_transaction_id=payment_data.gateway_transaction_id,
-            payment_date=payment_data.payment_date
+            payment_method=payment_data.payment_method,
+            payment_date=payment_data.payment_date,
+            reference_number=payment_data.reference_number,
+            bank_name=payment_data.bank_name,
+            pdc_date=payment_data.pdc_date,
+            pdc_status=payment_data.pdc_status,
+            gateway_transaction_id=payment_data.gateway_transaction_id
         )
         
         await session.commit()
@@ -247,3 +238,42 @@ async def get_balance_due(
             currency=invoice.currency
         )
     )
+
+@router.put("/invoices/{invoice_id}/payments/{payment_id}", response_model=SuccessResponse[PaymentResponse])
+async def update_payment(
+    invoice_id: UUID,
+    payment_id: UUID,
+    payment_data: PaymentUpdate,
+    session: AsyncSession = Depends(get_session),
+    workspace_id: UUID = Depends(get_current_workspace_id)
+):
+    """Update payment status (e.g. for PDC lifecycle)."""
+    # Verify invoice exists and belongs to workspace
+    invoice_result = await session.execute(
+        select(Invoice)
+        .where(Invoice.id == invoice_id)
+        .where(Invoice.workspace_id == workspace_id)
+    )
+    if not invoice_result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Invoice not found")
+        
+    payment_result = await session.execute(
+        select(Payment).where(Payment.id == payment_id, Payment.invoice_id == invoice_id)
+    )
+    payment = payment_result.scalar_one_or_none()
+    if not payment:
+        raise HTTPException(status_code=404, detail="Payment not found")
+        
+    if payment_data.status is not None:
+        payment.status = payment_data.status
+    if payment_data.pdc_status is not None:
+        payment.pdc_status = payment_data.pdc_status
+        if payment_data.pdc_status == "CLEARED":
+            payment.status = "SUCCESS"
+        elif payment_data.pdc_status in ["BOUNCED", "RETURNED"]:
+            payment.status = "FAILED"
+            
+    await session.commit()
+    await session.refresh(payment)
+    
+    return SuccessResponse(data=PaymentResponse.model_validate(payment))

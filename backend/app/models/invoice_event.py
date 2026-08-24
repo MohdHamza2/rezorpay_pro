@@ -19,13 +19,13 @@ class InvoiceEventType(str, Enum):
     Reserved for Future Use:
     - INVOICE_VIEWED: For Step 3+ Client Portal (track when client views invoice)
     """
-    INVOICE_CREATED = "invoice_created"
-    INVOICE_UPDATED = "invoice_updated"
-    INVOICE_SENT = "invoice_sent"
-    INVOICE_VIEWED = "invoice_viewed"  # Reserved - Step 3+ Client Portal
-    PAYMENT_ADDED = "payment_added"
-    STATUS_CHANGED = "status_changed"
-    INVOICE_VOIDED = "invoice_voided"
+    INVOICE_CREATED = "INVOICE_CREATED"
+    INVOICE_UPDATED = "INVOICE_UPDATED"
+    INVOICE_SENT = "INVOICE_SENT"
+    INVOICE_VIEWED = "INVOICE_VIEWED"  # Reserved - Step 3+ Client Portal
+    PAYMENT_ADDED = "PAYMENT_ADDED"
+    STATUS_CHANGED = "STATUS_CHANGED"
+    INVOICE_VOIDED = "INVOICE_VOIDED"
 
 
 class InvoiceEvent(SQLModel, table=True):

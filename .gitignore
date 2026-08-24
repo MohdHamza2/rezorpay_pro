@@ -62,6 +62,39 @@ backend/test_connection.py
 backend/test_single_table.py
 
 # =========================
+# Node / Frontend
+# =========================
+node_modules/
+frontend/node_modules/
+
+# =========================
+# Databases / local data
+# =========================
+*.db
+*.sqlite
+*.sqlite3
+
+# =========================
+# Ad-hoc codegen / patch scripts (throwaway)
+# =========================
+patch_*.py
+fix_*.py
+add_*.py
+append_*.py
+create_*.py
+generate_*.py
+update_workspace.py
+strip_bom.py
+frontend/patch*.py
+
+# =========================
+# Misc artifacts / external tooling
+# =========================
+test_output.txt
+skills-lock.json
+.agents/skills/
+
+# =========================
 # Docker
 # =========================
 postgres_data/
