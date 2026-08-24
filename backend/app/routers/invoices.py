@@ -38,18 +38,9 @@ from app.schemas.invoices import (
     InvoiceVoidRequest,
 )
 from app.services.invoice_service import InvoiceService
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, get_current_workspace_id
 
 router = APIRouter(prefix="/invoices", tags=["Invoices"])
-
-
-async def get_current_workspace_id(user: User = Depends(get_current_user)) -> UUID:
-    """Get current workspace ID from user."""
-    if not user.workspace_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="No workspace access"
-        )
-    return user.workspace_id
 
 
 @router.post(

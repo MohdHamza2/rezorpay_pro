@@ -3,9 +3,10 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy.orm import selectinload
 
 from app.database import get_session
-from app.auth import get_current_user
+from app.auth.dependencies import get_current_user
 from app.models.user import User
 from app.models.supplier_invoice import SupplierInvoice
 from app.schemas.common import SuccessResponse
@@ -36,11 +37,12 @@ async def list_supplier_invoices(
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
-    stmt = select(SupplierInvoice).where(
-        SupplierInvoice.workspace_id == current_user.workspace_id
+    stmt = (
+        select(SupplierInvoice)
+        .where(SupplierInvoice.workspace_id == current_user.workspace_id)
+        .options(selectinload(SupplierInvoice.items))
     )
     invoices = (await session.execute(stmt)).scalars().all()
-    # Need to load items normally, but for list view we might omit them or eager load them.
     return SuccessResponse(data=list(invoices))
 
 
