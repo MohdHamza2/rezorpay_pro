@@ -10,7 +10,7 @@ Master vs Transaction Snapshot Rule applies.
 - **id**: Internal UUID.
 - **workspace_id**: Tenant isolation boundary.
 - **supplier_code**: Human-readable identifier. UNIQUE per workspace.
-- **status (C-06)**: DRAFT, ACTIVE, INACTIVE, ON_HOLD, BLOCKED, BLACKLISTED. 
+- **status (C-06)**: DRAFT, ACTIVE, INACTIVE, ON_HOLD, BLOCKED, BLACKLISTED.
 
 ## 3. Sub-Entities (C-07)
 *Note: Bank details, addresses, and TRNs are strictly kept in child tables. They are dropped from the inline Supplier root model to maintain proper source of truth.*

@@ -5,7 +5,7 @@
 ## 1. Core Principles
 - **Rule 1.1**: NEVER manipulate stock directly. Frontend cannot PUT a stock quantity.
 - **Rule 1.2**: StockTransaction is an IMMUTABLE ledger. All changes flow through business events.
-- **Rule 1.3 (Locked per C-04)**: Available Stock = on_hand - reserved - damaged. 
+- **Rule 1.3 (Locked per C-04)**: Available Stock = on_hand - reserved - damaged.
   - in_transit is EXCLUDED from this formula at the source because the Transfer rule already removes it from on_hand. It acts only as a destination-side informational bucket.
 
 ## 2. Receiving & Allocation

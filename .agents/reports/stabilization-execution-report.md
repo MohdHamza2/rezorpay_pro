@@ -111,3 +111,10 @@
 - Frontend `npm run build` (`tsc -b && vite build`) → exit 0, 2152 modules, `dist/` emitted (only the pre-existing >500 kB chunk advisory).
 
 **Result:** P0→P4 complete. The project is purged, secured (SPO multi-tenancy), building (frontend + backend import), CI-green (lint + test), and internally consistent (uniform response envelope, consolidated auth, exported services, aligned schema/model, scrubbed secrets, no migration drift). No new features were added; all V3 work remains deferred.
+
+---
+
+## Ship — merge to `master` + line-ending normalization
+
+- **Merge:** the full P0→P4 chain (`cce36f9 → … → e4d9ee0`) was fast-forwarded onto `master` (`git merge --ff-only stabilization/wave-sync`; `84924b3..e4d9ee0`, 193 files). No remote/`gh`/`main` exists in this environment — this is a local-only repo, so shipping = advancing the local mainline. `stabilization/wave-sync` is retained at the same commit as a labelled pointer.
+- **Line-ending normalization:** the `.gitattributes` (`eol=lf`) added in Commit 1 flagged 8 files committed with CRLF back in the P0 snapshot (`cce36f9`). Verified pure-EOL (identical text on every `-`/`+` pair; `git diff --ignore-space-at-eol` empty for the 7 text files; the 26-byte shrink on `backend-execution-report.md` = ~26 CRLF→LF). Renormalized (`git add --renormalize .`) and committed — zero content change, completes the line-ending policy. Working tree clean afterward.
