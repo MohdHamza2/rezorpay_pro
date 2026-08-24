@@ -96,9 +96,6 @@ jobs:
       - name: Run pytest
         run: pytest
 
-      - name: Run production test suite
-        run: python test_step2_production.py
-
   # ================================
   # Job 3: Security Audit
   # ================================

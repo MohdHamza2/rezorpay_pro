@@ -6,7 +6,6 @@ Ensures comprehensive audit trail while preventing metadata bloat (< 1KB per eve
 
 import json
 import uuid
-from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Dict, Optional
 
@@ -18,16 +17,16 @@ from app.models.invoice_event import InvoiceEvent, InvoiceEventType
 class AuditService:
     """
     Service for logging invoice lifecycle events.
-    
+
     Minimal Metadata Rule:
     - ✅ Include: Counts, amounts, status changes, small identifiers
     - ❌ Exclude: Full payloads, large text fields, entire objects
     - Limit: < 1KB per event
     """
-    
+
     # Maximum metadata size in bytes
     MAX_METADATA_SIZE = 1000
-    
+
     @staticmethod
     async def log_event(
         session: AsyncSession,
@@ -36,11 +35,11 @@ class AuditService:
         user_id: uuid.UUID,
         previous_status: Optional[str] = None,
         new_status: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> InvoiceEvent:
         """
         Log an invoice lifecycle event.
-        
+
         Args:
             session: Database session
             invoice_id: UUID of the invoice
@@ -49,10 +48,10 @@ class AuditService:
             previous_status: Previous invoice status (for STATUS_CHANGED events)
             new_status: New invoice status (for STATUS_CHANGED events)
             metadata: Additional context (must be < 1KB)
-            
+
         Returns:
             InvoiceEvent: The created event
-            
+
         Raises:
             ValueError: If metadata exceeds size limit
         """
@@ -65,7 +64,7 @@ class AuditService:
                     f"Maximum allowed: {AuditService.MAX_METADATA_SIZE} bytes. "
                     "Exclude large fields like full objects or long text."
                 )
-        
+
         # Determine status fields based on event type
         if event_type == InvoiceEventType.STATUS_CHANGED:
             # Must provide both previous and new status
@@ -77,7 +76,7 @@ class AuditService:
             # For non-status events, use current status if not provided
             if not new_status:
                 new_status = previous_status or "unknown"
-        
+
         # Create event
         event = InvoiceEvent(
             invoice_id=invoice_id,
@@ -85,13 +84,13 @@ class AuditService:
             previous_status=previous_status,
             new_status=new_status,
             changed_by=user_id,
-            metadata_log=metadata or {}
+            metadata_log=metadata or {},
         )
-        
+
         session.add(event)
-        
+
         return event
-    
+
     @classmethod
     async def log_invoice_created(
         cls,
@@ -100,7 +99,7 @@ class AuditService:
         user_id: uuid.UUID,
         items_count: int,
         total: Decimal,
-        invoice_number: str
+        invoice_number: str,
     ) -> InvoiceEvent:
         """Log invoice creation event."""
         return await cls.log_event(
@@ -112,10 +111,10 @@ class AuditService:
             metadata={
                 "items_count": items_count,
                 "total": str(total),  # Convert Decimal to string for JSON
-                "invoice_number": invoice_number
-            }
+                "invoice_number": invoice_number,
+            },
         )
-    
+
     @classmethod
     async def log_invoice_updated(
         cls,
@@ -124,7 +123,7 @@ class AuditService:
         user_id: uuid.UUID,
         changed_fields: list,
         previous_status: str = "draft",
-        new_status: str = "draft"
+        new_status: str = "draft",
     ) -> InvoiceEvent:
         """Log invoice update event."""
         return await cls.log_event(
@@ -134,11 +133,9 @@ class AuditService:
             user_id=user_id,
             previous_status=previous_status,
             new_status=new_status,
-            metadata={
-                "changed_fields": changed_fields  # List of field names only
-            }
+            metadata={"changed_fields": changed_fields},  # List of field names only
         )
-    
+
     @classmethod
     async def log_invoice_sent(
         cls,
@@ -146,7 +143,7 @@ class AuditService:
         invoice_id: uuid.UUID,
         user_id: uuid.UUID,
         sent_method: str = "email",
-        recipient: Optional[str] = None
+        recipient: Optional[str] = None,
     ) -> InvoiceEvent:
         """Log invoice sent event."""
         return await cls.log_event(
@@ -158,10 +155,10 @@ class AuditService:
             new_status="sent",
             metadata={
                 "sent_method": sent_method,
-                "recipient": recipient  # Email or phone, truncated if too long
-            }
+                "recipient": recipient,  # Email or phone, truncated if too long
+            },
         )
-    
+
     @classmethod
     async def log_payment_added(
         cls,
@@ -172,18 +169,15 @@ class AuditService:
         payment_gateway: str,
         gateway_transaction_id: Optional[str] = None,
         previous_status: str = "sent",
-        new_status: str = "partial"
+        new_status: str = "partial",
     ) -> InvoiceEvent:
         """Log payment recorded event."""
-        metadata = {
-            "amount": str(payment_amount),
-            "gateway": payment_gateway
-        }
-        
+        metadata = {"amount": str(payment_amount), "gateway": payment_gateway}
+
         # Only include truncated transaction ID
         if gateway_transaction_id:
             metadata["gateway_txn_id"] = gateway_transaction_id[:50]  # Truncate
-        
+
         return await cls.log_event(
             session=session,
             invoice_id=invoice_id,
@@ -191,9 +185,9 @@ class AuditService:
             user_id=user_id,
             previous_status=previous_status,
             new_status=new_status,
-            metadata=metadata
+            metadata=metadata,
         )
-    
+
     @classmethod
     async def log_status_changed(
         cls,
@@ -202,13 +196,13 @@ class AuditService:
         user_id: uuid.UUID,
         previous_status: str,
         new_status: str,
-        reason: Optional[str] = None
+        reason: Optional[str] = None,
     ) -> InvoiceEvent:
         """Log manual or automatic status change."""
         metadata = {}
         if reason:
             metadata["reason"] = reason[:100]  # Truncate long reasons
-        
+
         return await cls.log_event(
             session=session,
             invoice_id=invoice_id,
@@ -216,9 +210,9 @@ class AuditService:
             user_id=user_id,
             previous_status=previous_status,
             new_status=new_status,
-            metadata=metadata if metadata else None
+            metadata=metadata if metadata else None,
         )
-    
+
     @classmethod
     async def log_invoice_voided(
         cls,
@@ -226,7 +220,7 @@ class AuditService:
         invoice_id: uuid.UUID,
         user_id: uuid.UUID,
         reason: str,
-        previous_status: str
+        previous_status: str,
     ) -> InvoiceEvent:
         """Log invoice void/cancellation event."""
         return await cls.log_event(
@@ -236,7 +230,5 @@ class AuditService:
             user_id=user_id,
             previous_status=previous_status,
             new_status="voided",
-            metadata={
-                "reason": reason[:200]  # Truncate long reasons
-            }
+            metadata={"reason": reason[:200]},  # Truncate long reasons
         )

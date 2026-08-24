@@ -27,17 +27,17 @@ from app.services.audit_service import AuditService
 class PaymentService:
     """
     Service for recording and managing payments.
-    
+
     Implements the "Successful Only" Financial Rule:
     - Only payments with status=SUCCESS count toward invoice balance
     - FAILED/CANCELLED/REFUNDED payments are kept for audit but don't affect balance
-    
+
     Implements Idempotency:
     - Duplicate requests with same key return existing payment
     - Keys are workspace-scoped (isolated between tenants)
     - Keys expire after 48 hours (TTL)
     """
-    
+
     @classmethod
     async def record_payment(
         cls,
@@ -53,11 +53,11 @@ class PaymentService:
         bank_name: Optional[str] = None,
         pdc_date: Optional[date] = None,
         pdc_status: Optional[PDCStatus] = None,
-        gateway_transaction_id: Optional[str] = None
+        gateway_transaction_id: Optional[str] = None,
     ) -> Payment:
         """
         Record a payment for an invoice with full concurrency safety.
-        
+
         This is the CRITICAL path - handles:
         1. Row-level locking (FOR UPDATE)
         2. Idempotency check (inside transaction)
@@ -65,9 +65,9 @@ class PaymentService:
         4. Payment creation
         5. Idempotency key storage
         6. Invoice status update
-        
+
         All operations happen in a single atomic transaction.
-        
+
         Args:
             session: Database session (in transaction context)
             workspace_id: UUID of the workspace
@@ -78,16 +78,16 @@ class PaymentService:
             gateway: Payment gateway used
             gateway_transaction_id: Transaction ID from gateway
             payment_date: Date of payment (defaults to today)
-            
+
         Returns:
             Payment: The created (or existing) payment
-            
+
         Raises:
             ValueError: If payment exceeds balance due or idempotency conflict
         """
         if payment_date is None:
             payment_date = date.today()
-        
+
         # Step 1: Lock invoice row (FOR UPDATE)
         # This prevents race conditions on concurrent payments
         result = await session.execute(
@@ -97,10 +97,10 @@ class PaymentService:
             .with_for_update()  # <-- CRITICAL: Row-level lock
         )
         invoice = result.scalar_one_or_none()
-        
+
         if not invoice:
             raise ValueError("Invoice not found or not in workspace")
-        
+
         # Step 2: Check workspace-scoped idempotency key (inside transaction!)
         # This prevents double-spend window race conditions
         existing_key_result = await session.execute(
@@ -109,16 +109,18 @@ class PaymentService:
             .where(IdempotencyKey.key == idempotency_key)
         )
         existing_key = existing_key_result.scalar_one_or_none()
-        
+
         # Check expiration in python to avoid SQLite timezone issues
         if existing_key:
-            if existing_key.expires_at.replace(tzinfo=timezone.utc) > datetime.now(timezone.utc):
+            if existing_key.expires_at.replace(tzinfo=timezone.utc) > datetime.now(
+                timezone.utc
+            ):
                 # Valid existing key, return existing payment
                 payment_result = await session.execute(
                     select(Payment).where(Payment.id == existing_key.payment_id)
                 )
                 existing_payment = payment_result.scalar_one_or_none()
-                
+
                 if existing_payment:
                     return existing_payment
                 else:
@@ -129,7 +131,7 @@ class PaymentService:
                 # If we ignore it, the insertion later will fail. Let's delete it so we can re-insert!
                 await session.delete(existing_key)
                 await session.flush()
-        
+
         # Step 3: Calculate balance due (eager load payments)
         result = await session.execute(
             select(Invoice)
@@ -137,16 +139,16 @@ class PaymentService:
             .where(Invoice.id == invoice_id)
         )
         invoice_with_payments = result.scalar_one()
-        
+
         balance_due = InvoiceService.calculate_balance_due(invoice_with_payments)
-        
+
         # Step 4: Validate no overpayment
         if amount > balance_due:
             raise ValueError(
                 f"Payment amount ({amount}) exceeds balance due ({balance_due}). "
                 "Overpayments are not allowed for MVP."
             )
-        
+
         # Step 5: Create payment
         payment = Payment(
             invoice_id=invoice_id,
@@ -158,28 +160,30 @@ class PaymentService:
             pdc_status=pdc_status,
             gateway_transaction_id=gateway_transaction_id,
             status=PaymentStatus.SUCCESS,
-            payment_date=datetime.combine(payment_date, datetime.min.time()).replace(tzinfo=timezone.utc),
+            payment_date=datetime.combine(payment_date, datetime.min.time()).replace(
+                tzinfo=timezone.utc
+            ),
             created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc)
+            updated_at=datetime.now(timezone.utc),
         )
-        
+
         session.add(payment)
         await session.flush()  # Get payment.id
-        
+
         # Step 6: Store idempotency key (with TTL)
         idempotency = IdempotencyKey(
             workspace_id=workspace_id,
             key=idempotency_key,
-            payment_id=payment.id
+            payment_id=payment.id,
             # expires_at defaults to 48 hours from now
         )
         session.add(idempotency)
-        
+
         # Step 7: Update invoice status (via InvoiceService)
         status_changed = await InvoiceService.update_status_from_payments(
             session, invoice, user_id
         )
-        
+
         # Step 8: Log payment event
         await AuditService.log_payment_added(
             session=session,
@@ -189,20 +193,18 @@ class PaymentService:
             payment_gateway=payment_method.value,
             gateway_transaction_id=gateway_transaction_id,
             previous_status=invoice.status.value if not status_changed else "sent",
-            new_status=invoice.status.value
+            new_status=invoice.status.value,
         )
-        
+
         return payment
-    
+
     @staticmethod
     async def get_payments_for_invoice(
-        session: AsyncSession,
-        invoice_id: uuid.UUID,
-        workspace_id: uuid.UUID
+        session: AsyncSession, invoice_id: uuid.UUID, workspace_id: uuid.UUID
     ) -> list[Payment]:
         """
         Get all payments for an invoice.
-        
+
         Note: Returns all payments regardless of status.
         For balance calculation, only SUCCESS payments are counted.
         """
@@ -214,11 +216,10 @@ class PaymentService:
             .order_by(Payment.payment_date.desc())
         )
         return result.scalars().all()
-    
+
     @staticmethod
     async def get_successful_payments_total(
-        session: AsyncSession,
-        invoice_id: uuid.UUID
+        session: AsyncSession, invoice_id: uuid.UUID
     ) -> Decimal:
         """Get sum of successful payments for an invoice."""
         result = await session.execute(

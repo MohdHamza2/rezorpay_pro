@@ -4,7 +4,7 @@ Standardized API response schemas.
 All API responses follow a consistent format for easy frontend parsing.
 """
 
-from typing import Any, Dict, Generic, List, Optional, TypeVar
+from typing import Generic, List, Optional, TypeVar
 
 from pydantic import BaseModel, Field
 
@@ -14,9 +14,12 @@ T = TypeVar("T")
 
 class ErrorDetail(BaseModel):
     """Standardized error detail."""
+
     code: str = Field(..., description="Machine-readable error code")
     message: str = Field(..., description="Human-readable error message")
-    field: Optional[str] = Field(None, description="Field that caused the error, if applicable")
+    field: Optional[str] = Field(
+        None, description="Field that caused the error, if applicable"
+    )
 
 
 # -----------------------------
@@ -24,6 +27,7 @@ class ErrorDetail(BaseModel):
 # -----------------------------
 class SuccessResponse(BaseModel, Generic[T]):
     """Standardized success response wrapper."""
+
     success: bool = True
     data: T
 
@@ -33,6 +37,7 @@ class SuccessResponse(BaseModel, Generic[T]):
 # -----------------------------
 class ErrorResponse(BaseModel):
     """Standardized error response wrapper."""
+
     success: bool = False
     error: ErrorDetail
 
@@ -42,6 +47,7 @@ class ErrorResponse(BaseModel):
 # -----------------------------
 class PaginationMeta(BaseModel):
     """Pagination metadata."""
+
     total: int = Field(..., description="Total number of items")
     page: int = Field(..., description="Current page number (1-based)")
     per_page: int = Field(..., description="Number of items per page")
@@ -52,6 +58,7 @@ class PaginationMeta(BaseModel):
 
 class PaginatedResponse(BaseModel, Generic[T]):
     """Standardized paginated response."""
+
     success: bool = True
     data: List[T]
     pagination: PaginationMeta
@@ -63,11 +70,12 @@ class PaginatedResponse(BaseModel, Generic[T]):
 class APIResponse(BaseModel, Generic[T]):
     """
     Generic API response wrapper.
-    
+
     Usage:
         APIResponse[ClientResponse]
         APIResponse[List[ClientResponse]]
     """
+
     success: bool = True
     data: T
 
@@ -77,6 +85,7 @@ class APIResponse(BaseModel, Generic[T]):
 # -----------------------------
 class ErrorCode:
     """Standardized error codes."""
+
     INVALID_STATE = "INVALID_STATE"
     VALIDATION_ERROR = "VALIDATION_ERROR"
     NOT_FOUND = "NOT_FOUND"

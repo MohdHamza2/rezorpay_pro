@@ -4,7 +4,13 @@ from pydantic import BaseModel, ConfigDict, Field
 import uuid
 from datetime import datetime, date
 
-from app.models.procurement import PRSourceType, PRDestinationType, PRPriority, PRMethod, PRStatus
+from app.models.procurement import (
+    PRSourceType,
+    PRDestinationType,
+    PRPriority,
+    PRMethod,
+    PRStatus,
+)
 
 
 class ProcurementRequestItemBase(BaseModel):

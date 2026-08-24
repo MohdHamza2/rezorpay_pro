@@ -4,10 +4,8 @@ from decimal import Decimal
 from typing import Optional, List
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.spo import (
-    ProcurementMethod, SPOStatus, SPODeliveryScheduleStatus,
-    SPOAmendmentStatus, SPOAmendmentField
-)
+from app.models.spo import ProcurementMethod, SPOStatus
+
 
 class SPOItemBase(BaseModel):
     product_id: uuid.UUID
@@ -21,10 +19,12 @@ class SPOItemBase(BaseModel):
     vat_rate: Decimal = Field(Decimal("0"), ge=0)
     expected_delivery_date: Optional[date] = None
 
+
 class SPOItemCreate(SPOItemBase):
     rfq_award_line_id: Optional[uuid.UUID] = None
     procurement_request_item_id: Optional[uuid.UUID] = None
     line_number: int
+
 
 class SPOItemResponse(SPOItemBase):
     model_config = ConfigDict(from_attributes=True)
@@ -44,6 +44,7 @@ class SPOItemResponse(SPOItemBase):
     total_price: Decimal
     price_amendment_pending: bool
 
+
 class SPOCreate(BaseModel):
     supplier_id: uuid.UUID
     rfq_id: Optional[uuid.UUID] = None
@@ -58,6 +59,7 @@ class SPOCreate(BaseModel):
     payment_terms_days: int = 0
     delivery_terms: Optional[str] = None
     items: List[SPOItemCreate]
+
 
 class SPOResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -99,12 +101,15 @@ class SPOAmendmentCreate(BaseModel):
     reason: str = Field(..., min_length=10)
     lines: List[dict]  # Define a more specific model for amendment lines if needed
 
+
 class SPOAcknowledgeLine(BaseModel):
     quantity_confirmed: Decimal = Field(..., ge=0)
     unit_price: Decimal = Field(..., ge=0)
 
+
 class SPOAcknowledgeReq(BaseModel):
     lines: dict[uuid.UUID, SPOAcknowledgeLine]
+
 
 class SPODeliveryScheduleCreate(BaseModel):
     tranche_number: int

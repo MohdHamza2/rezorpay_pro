@@ -7,18 +7,23 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from sqlmodel import SQLModel
 from sqlalchemy.pool import NullPool
 
-if sys.platform == 'win32':
+if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 from app.main import app
 from app.database import get_session
 from app.config import get_settings
+
 # Import all models so SQLModel.metadata is fully populated before create_all
 from app.models import *  # noqa: F401, F403
 
 settings = get_settings()
 
-TEST_DATABASE_URL = settings.DATABASE_URL.replace("invoicesaas", "invoicesaas_test")
+TEST_DATABASE_URL = (
+    settings.DATABASE_URL
+    if settings.DATABASE_URL.endswith("_test")
+    else settings.DATABASE_URL + "_test"
+)
 engine = create_async_engine(TEST_DATABASE_URL, echo=False, poolclass=NullPool)
 TestingSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
@@ -35,6 +40,7 @@ client = TestClient(app)
 @pytest.fixture(scope="module", autouse=True)
 def setup_database():
     """Create all tables before tests run, drop them after."""
+
     async def _setup():
         async with engine.begin() as conn:
             await conn.run_sync(SQLModel.metadata.drop_all)
@@ -93,7 +99,12 @@ def test_grn_lifecycle():
     # Create dependencies
     r_supp = client.post(
         f"/api/v1/suppliers/?workspace_id={workspace_id}",
-        json={"name": "SUP", "email": "sup@example.com", "currency": "AED", "supplier_code": "SUP1"},
+        json={
+            "name": "SUP",
+            "email": "sup@example.com",
+            "currency": "AED",
+            "supplier_code": "SUP1",
+        },
         headers=headers,
     )
     assert r_supp.status_code in (200, 201), r_supp.json()
@@ -148,7 +159,9 @@ def test_grn_lifecycle():
             }
         ],
     }
-    r_spo = client.post(f"/api/v1/spos/?workspace_id={workspace_id}", json=spo_data, headers=headers)
+    r_spo = client.post(
+        f"/api/v1/spos/?workspace_id={workspace_id}", json=spo_data, headers=headers
+    )
     assert r_spo.status_code in (200, 201), r_spo.json()
     spo_id = r_spo.json()["id"]
     spo_item_id = r_spo.json()["items"][0]["id"]
@@ -182,12 +195,16 @@ def test_grn_lifecycle():
         "uom_id": uom_id,
         "quantity_received": 10,
     }
-    r_item = client.post(f"/api/v1/grns/{grn_id}/items", json=item_data, headers=headers)
+    r_item = client.post(
+        f"/api/v1/grns/{grn_id}/items", json=item_data, headers=headers
+    )
     assert r_item.status_code == 200, r_item.json()
     grn_item_id = r_item.json()["data"]["items"][0]["id"]
 
     # 4. Stage for Inspection
-    r_stage = client.post(f"/api/v1/grns/{grn_id}/stage-for-inspection", headers=headers)
+    r_stage = client.post(
+        f"/api/v1/grns/{grn_id}/stage-for-inspection", headers=headers
+    )
     assert r_stage.status_code == 200, r_stage.json()
 
     # 5. Record Disposition
@@ -217,7 +234,12 @@ def test_grn_cancellation():
     # Create supplier & warehouse
     r_supp = client.post(
         f"/api/v1/suppliers/?workspace_id={workspace_id}",
-        json={"name": "SUP2", "email": "sup2@example.com", "currency": "AED", "supplier_code": "SUP2"},
+        json={
+            "name": "SUP2",
+            "email": "sup2@example.com",
+            "currency": "AED",
+            "supplier_code": "SUP2",
+        },
         headers=headers,
     )
     assert r_supp.status_code in (200, 201), r_supp.json()

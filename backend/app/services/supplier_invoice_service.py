@@ -1,16 +1,19 @@
 import uuid
 from decimal import Decimal
 from datetime import datetime, timezone
-from typing import List
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlalchemy.future import select
 from fastapi import HTTPException, status
 
 from app.models.supplier_invoice import (
-    SupplierInvoice, SupplierInvoiceItem, SupplierInvoiceStatus, MatchResult
+    SupplierInvoice,
+    SupplierInvoiceItem,
+    SupplierInvoiceStatus,
+    MatchResult,
 )
 from app.schemas.supplier_invoices import (
-    SupplierInvoiceCreate, SupplierInvoiceDiscrepancyResolution
+    SupplierInvoiceCreate,
+    SupplierInvoiceDiscrepancyResolution,
 )
 from app.models.spo import SupplierPurchaseOrder, SupplierPurchaseOrderItem
 from app.models.grn import GoodsReceiptNote, GRNItem, GRNStatus
@@ -27,7 +30,8 @@ class SupplierInvoiceService:
         stmt = select(SupplierInvoice).where(
             SupplierInvoice.workspace_id == workspace_id,
             SupplierInvoice.supplier_id == invoice_in.supplier_id,
-            SupplierInvoice.supplier_invoice_number == invoice_in.supplier_invoice_number,
+            SupplierInvoice.supplier_invoice_number
+            == invoice_in.supplier_invoice_number,
         )
         existing = (await session.execute(stmt)).scalar_one_or_none()
         if existing:
@@ -109,9 +113,15 @@ class SupplierInvoiceService:
 
         # 4. Quantity Match against GRN (per architecture 6.7)
         # GRN is physical truth — invoice qty must not exceed accepted qty
-        stmt = select(GRNItem).join(GoodsReceiptNote).where(
-            GRNItem.spo_item_id == item.spo_item_id,
-            GoodsReceiptNote.status.in_([GRNStatus.PARTIALLY_ACCEPTED, GRNStatus.ACCEPTED]),
+        stmt = (
+            select(GRNItem)
+            .join(GoodsReceiptNote)
+            .where(
+                GRNItem.spo_item_id == item.spo_item_id,
+                GoodsReceiptNote.status.in_(
+                    [GRNStatus.PARTIALLY_ACCEPTED, GRNStatus.ACCEPTED]
+                ),
+            )
         )
         grn_items = (await session.execute(stmt)).scalars().all()
         total_accepted_qty: Decimal = sum(
@@ -172,7 +182,9 @@ class SupplierInvoiceService:
             SupplierInvoiceStatus.PENDING_MATCHING,
             SupplierInvoiceStatus.DISCREPANCY,
         ):
-            raise HTTPException(status_code=400, detail="Invoice cannot be matched in current state")
+            raise HTTPException(
+                status_code=400, detail="Invoice cannot be matched in current state"
+            )
 
         invoice.status = SupplierInvoiceStatus.PENDING_MATCHING
         await session.flush()
@@ -218,7 +230,9 @@ class SupplierInvoiceService:
             raise HTTPException(status_code=404, detail="Invoice not found")
 
         if invoice.status != SupplierInvoiceStatus.DISCREPANCY:
-            raise HTTPException(status_code=400, detail="Invoice is not in DISCREPANCY state")
+            raise HTTPException(
+                status_code=400, detail="Invoice is not in DISCREPANCY state"
+            )
 
         invoice.three_way_match_notes = resolution.notes
         invoice.status = SupplierInvoiceStatus.APPROVED

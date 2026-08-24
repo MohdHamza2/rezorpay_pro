@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 class ClientBase(BaseModel):
     """Base client schema with common fields."""
+
     name: str = Field(..., min_length=1, max_length=100)
     email: Optional[EmailStr] = None
     phone: Optional[str] = Field(None, max_length=50)
@@ -20,11 +21,13 @@ class ClientBase(BaseModel):
 
 class ClientCreate(ClientBase):
     """Schema for creating a new client."""
+
     pass
 
 
 class ClientUpdate(BaseModel):
     """Schema for updating a client."""
+
     name: Optional[str] = Field(None, min_length=1, max_length=100)
     email: Optional[EmailStr] = None
     phone: Optional[str] = Field(None, max_length=50)
@@ -34,6 +37,7 @@ class ClientUpdate(BaseModel):
 
 class ClientResponse(ClientBase):
     """Schema for client response."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
@@ -45,6 +49,7 @@ class ClientResponse(ClientBase):
 
 class ClientListResponse(BaseModel):
     """Schema for list of clients with pagination."""
+
     success: bool = True
     data: list[ClientResponse]
     pagination: dict

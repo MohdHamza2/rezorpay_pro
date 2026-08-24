@@ -22,7 +22,9 @@ async def create_spo(
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_active_user),
 ):
-    return await SPOService.create_draft(session, current_user.workspace_id, spo_in, current_user.id)
+    return await SPOService.create_draft(
+        session, current_user.workspace_id, spo_in, current_user.id
+    )
 
 
 @router.post("/{spo_id}/submit-approval", response_model=SPOResponse)
@@ -31,7 +33,9 @@ async def submit_spo(
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_active_user),
 ):
-    return await SPOService.submit_for_approval(session, current_user.workspace_id, spo_id, current_user.id)
+    return await SPOService.submit_for_approval(
+        session, current_user.workspace_id, spo_id, current_user.id
+    )
 
 
 @router.post("/{spo_id}/approve", response_model=SPOResponse)
@@ -40,7 +44,9 @@ async def approve_spo(
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_active_user),
 ):
-    return await SPOService.approve(session, current_user.workspace_id, spo_id, current_user.id)
+    return await SPOService.approve(
+        session, current_user.workspace_id, spo_id, current_user.id
+    )
 
 
 @router.post("/{spo_id}/send", response_model=SPOResponse)
@@ -49,7 +55,9 @@ async def send_spo(
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_active_user),
 ):
-    return await SPOService.send(session, current_user.workspace_id, spo_id, current_user.id)
+    return await SPOService.send(
+        session, current_user.workspace_id, spo_id, current_user.id
+    )
 
 
 @router.post("/{spo_id}/items/acknowledge", response_model=SPOResponse)
@@ -59,7 +67,9 @@ async def acknowledge_spo(
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_active_user),
 ):
-    return await SPOService.acknowledge(session, current_user.workspace_id, spo_id, ack_req, current_user.id)
+    return await SPOService.acknowledge(
+        session, current_user.workspace_id, spo_id, ack_req, current_user.id
+    )
 
 
 @router.post("/{spo_id}/cancel", response_model=SPOResponse)
@@ -69,7 +79,9 @@ async def cancel_spo(
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_active_user),
 ):
-    return await SPOService.cancel(session, current_user.workspace_id, spo_id, reason, current_user.id)
+    return await SPOService.cancel(
+        session, current_user.workspace_id, spo_id, reason, current_user.id
+    )
 
 
 @router.get("/", response_model=List[SPOResponse])

@@ -3,7 +3,7 @@ import uuid
 import sys
 import asyncio
 
-if sys.platform == 'win32':
+if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 from fastapi.testclient import TestClient
@@ -14,14 +14,20 @@ from sqlalchemy.pool import NullPool
 from app.main import app
 from app.database import get_session
 from app.config import get_settings
+
 # Import all models so SQLModel.metadata is populated before create_all
 from app.models import *  # noqa: F401, F403
 
 settings = get_settings()
 
-# Use a test database
-TEST_DATABASE_URL = settings.DATABASE_URL.replace(
-    "invoicesaas", "invoicesaas_test"
+# Use a test database. Append _test to the DB name only (idempotently) so this
+# works both in dev (DATABASE_URL -> .../invoicesaas) and CI (DATABASE_URL
+# already -> .../invoicesaas_test); a naive .replace() double-suffixed the CI
+# name to invoicesaas_test_test.
+TEST_DATABASE_URL = (
+    settings.DATABASE_URL
+    if settings.DATABASE_URL.endswith("_test")
+    else settings.DATABASE_URL + "_test"
 )
 
 engine = create_async_engine(TEST_DATABASE_URL, echo=False, poolclass=NullPool)
@@ -41,6 +47,7 @@ client = TestClient(app)
 @pytest.fixture(scope="module", autouse=True)
 def setup_database():
     """Create all tables before tests run, drop them after."""
+
     async def _setup():
         async with engine.begin() as conn:
             await conn.run_sync(SQLModel.metadata.drop_all)
@@ -74,7 +81,7 @@ def test_register_and_login():
         "email": test_email,
         "password": "securepassword123",
         "name": "Test User",
-        "workspace_name": "Test Workspace"
+        "workspace_name": "Test Workspace",
     }
     response = client.post("/auth/register", json=register_data)
     if response.status_code != 201:
@@ -85,10 +92,7 @@ def test_register_and_login():
     assert "refresh_token" in tokens
 
     # Login
-    login_data = {
-        "email": test_email,
-        "password": "securepassword123"
-    }
+    login_data = {"email": test_email, "password": "securepassword123"}
     response = client.post("/auth/login", json=login_data)
     assert response.status_code == 200
     tokens = response.json()["data"]

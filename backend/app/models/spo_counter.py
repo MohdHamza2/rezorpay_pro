@@ -14,6 +14,7 @@ class SPOCounter(SQLModel, table=True):
     FOR UPDATE inside the transaction and only incremented when the SPO successfully
     commits, so numbers are gapless and unique per workspace/year.
     """
+
     __tablename__ = "spo_counters"
 
     workspace_id: uuid.UUID = Field(

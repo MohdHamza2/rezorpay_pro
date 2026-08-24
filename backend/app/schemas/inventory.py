@@ -1,10 +1,8 @@
-from typing import Optional, List
+from typing import Optional
 from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field
 import uuid
 from datetime import datetime
-
-from app.models.inventory import TransactionType
 
 
 class WarehouseBase(BaseModel):
