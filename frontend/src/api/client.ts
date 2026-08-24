@@ -1,7 +1,6 @@
 import axios, { AxiosError } from 'axios';
 import type { InternalAxiosRequestConfig } from 'axios';
 import type { AuthTokens } from '../types/auth';
-import type { SuccessResponse, DashboardMetricsResponse } from '../types/api';
 import toast from 'react-hot-toast';
 
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -82,8 +81,3 @@ apiClient.interceptors.response.use(
     return Promise.reject(error);
   }
 );
-
-export const getDashboardMetrics = async (): Promise<DashboardMetricsResponse> => {
-  const response = await apiClient.get<SuccessResponse<DashboardMetricsResponse>>('/api/v1/dashboard/metrics');
-  return response.data.data;
-};

@@ -30,9 +30,7 @@ export const SPOBuilder = () => {
 
   const onSubmit = async (data: any) => {
     try {
-      // In a real app we'd get workspace_id from context. Mocking for now.
-      const workspaceId = '00000000-0000-0000-0000-000000000000';
-      await createSPO(workspaceId, data);
+      await createSPO(data);
       toast.success('SPO Created successfully!');
       navigate('/spo');
     } catch (err: any) {

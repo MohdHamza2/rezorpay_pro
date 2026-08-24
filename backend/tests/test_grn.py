@@ -163,8 +163,8 @@ def test_grn_lifecycle():
         f"/api/v1/spos/?workspace_id={workspace_id}", json=spo_data, headers=headers
     )
     assert r_spo.status_code in (200, 201), r_spo.json()
-    spo_id = r_spo.json()["id"]
-    spo_item_id = r_spo.json()["items"][0]["id"]
+    spo_id = r_spo.json()["data"]["id"]
+    spo_item_id = r_spo.json()["data"]["items"][0]["id"]
 
     # Advance SPO to SENT so GRN can be linked
     client.post(f"/api/v1/spos/{spo_id}/submit-approval", headers=headers)

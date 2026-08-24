@@ -155,23 +155,23 @@ def test_e2e_spo_flow():
         f"/api/v1/spos/?workspace_id={workspace_id}", json=spo_data, headers=headers
     )
     assert r.status_code == 200, f"Failed to create SPO: {r.text}"
-    spo_id = r.json()["id"]
-    item_id = r.json()["items"][0]["id"]
+    spo_id = r.json()["data"]["id"]
+    item_id = r.json()["data"]["items"][0]["id"]
 
     # 3. Submit Approval
     r = client.post(f"/api/v1/spos/{spo_id}/submit-approval", headers=headers)
     assert r.status_code == 200
-    assert r.json()["status"] == SPOStatus.PENDING_APPROVAL.value
+    assert r.json()["data"]["status"] == SPOStatus.PENDING_APPROVAL.value
 
     # 4. Approve
     r = client.post(f"/api/v1/spos/{spo_id}/approve", headers=headers)
     assert r.status_code == 200
-    assert r.json()["status"] == SPOStatus.APPROVED.value
+    assert r.json()["data"]["status"] == SPOStatus.APPROVED.value
 
     # 5. Send
     r = client.post(f"/api/v1/spos/{spo_id}/send", headers=headers)
     assert r.status_code == 200
-    assert r.json()["status"] == SPOStatus.SENT.value
+    assert r.json()["data"]["status"] == SPOStatus.SENT.value
 
     # 6. Partial Ack with price amendment
     ack_data = {
@@ -186,8 +186,8 @@ def test_e2e_spo_flow():
         f"/api/v1/spos/{spo_id}/items/acknowledge", json=ack_data, headers=headers
     )
     assert r.status_code == 200, f"Ack failed: {r.text}"
-    assert r.json()["status"] == SPOStatus.PARTIALLY_ACKNOWLEDGED.value
-    assert r.json()["items"][0]["price_amendment_pending"] is True
+    assert r.json()["data"]["status"] == SPOStatus.PARTIALLY_ACKNOWLEDGED.value
+    assert r.json()["data"]["items"][0]["price_amendment_pending"] is True
 
     # 7. Short close remainder (cancel the remaining 10)
     r = client.post(
@@ -195,4 +195,4 @@ def test_e2e_spo_flow():
         headers=headers,
     )
     assert r.status_code == 200
-    assert r.json()["status"] == SPOStatus.CANCELLED.value
+    assert r.json()["data"]["status"] == SPOStatus.CANCELLED.value

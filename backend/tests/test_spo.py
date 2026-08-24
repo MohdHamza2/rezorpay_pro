@@ -172,7 +172,7 @@ def _create_spo(headers: dict, fks: dict) -> dict:
         headers=headers,
     )
     assert r.status_code == 200, f"SPO create failed: {r.text}"
-    return r.json()
+    return r.json()["data"]
 
 
 def test_spo_numbers_are_gapless_within_a_workspace():
@@ -212,4 +212,4 @@ def test_spo_is_workspace_isolated():
     # Owner A can still read its own SPO
     r = client.get(f"/api/v1/spos/{spo_id}", headers=headers_a)
     assert r.status_code == 200, r.text
-    assert r.json()["id"] == spo_id
+    assert r.json()["data"]["id"] == spo_id

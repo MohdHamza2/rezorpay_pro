@@ -152,8 +152,8 @@ def test_e2e_grn_complex_flow():
         f"/api/v1/spos/?workspace_id={workspace_id}", json=spo_data, headers=headers
     )
     assert r.status_code == 200, r.text
-    spo_id = r.json()["id"]
-    spo_item_id = r.json()["items"][0]["id"]
+    spo_id = r.json()["data"]["id"]
+    spo_item_id = r.json()["data"]["items"][0]["id"]
 
     # Submit, Approve, Send
     client.post(f"/api/v1/spos/{spo_id}/submit-approval", headers=headers)
@@ -165,7 +165,7 @@ def test_e2e_grn_complex_flow():
     r = client.post(
         f"/api/v1/spos/{spo_id}/items/acknowledge", json=ack_data, headers=headers
     )
-    assert r.json()["status"] == SPOStatus.ACKNOWLEDGED.value
+    assert r.json()["data"]["status"] == SPOStatus.ACKNOWLEDGED.value
 
     # 2. GRN TRANCHE 1
     grn_create_data = {
@@ -239,7 +239,7 @@ def test_e2e_grn_complex_flow():
     # 4. SPO Reconciliation Verify
     r_spo = client.get(f"/api/v1/spos/{spo_id}", headers=headers)
     assert r_spo.status_code == 200
-    spo_item = r_spo.json()["items"][0]
+    spo_item = r_spo.json()["data"]["items"][0]
 
     assert float(spo_item["quantity_received"]) == 100.0
     assert float(spo_item["quantity_accepted"]) == 85.0
