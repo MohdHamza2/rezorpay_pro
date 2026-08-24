@@ -77,5 +77,37 @@
 - **Clean-room CI test-job replication** on a freshly-emptied `invoicesaas_test`: `alembic upgrade head` applied the full wave chain in sequence with no error; `alembic check` → **"No new upgrade operations detected"** (zero model↔migration drift).
 - `ci.yml` structure intact: lint → test → security; security job's `pip-audit --strict` remains `continue-on-error`.
 
-## P4 — Consistency & hygiene              — pending
-*Carry-in from P2 wiring flags:* (1) wrap SPO endpoints in `SuccessResponse` + unwrap in `spo.ts` + update tests; (2) drop dead mock `workspaceId` from `createSPO` + callers; (3) remove dead `client.ts:getDashboardMetrics`. Plus the originally-scoped P4 work: unify `alembic.ini` ↔ `config.py` + secrets to env, ENUM case reconciliation, consolidate `get_current_workspace_id` (the duplicated per-router copies in `clients.py`/`invoices.py`/`payments.py` vs `auth.dependencies`), export wave services in `services/__init__.py`, standardize auth import paths, fix supplier_invoices eager-load, add `.gitattributes`, refresh stale docs (CLAUDE.md Known Issues, reports index, `edge-cases.md` F-2).
+## P4 — Consistency & hygiene — ✅ DONE (commits `51b690d`, `fd4b351`, + docs commit on `stabilization/wave-sync`)
+
+**Commit 1 — backend consistency & hygiene (`51b690d`):**
+- **Consolidated `get_current_workspace_id`:** deleted the three duplicate per-router copies (`clients.py`, `invoices.py`, `payments.py`) and imported the canonical one from `app.auth.dependencies`. Behavior change (intentional, documented): the canonical dependency chains through `get_current_active_user`, so all three routers now enforce `is_active` uniformly (the local copies only checked `workspace_id` presence — dead, since the field is non-nullable).
+- **`supplier_invoices.py`:** standardized the auth import to `app.auth.dependencies`; fixed the list endpoint's async lazy-load 500 (`SupplierInvoiceResponse.items` is required) via `.options(selectinload(SupplierInvoice.items))`.
+- **`services/__init__.py`:** exported the wave services (`SPOService`, `SPONumberService`, `GRNService`, `SupplierInvoiceService` + the `supplier_invoice_service` instance) alongside the Step-2 services.
+- **`alembic.ini`:** scrubbed the hardcoded DB password to a non-secret placeholder + comment; `env.py` already overrides `sqlalchemy.url` from `settings.DATABASE_URL` at runtime, so this is zero-behavior-change.
+- **`.gitattributes`:** added (`text=auto eol=lf`) to normalize line endings (also silences the LF/CRLF churn warnings).
+
+**Commit 2 — SPO envelope 3-way (`fd4b351`) [carry-in from P2 wiring flag #1–3]:**
+- **`spo.py`:** all 8 endpoints now use `response_model=SuccessResponse[...]` and `return SuccessResponse(data=...)` (list → `SuccessResponse[List[SPOResponse]]`). SPO was the only router returning raw models — this closes CLAUDE.md API Rule #1.
+- **Frontend:** `spo.ts` unwraps `response.data.data` for all SPO calls and drops the dead `workspace_id` query param from `createSPO` (backend derives it from JWT); `SPOBuilder.tsx` now calls `createSPO(data)` (removed the mock all-zeros UUID); removed dead `client.ts:getDashboardMetrics` (hit non-existent `/api/v1/dashboard/metrics`) + its now-unused imports.
+- **Tests:** `test_spo`, `test_e2e_spo`, `test_grn`, `test_e2e_grn` read SPO bodies via `.json()["data"]` (incl. SPO reads *inside* the GRN e2e tests, which create SPOs upstream). `test_e2e_3way_match` already used a `.get("data", …)` fallback — no change.
+
+**Commit 3 — docs:**
+- CLAUDE.md "Known Issues" → all 5 marked resolved with per-item verification notes (see below); added the ENUM-drift verdict.
+- `reports/README.md`: fixed two corrupted filenames (`ackend`/`rontend` → `backend`/`frontend`), added the stabilization report row, bumped the date.
+- `architecture/edge-cases.md` F-2: corrected the method reference to `SPONumberService.generate_spo_number()` (status was already correctly ✅ after P1).
+- This report's P4 section → DONE.
+
+**Known-Issues reconciliation (all 5 verified against live code, not assumed):**
+1. `InvoiceStatus.VOIDED` — no such reference; void uses `INVOICE_VOIDED` event + `CANCELLED` state. ✅
+2. Audit metadata drop — `AuditService.log_event(metadata=…)` persists to `InvoiceEvent.metadata_log` (column exists, `invoice_event.py:49`); callers pass real metadata. ✅
+3. CI broken — fixed in P3 (dead live-server step removed; `pytest.ini` header + test-DB name). ✅
+4. `tax_id` missing on model — present (`models/client.py:24`), matches schema. ✅
+5. `Client.email` nullability — model + schema both optional; migration `4ec511b03a6f_make_client_email_nullable` aligns the DB. ✅
+
+**Verification (in `invoicesaas-api` container, real PostgreSQL 16):**
+- `ruff check app/ tests/` clean; `black --check app/ tests/` clean (76 files); `python -c "import app.main"` OK.
+- `pytest -q` → **10 passed** (found & fixed 3 GRN-test SPO-read sites the first pass missed — the GRN e2e tests create SPOs upstream).
+- `alembic check` → "No new upgrade operations detected" (no model↔migration drift).
+- Frontend `npm run build` (`tsc -b && vite build`) → exit 0, 2152 modules, `dist/` emitted (only the pre-existing >500 kB chunk advisory).
+
+**Result:** P0→P4 complete. The project is purged, secured (SPO multi-tenancy), building (frontend + backend import), CI-green (lint + test), and internally consistent (uniform response envelope, consolidated auth, exported services, aligned schema/model, scrubbed secrets, no migration drift). No new features were added; all V3 work remains deferred.

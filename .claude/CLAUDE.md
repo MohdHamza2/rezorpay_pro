@@ -106,9 +106,27 @@ rezorpay_pro/
     └── tests/                 # Test suites
 ```
 
-## Known Issues (As of Aug 2026)
-1. `InvoiceStatus.VOIDED` referenced but not defined (enum has `CANCELLED`)
-2. Audit metadata silently dropped (`context=` vs `metadata_log=`)
-3. CI pipeline broken (no server started before integration tests)
-4. `tax_id` in schema but not in Client model
-5. `Client.email` nullability mismatch between schema and model
+## Known Issues
+
+*All issues from the original Aug 2026 audit were resolved during the
+`stabilization/wave-sync` effort (P0–P4). See
+`.agents/reports/stabilization-execution-report.md` for the full trail.*
+
+Resolved:
+1. ~~`InvoiceStatus.VOIDED` referenced but not defined~~ — no such reference
+   exists; the void path uses `InvoiceEventType.INVOICE_VOIDED` and the enum's
+   `CANCELLED` state. Verified (P3/P4).
+2. ~~Audit metadata silently dropped (`context=` vs `metadata_log=`)~~ —
+   `AuditService.log_event` accepts `metadata=` and persists it as
+   `InvoiceEvent.metadata_log` (`audit_service.py`). Verified (P4).
+3. ~~CI pipeline broken (no server before integration tests)~~ — the live-server
+   step was removed; CI runs in-process `TestClient` tests. `pytest.ini` header
+   and test-DB name bugs fixed. Green (P3).
+4. ~~`tax_id` in schema but not in Client model~~ — `Client.tax_id` exists
+   (`models/client.py:24`) and matches the schema. Verified (P4).
+5. ~~`Client.email` nullability mismatch~~ — model and schema both make `email`
+   optional; migration `4ec511b03a6f_make_client_email_nullable` aligns the DB.
+   Verified (P4).
+
+ENUM case reconciliation: no model↔migration drift — `alembic check` reports
+"No new upgrade operations detected" against a clean-room `upgrade head` (P3).

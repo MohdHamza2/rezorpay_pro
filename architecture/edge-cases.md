@@ -68,7 +68,7 @@
 | # | Edge Case | Expected Behavior | Status |
 |---|-----------|-------------------|--------|
 | F-1 | Two concurrent invoice creates get same number | `SELECT FOR UPDATE` on InvoiceCounter prevents gap/duplicate | ✅ Implemented |
-| F-2 | Two concurrent SPO creates get same SPO number | SPO counter uses `SELECT FOR UPDATE` via `get_next_spo_number()` | ✅ Implemented |
+| F-2 | Two concurrent SPO creates get same SPO number | SPO counter uses `SELECT FOR UPDATE` via `SPONumberService.generate_spo_number()` | ✅ Implemented |
 | F-3 | Two concurrent GRN creates get same GRN number | GRN number generation uses atomic counter | ✅ Implemented |
 | F-4 | Decimal arithmetic produces floating-point drift | All monetary fields use `Numeric(12,2)` in DB and `Decimal` in Python | ✅ Implemented |
 

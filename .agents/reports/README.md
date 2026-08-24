@@ -1,5 +1,5 @@
-﻿# InvoiceSaaS — Agent Reports Index
-*Last Updated: 2026-08-18 22:22*
+# InvoiceSaaS — Agent Reports Index
+*Last Updated: 2026-08-24*
 
 ## Purpose
 This directory contains the mandatory execution reports for all agents working on the InvoiceSaaS ERP platform.
@@ -11,9 +11,10 @@ No code change is traceable without a corresponding report entry.
 | File | Agent | Scope |
 |---|---|---|
 | database-execution-report.md | Database Agent | Schema changes, Alembic migrations, model edits |
-| ackend-execution-report.md | Backend Agent | API routers, services, schemas, bug fixes |
-| rontend-execution-report.md | Frontend Agent | React pages, components, CSS, API client |
+| backend-execution-report.md | Backend Agent | API routers, services, schemas, bug fixes |
+| frontend-execution-report.md | Frontend Agent | React pages, components, CSS, API client |
 | wave0-execution-report.md | Planner | Wave 0 architecture document production |
+| stabilization-execution-report.md | Stabilization | P0–P4 sync/wire effort (`stabilization/wave-sync`): purge, SPO security, builds, CI, consistency |
 
 ## Governance Rules
 1. Reports are append-only — never delete entries
