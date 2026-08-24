@@ -13,6 +13,7 @@ from app.models.inventory import Warehouse, WarehouseBin, InventoryLevel, Invent
 from app.models.procurement import ProcurementRequest, ProcurementRequestItem
 from app.models.rfq import RFQ, RFQItem, RFQItemSource, SupplierRFQResponse, SupplierQuoteItem, RFQAward, RFQAwardLine
 from app.models.spo import SupplierPurchaseOrder, SupplierPurchaseOrderItem
+from app.models.spo_counter import SPOCounter
 from app.models.grn import GoodsReceiptNote, GRNItem
 from app.models.supplier_invoice import SupplierInvoice, SupplierInvoiceItem
 
@@ -54,6 +55,7 @@ __all__ = [
     "RFQAwardLine",
     "SupplierPurchaseOrder",
     "SupplierPurchaseOrderItem",
+    "SPOCounter",
     "GoodsReceiptNote",
     "GRNItem",
     "SupplierInvoice",
