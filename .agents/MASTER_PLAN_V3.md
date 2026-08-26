@@ -54,6 +54,16 @@
 | **Market** | UAE first | India schema-ready from day 1 |
 | **Inventory Scope** | **Option A — Full Inventory** | No bin locations for MVP, but schema supports it |
 
+### Query Optimization Guidelines (N+1 Prevention)
+
+**All list endpoints MUST eager-load required relationships to prevent N+1 queries.**
+
+- **1:N relationships** (one-to-many, e.g., `Invoice.items`) → Use `.options(selectinload(Invoice.items))`
+- **1:1 relationships** (one-to-one or many-to-one, e.g., `Invoice.client`) → Use `.options(joinedload(Invoice.client))`
+- **Nested relationships** → Chain: `.options(selectinload(Invoice.items).joinedload(InvoiceItem.product))`
+
+**Verification:** Every list endpoint returning entities with relationships must include eager loading. P4 stabilization caught one N+1 (SupplierInvoice.items); this guideline prevents recurrence.
+
 ---
 
 ## Section 2: Three Procurement Scenarios (All Supported)
@@ -164,6 +174,7 @@ WORKSPACE
 + company_logo_url: str
 + company_address: str
 + vat_rate: Decimal(5,2)                         default = 5.00
++ price_tolerance_percent: Decimal(5,2)          default = 2.00 (3-way matching tolerance)
 + credit_warning_days: int                       default = 60
 + credit_hold_days: int                          default = 90
 + block_po_on_hold: bool                         default = True
@@ -928,7 +939,37 @@ Any → CANCELLED
 4. **No negative stock** unless `workspace.allow_negative_stock = true`. Blocked at service layer with meaningful error.
 5. **Reservation before delivery.** DO must have an active reservation before dispatch. Stock movements happen on dispatch, not on reservation.
 6. **Transfers use IN_TRANSIT state.** Stock removed from source warehouse immediately on approval. Added to destination on receipt. IN_TRANSIT is tracked separately.
-7. **Concurrent reservation protection.** Row-level `SELECT FOR UPDATE` lock on WarehouseStock row when creating reservations to prevent race conditions.
+7. **Concurrent reservation protection.** Row-level `SELECT FOR NO KEY UPDATE` lock on WarehouseStock row when creating reservations to prevent race conditions while allowing concurrent audit log writes.
+
+### UOM Conversion Resolution Algorithm
+
+**When GRN/SPO quantities use different UOMs:**
+
+```
+Problem: SPO orders 1500 MTR, GRN receives 5 DRUMS. How to match?
+
+Algorithm:
+1. Look up ProductUOMConversion for (product_id, from_uom=DRUMS, to_uom=MTR)
+2. If direct conversion exists → convert and compare
+3. If no direct conversion:
+   a. Find all conversions FROM the source UOM
+   b. Find all conversions TO the target UOM
+   c. Find a chain through a common intermediate UOM (usually base_uom)
+   d. If chain found → apply multi-hop conversion
+   e. If no chain found → FAIL with error "Cannot match DRUMS to MTR for Product X"
+4. Apply converted quantity to 3-way matching logic
+
+Circular prevention: Track visited UOMs during chain resolution; abort if loop detected.
+
+Example conversions:
+- Product A: 1 DRUM = 500 MTR (direct)
+- Product B: 1 CARTON = 50 PCS, 1 ROLL = 100 PCS (chain via PCS)
+- Product C: No conversion defined → manual entry required
+
+Edge case: If GRN uses base_uom and SPO uses purchase_uom, conversion is mandatory.
+```
+
+**Implementation:** `services/uom_conversion_service.py` with `resolve_conversion(product_id, from_uom_id, to_uom_id, quantity)` method.
 
 ### Financial Rules (from existing — extended)
 8. All money uses `Decimal(12,2)` — NEVER float.
@@ -969,7 +1010,8 @@ When Supplier Invoice is received, system checks per line item:
 
 2. Price Check:
    invoice_unit_price vs spo_unit_price
-   IF variance > 2% tolerance → FAILED_PRICE
+   tolerance = workspace.price_tolerance_percent (default 2.00%)
+   IF variance > tolerance → FAILED_PRICE
 
 3. Tax Check:
    invoice_vat vs expected_vat (from SPO tax rate)
@@ -986,6 +1028,8 @@ Outcomes:
   No GRN yet → UNRECEIVED_ITEMS (invoice arrived before goods)
   Same invoice number already exists → DUPLICATE_INVOICE → reject
 ```
+
+**Note:** Tolerance is configurable per workspace. Default is 2% to handle minor rounding/price adjustments. Authorized users can adjust via Workspace settings.
 
 ---
 
@@ -1134,28 +1178,28 @@ Documents to produce:
 |---|---|---|
 | **Wave 0** | Architecture Lock | Specification documents only. No code. |
 | **Wave 1** | Bug Fix + Core Sync | Fix `toFixed` crash, align field names, real payment modal, pass all existing tests |
-| **Wave 2** | Workspace Settings | TRN, logo, VAT config, WhatsApp number, credit control settings |
+| **Wave 2** | Workspace Settings | TRN, logo, VAT config, WhatsApp number, credit control settings, price tolerance |
 | **Wave 3** | Product Master | Product, Category, Brand, UOM, UOM Conversion, ProductIdentifier, ProductPrice |
 | **Wave 4** | Supplier Master | Supplier, SupplierContact, SupplierBankAccount, SupplierDocument, SupplierProduct |
 | **Wave 5** | Payment Methods | Cheque, PDC, Bank Transfer, Cash, method-specific fields, PDC lifecycle |
-| **Wave 6** | PDF Generation | `@react-pdf/renderer` templates for Invoice, Quotation, DO, Statement, SPO, GRN |
-| **Wave 7** | Email Integration | Resend API, email templates, email logs, send buttons on all documents |
-| **Wave 8** | Enquiry Module | Enquiry CRUD, WhatsApp inbound auto-creation, pipeline view |
-| **Wave 9** | Quotation Module | Quotation + VAT + revisions, send via WA/Email PDF, accept/reject, convert to Invoice |
-| **Wave 10** | Customer PO Module + OCR | CPO + Gemini Vision OCR for scanned POs, credit check on confirm |
-| **Wave 11** | Procurement Request | ProcurementRequest CRUD, sources, approval workflow |
-| **Wave 12** | RFQ Module | RFQ, items, supplier responses, quote comparison, supplier selection + reason |
-| **Wave 13** | Supplier PO Module | SPO full CRUD, approval, send, acknowledge, partial confirmation tracking |
-| **Wave 14** | Warehouse Foundation | Warehouse CRUD, WarehouseLocation (schema only), WarehouseStock initialization |
-| **Wave 15** | GRN Module | GRN creation, inspection, accept/reject per item, stock update on acceptance |
-| **Wave 16** | Inventory Ledger | StockTransaction (immutable), WarehouseStock updates, stock query APIs |
-| **Wave 17** | Stock Reservations | Reservation on CPO/Invoice, release on DO dispatch, concurrent locking |
-| **Wave 18** | Stock Transfers + Adjustments | Transfer between warehouses, adjustment with approval, IN_TRANSIT state |
-| **Wave 19** | Stock Count | Count workflow, variance review, approved adjustment posting |
-| **Wave 20** | Supplier Invoice + 3-Way Match | Supplier invoice, 3-way matching engine, discrepancy resolution |
-| **Wave 21** | Supplier AP + Payments | Supplier payment recording, AP ledger, supplier statement, AP aging |
-| **Wave 22** | Delivery Order + Inventory Connect | DO linked to reservations, stock movement on dispatch, quantity reconciliation |
-| **Wave 23** | Credit Control System | Aging engine, HOLD/WARNING logic, DO/CPO blocking, PDC tracking |
+| **Wave 6** | Email Integration | Resend API, email templates, email logs, send buttons on all documents |
+| **Wave 7** | Enquiry Module | Enquiry CRUD, WhatsApp inbound auto-creation, pipeline view |
+| **Wave 8** | Quotation Module | Quotation + VAT + revisions, send via WA/Email PDF, accept/reject, convert to Invoice |
+| **Wave 9** | Customer PO Module + OCR | CPO + Gemini Vision OCR for scanned POs, credit check on confirm |
+| **Wave 10** | Credit Control System | Aging engine, HOLD/WARNING logic, DO/CPO blocking, PDC tracking |
+| **Wave 11** | PDF Generation | `@react-pdf/renderer` templates for Invoice, Quotation, DO, Statement, SPO, GRN, CPO |
+| **Wave 12** | Procurement Request | ProcurementRequest CRUD, sources, approval workflow |
+| **Wave 13** | RFQ Module | RFQ, items, supplier responses, quote comparison, supplier selection + reason |
+| **Wave 14** | Supplier PO Module | SPO full CRUD, approval, send, acknowledge, partial confirmation tracking |
+| **Wave 15** | Warehouse Foundation | Warehouse CRUD, WarehouseLocation (schema only), WarehouseStock initialization |
+| **Wave 16** | GRN Module | GRN creation, inspection, accept/reject per item, stock update on acceptance |
+| **Wave 17** | Inventory Ledger | StockTransaction (immutable), WarehouseStock updates, stock query APIs |
+| **Wave 18** | Stock Reservations | Reservation on CPO/Invoice, release on DO dispatch, concurrent locking |
+| **Wave 19** | Stock Transfers + Adjustments | Transfer between warehouses, adjustment with approval, IN_TRANSIT state |
+| **Wave 20** | Stock Count | Count workflow, variance review, approved adjustment posting |
+| **Wave 21** | Supplier Invoice + 3-Way Match | Supplier invoice, 3-way matching engine (uses workspace tolerance), discrepancy resolution |
+| **Wave 22** | Supplier AP + Payments | Supplier payment recording, AP ledger, supplier statement, AP aging |
+| **Wave 23** | Delivery Order + Inventory Connect | DO linked to reservations, stock movement on dispatch, quantity reconciliation |
 | **Wave 24** | Customer Statement + AR Aging | Statement PDF, aging report, send via WA/Email |
 | **Wave 25** | Returns + Credit/Debit Notes | Sales return, purchase return, credit note, debit note, ledger adjustments |
 | **Wave 26** | WhatsApp Full Integration | Meta webhook, inbound→Enquiry, outbound PDF sending, message history |
@@ -1165,7 +1209,60 @@ Documents to produce:
 
 ---
 
-## Section 13: Agent Governance Model
+## Section 14: Cross-Cutting Test Requirements
+
+**All waves must satisfy these test requirements in addition to feature-specific tests:**
+
+### Multi-Tenant Isolation Suite
+- ✅ Every GET endpoint returns only workspace-scoped data (no cross-tenant leaks)
+- ✅ Every POST/PUT/DELETE enforces workspace_id from JWT token
+- ✅ Attempt to access entity from different workspace → 403 Forbidden
+- ✅ Test coverage: all routers with `workspace_id` filtering
+
+### Concurrency Tests
+- ✅ Gapless numbering: 2 parallel document creates → distinct sequential numbers
+- ✅ Stock reservations: 2 parallel reservations for last 10 units → one succeeds, one fails with "Insufficient stock"
+- ✅ Credit control: 2 parallel CPO confirmations for client at credit limit → one succeeds, one blocked
+- ✅ Payment idempotency: same Idempotency-Key twice → second returns cached result, no duplicate Payment record
+
+### State Machine Validator Tests
+- ✅ All valid transitions succeed (e.g., DRAFT → SENT for Invoice)
+- ✅ All invalid transitions fail with 400 + clear error (e.g., PAID → DRAFT blocked)
+- ✅ State transition audit events logged to InvoiceEvent (or equivalent per entity)
+- ✅ Terminal states block all transitions (e.g., CANCELLED → any fails)
+
+### Immutability Regression Tests
+- ✅ Payment UPDATE attempt → 405 Method Not Allowed (no PUT endpoint exists)
+- ✅ Payment DELETE attempt → 405 Method Not Allowed (no DELETE endpoint exists)
+- ✅ StockTransaction UPDATE attempt → 405 Method Not Allowed
+- ✅ StockTransaction DELETE attempt → 405 Method Not Allowed
+- ✅ Audit: Payment and StockTransaction records NEVER change after creation
+
+### N+1 Query Prevention
+- ✅ All list endpoints with relationships use eager loading (selectinload/joinedload)
+- ✅ Verify via SQL logging: one query for parent + one per relationship type (not N queries for N items)
+- ✅ Example: GET /invoices → one query for invoices, one for items (not 50 queries for 50 invoices)
+
+### Authorization Tests
+- ✅ Unauthenticated request → 401 Unauthorized
+- ✅ JWT token expired → 401 with "Token expired" message
+- ✅ Missing workspace_id in token → 403 Forbidden
+- ✅ Role-based access control (if Wave requires): VIEWER cannot POST/PUT/DELETE
+
+### Decimal Precision Tests
+- ✅ All money calculations use Decimal(12,2), never float
+- ✅ Rounding edge case: 0.005 rounds to 0.01, not 0.00
+- ✅ VAT calculation: (amount * vat_rate) rounded to 2 decimals
+- ✅ Partial payment leaves 0.00 balance, not 0.01 or -0.01
+
+### Edge Case Coverage (per wave)
+- ✅ Each wave's execution report lists which Section 10 edge cases are tested
+- ✅ Untested edge cases documented in "Known Limitations" section of report
+- ✅ Critical edge cases (inventory, financial, credit) MUST be tested before wave sign-off
+
+---
+
+## Section 15: Agent Governance Model
 
 ```
 For every wave:
