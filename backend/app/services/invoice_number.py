@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.models.invoice_counter import InvoiceCounter
@@ -25,6 +26,7 @@ class InvoiceNumberService:
     3. If transaction fails, counter rolls back (no gap created)
 
     Thread-Safe: Row locking ensures sequential number generation even under concurrent load.
+    Handles concurrent first-counter creation via retry on IntegrityError.
     """
 
     @staticmethod
@@ -50,29 +52,42 @@ class InvoiceNumberService:
         if year is None:
             year = datetime.now().year
 
-        # Lock the counter row with FOR UPDATE (prevents race conditions)
-        result = await session.execute(
-            select(InvoiceCounter)
-            .where(InvoiceCounter.workspace_id == workspace_id)
-            .where(InvoiceCounter.year == year)
-            .with_for_update()  # <-- CRITICAL: Row-level lock
-        )
-        counter = result.scalar_one_or_none()
+        # Retry loop to handle concurrent first-counter creation
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                # Lock the counter row with FOR UPDATE (prevents race conditions)
+                result = await session.execute(
+                    select(InvoiceCounter)
+                    .where(InvoiceCounter.workspace_id == workspace_id)
+                    .where(InvoiceCounter.year == year)
+                    .with_for_update()  # <-- CRITICAL: Row-level lock
+                )
+                counter = result.scalar_one_or_none()
 
-        if counter is None:
-            # First invoice for this workspace/year - create counter
-            counter = InvoiceCounter(
-                workspace_id=workspace_id, year=year, last_number=0
-            )
-            session.add(counter)
+                if counter is None:
+                    # First invoice for this workspace/year - create counter
+                    counter = InvoiceCounter(
+                        workspace_id=workspace_id, year=year, last_number=0
+                    )
+                    session.add(counter)
+                    await session.flush()  # Persist counter before incrementing
 
-        # Increment counter
-        counter.last_number += 1
+                # Increment counter
+                counter.last_number += 1
 
-        # Generate formatted number
-        invoice_number = f"INV-{year}-{counter.last_number:04d}"
+                # Generate formatted number
+                invoice_number = f"INV-{year}-{counter.last_number:04d}"
 
-        return invoice_number
+                return invoice_number
+
+            except IntegrityError:
+                # Another transaction created the counter concurrently
+                # Rollback and retry with SELECT FOR UPDATE (counter now exists)
+                await session.rollback()
+                if attempt == max_retries - 1:
+                    raise  # Max retries exceeded
+                continue  # Retry
 
     @staticmethod
     async def get_next_number_preview(
