@@ -41,7 +41,7 @@ export const Invoices = () => {
   const [bankName, setBankName] = useState('');
   const [pdcDate, setPdcDate] = useState('');
 
-  
+
   const { data: invoices, isLoading } = useQuery({ queryKey: ['invoices'], queryFn: getInvoices });
   const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: getClients });
     const { data: workspace } = useQuery({ queryKey: ['workspace'], queryFn: getCurrentWorkspace });
@@ -74,8 +74,8 @@ export const Invoices = () => {
 
   const actionMutation = useMutation({
     mutationFn: ({ id, action, payload }: { id: string, action: 'send' | 'void', payload?: any }) => action === 'send' ? sendInvoice(id, { recipient: 'test@example.com' }) : voidInvoice(id, payload?.reason || 'Cancelled'),
-    onSuccess: (_, variables) => { 
-      queryClient.invalidateQueries({ queryKey: ['invoices'] }); 
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
       toast.success(`Invoice ${variables.action === 'send' ? 'sent' : 'voided'}`);
     },
     onError: (error: any) => {
@@ -181,7 +181,7 @@ export const Invoices = () => {
                     <td>AED {Number(amountDue || 0).toFixed(2)}</td>
                     <td>{new Date(inv.issue_date).toLocaleDateString()}</td>
                     <td>
-                      
+
                           <PDFDownloadLink
                             document={<InvoicePDF invoice={inv} client={clients?.find(c => c.id === inv.client_id)} workspace={workspace} />}
                             fileName={`Invoice_${inv.invoice_number}.pdf`}
@@ -213,7 +213,7 @@ export const Invoices = () => {
                         </>
                       )}
                       {inv.status === 'SENT' && (
-                        <button className={styles.actionBtn} onClick={() => { setPaymentInvoice(inv); setPaymentAmount(amountDue.toFixed(2)); setIsPaymentModalOpen(true); }} title="Record Payment">
+                        <button className={styles.actionBtn} onClick={() => { setPaymentInvoice(inv); setPaymentAmount((amountDue ?? 0).toFixed(2)); setIsPaymentModalOpen(true); }} title="Record Payment">
                           <DollarSign size={16} />
                         </button>
                       )}
@@ -322,21 +322,21 @@ export const Invoices = () => {
                   <option value="PDC">Post-Dated Cheque (PDC)</option>
                 </select>
               </div>
-              
+
               {(paymentMethod === 'CHEQUE' || paymentMethod === 'PDC' || paymentMethod === 'BANK_TRANSFER') && (
                 <div className={styles.formGroup}>
                   <label>{paymentMethod === 'BANK_TRANSFER' ? 'Transaction Ref' : 'Cheque Number'}</label>
                   <input type="text" value={referenceNumber} onChange={(e) => setReferenceNumber(e.target.value)} />
                 </div>
               )}
-              
+
               {(paymentMethod === 'CHEQUE' || paymentMethod === 'PDC') && (
                 <div className={styles.formGroup}>
                   <label>Bank Name</label>
                   <input type="text" value={bankName} onChange={(e) => setBankName(e.target.value)} />
                 </div>
               )}
-              
+
               {paymentMethod === 'PDC' && (
                 <div className={styles.formGroup}>
                   <label>PDC Date</label>

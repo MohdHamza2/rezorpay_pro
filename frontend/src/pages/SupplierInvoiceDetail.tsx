@@ -60,7 +60,7 @@ export const SupplierInvoiceDetail = () => {
         <h2>Supplier Invoice: {invoice.supplier_invoice_number}</h2>
         <div>
           <button className={styles.secondaryBtn} onClick={() => navigate('/supplier-invoices')} style={{ marginRight: '1rem' }}>Back</button>
-          
+
           {invoice.status === 'RECEIVED' && (
             <button className={styles.primaryBtn} onClick={() => submitMatchingMutation.mutate()} disabled={submitMatchingMutation.isPending}>
               Run 3-Way Match
@@ -81,33 +81,33 @@ export const SupplierInvoiceDetail = () => {
           <p><strong>Supplier:</strong> {supplier?.name}</p>
           <p><strong>Date:</strong> {new Date(invoice.invoice_date).toLocaleDateString()}</p>
           <p><strong>Status:</strong> {invoice.status}</p>
-          <p><strong>Total:</strong> {invoice.currency} {invoice.total_amount.toFixed(2)}</p>
+          <p><strong>Total:</strong> {invoice.currency} {(invoice.total_amount ?? 0).toFixed(2)}</p>
         </div>
 
         <div className={styles.card}>
           <h3>3-Way Match Results</h3>
           <p>
             <strong>Status:</strong>{' '}
-            <span style={{ 
+            <span style={{
               fontWeight: 'bold',
-              color: invoice.three_way_match_status === 'PASSED' ? '#166534' : 
+              color: invoice.three_way_match_status === 'PASSED' ? '#166534' :
                      invoice.three_way_match_status !== 'NOT_CHECKED' ? '#991b1b' : 'inherit'
             }}>
               {invoice.three_way_match_status}
             </span>
           </p>
-          
+
           {invoice.status === 'DISCREPANCY' && (
             <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: '#fee2e2', borderRadius: '4px' }}>
               <p style={{ color: '#991b1b', fontWeight: 'bold', marginBottom: '0.5rem' }}>Discrepancy Detected</p>
-              <textarea 
+              <textarea
                 placeholder="Enter authorized resolution notes..."
                 style={{ width: '100%', minHeight: '80px', marginBottom: '0.5rem', padding: '0.5rem' }}
                 value={resolutionNotes}
                 onChange={e => setResolutionNotes(e.target.value)}
               />
-              <button 
-                className={styles.primaryBtn} 
+              <button
+                className={styles.primaryBtn}
                 onClick={() => resolveMutation.mutate(resolutionNotes)}
                 disabled={!resolutionNotes || resolveMutation.isPending}
               >
@@ -142,11 +142,11 @@ export const SupplierInvoiceDetail = () => {
               <tr key={item.id}>
                 <td>{item.description}</td>
                 <td>{item.quantity}</td>
-                <td>{item.currency} {item.unit_price.toFixed(2)}</td>
-                <td>{item.currency} {item.total_price.toFixed(2)}</td>
+                <td>{item.currency} {(item.unit_price ?? 0).toFixed(2)}</td>
+                <td>{item.currency} {(item.total_price ?? 0).toFixed(2)}</td>
                 <td>
-                  <span style={{ 
-                    color: item.match_status === 'PASSED' ? '#166534' : 
+                  <span style={{
+                    color: item.match_status === 'PASSED' ? '#166534' :
                            item.match_status !== 'NOT_CHECKED' ? '#991b1b' : 'inherit',
                     fontWeight: 'bold'
                   }}>
@@ -155,8 +155,8 @@ export const SupplierInvoiceDetail = () => {
                 </td>
                 <td>
                   {item.variance_quantity !== 0 && <div>Qty Diff: {item.variance_quantity}</div>}
-                  {item.variance_price !== 0 && <div>Price Diff: {item.variance_price.toFixed(2)}</div>}
-                  {item.variance_tax !== 0 && <div>Tax Diff: {item.variance_tax.toFixed(2)}</div>}
+                  {item.variance_price !== 0 && <div>Price Diff: {(item.variance_price ?? 0).toFixed(2)}</div>}
+                  {item.variance_tax !== 0 && <div>Tax Diff: {(item.variance_tax ?? 0).toFixed(2)}</div>}
                 </td>
               </tr>
             ))}

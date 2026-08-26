@@ -57,7 +57,7 @@ export const PurchaseOrders = () => {
                   </span>
                 </td>
                 <td>{spo.expected_delivery_date || '-'}</td>
-                <td>{spo.currency} {spo.total_amount?.toFixed(2)}</td>
+                <td>{spo.currency} {(spo.total_amount ?? 0).toFixed(2)}</td>
                 <td>{spo.items?.length || 0}</td>
                 <td>
                   <button className={styles.actionBtn} title="View Details" onClick={() => navigate(`/spo/${spo.id}`)}>

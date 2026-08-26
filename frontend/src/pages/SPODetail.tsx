@@ -64,7 +64,7 @@ export const SPODetail = () => {
       <div style={{ background: 'white', padding: '1rem', borderRadius: '8px', marginBottom: '2rem' }}>
         <p><strong>Status:</strong> {spo.status}</p>
         <p><strong>Supplier ID:</strong> {spo.supplier_id}</p>
-        <p><strong>Total Amount:</strong> {spo.currency} {spo.total_amount?.toFixed(2)}</p>
+        <p><strong>Total Amount:</strong> {spo.currency} {(spo.total_amount ?? 0).toFixed(2)}</p>
 
         <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem' }}>
           {spo.status === 'DRAFT' && <button onClick={() => handleAction(submitSPO, 'Submitted')} className={styles.primaryBtn}>Submit for Approval</button>}

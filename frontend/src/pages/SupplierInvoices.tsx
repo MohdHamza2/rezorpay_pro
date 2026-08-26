@@ -49,7 +49,7 @@ export const SupplierInvoices = () => {
                   <td><strong>{invoice.supplier_invoice_number}</strong></td>
                   <td>{supplier?.name || invoice.supplier_id}</td>
                   <td>{new Date(invoice.invoice_date).toLocaleDateString()}</td>
-                  <td>{invoice.currency} {invoice.total_amount.toFixed(2)}</td>
+                  <td>{invoice.currency} {(invoice.total_amount ?? 0).toFixed(2)}</td>
                   <td>
                     <span className={`${styles.badge} ${styles['status' + invoice.status] || ''}`}>
                       {invoice.status}
@@ -57,7 +57,7 @@ export const SupplierInvoices = () => {
                   </td>
                   <td>
                     {invoice.three_way_match_status !== 'NOT_CHECKED' && (
-                      <span className={styles.badge} style={{ 
+                      <span className={styles.badge} style={{
                         backgroundColor: invoice.three_way_match_status === 'PASSED' ? '#dcfce7' : '#fee2e2',
                         color: invoice.three_way_match_status === 'PASSED' ? '#166534' : '#991b1b'
                       }}>
@@ -66,8 +66,8 @@ export const SupplierInvoices = () => {
                     )}
                   </td>
                   <td>
-                    <button 
-                      className={styles.secondaryBtn} 
+                    <button
+                      className={styles.secondaryBtn}
                       onClick={() => navigate(`/supplier-invoices/${invoice.id}`)}
                     >
                       View
