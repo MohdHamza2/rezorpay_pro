@@ -16,7 +16,11 @@ class WorkspaceResponse(BaseModel):
     whatsapp_number: Optional[str]
     default_tax_rate: Decimal
     credit_limit_default: Decimal
+    credit_warning_days: int
     credit_hold_days: int
+    block_po_on_hold: bool
+    block_do_on_hold: bool
+    price_tolerance_percent: Decimal
     created_at: datetime
     updated_at: datetime
 
@@ -28,4 +32,8 @@ class WorkspaceUpdate(BaseModel):
     whatsapp_number: Optional[str] = Field(None, max_length=50)
     default_tax_rate: Optional[Decimal] = Field(None, ge=0)
     credit_limit_default: Optional[Decimal] = Field(None, ge=0)
+    credit_warning_days: Optional[int] = Field(None, ge=0)
     credit_hold_days: Optional[int] = Field(None, ge=0)
+    block_po_on_hold: Optional[bool] = None
+    block_do_on_hold: Optional[bool] = None
+    price_tolerance_percent: Optional[Decimal] = Field(None, ge=0, le=100)

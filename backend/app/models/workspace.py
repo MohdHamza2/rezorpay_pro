@@ -36,7 +36,13 @@ class Workspace(SQLModel, table=True):
     credit_limit_default: Decimal = Field(
         default=Decimal("0.00"), sa_column=Column(Numeric(12, 2), nullable=False)
     )
+    credit_warning_days: int = Field(default=30)
     credit_hold_days: int = Field(default=90)
+    block_po_on_hold: bool = Field(default=True)
+    block_do_on_hold: bool = Field(default=True)
+    price_tolerance_percent: Decimal = Field(
+        default=Decimal("2.00"), sa_column=Column(Numeric(5, 2), nullable=False)
+    )
 
     # SPO Configuration
     over_receipt_tolerance_percent: Decimal = Field(
