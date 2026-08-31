@@ -15,6 +15,7 @@ const clientSchema = z.object({
   email: z.string().email('Invalid email address'),
   phone: z.string().optional(),
   address: z.string().optional(),
+  tax_id: z.string().optional(),
 });
 
 type ClientFormValues = z.infer<typeof clientSchema>;
@@ -67,10 +68,11 @@ export const Clients = () => {
         email: client.email,
         phone: client.phone || '',
         address: client.address || '',
+        tax_id: client.tax_id || '',
       });
     } else {
       setEditingClient(null);
-      reset({ name: '', email: '', phone: '', address: '' });
+      reset({ name: '', email: '', phone: '', address: '', tax_id: '' });
     }
     setIsModalOpen(true);
   };
@@ -93,7 +95,7 @@ export const Clients = () => {
     <div className={styles.container}>
       <div className={styles.header}>
         <h2>Clients</h2>
-        <button className={styles.primaryBtn} onClick={() => openModal()}>
+        <button className={styles.primaryBtn} data-testid="client-add" onClick={() => openModal()}>
           <Plus size={16} style={{ display: 'inline', marginRight: '0.5rem', verticalAlign: 'middle' }} />
           Add Client
         </button>
@@ -119,7 +121,7 @@ export const Clients = () => {
             </thead>
             <tbody>
               {clients?.map((client) => (
-                <tr key={client.id}>
+                <tr key={client.id} data-testid={`client-row-${client.name}`}>
                   <td>{client.name}</td>
                   <td>{client.email}</td>
                   <td>{client.phone || '-'}</td>
@@ -128,7 +130,7 @@ export const Clients = () => {
                     <button className={styles.actionBtn} onClick={() => openModal(client)}>
                       <Edit2 size={16} />
                     </button>
-                    <button 
+                    <button
                       className={`${styles.actionBtn} ${styles.delete}`}
                       onClick={() => {
                         if(window.confirm('Are you sure you want to delete this client?')) {
@@ -154,7 +156,7 @@ export const Clients = () => {
       </div>
 
       {isModalOpen && (
-        <div className={styles.modalOverlay}>
+        <div className={styles.modalOverlay} data-testid="client-modal">
           <div className={styles.modal}>
             <div className={styles.modalHeader}>
               <h3>{editingClient ? 'Edit Client' : 'Add Client'}</h3>
@@ -163,12 +165,12 @@ export const Clients = () => {
             <form onSubmit={handleSubmit(onSubmit)}>
               <div className={styles.formGroup}>
                 <label>Name</label>
-                <input {...register('name')} />
+                <input data-testid="client-name" {...register('name')} />
                 {errors.name && <span className={styles.errorText}>{errors.name.message}</span>}
               </div>
               <div className={styles.formGroup}>
                 <label>Email</label>
-                <input type="email" {...register('email')} />
+                <input type="email" data-testid="client-email" {...register('email')} />
                 {errors.email && <span className={styles.errorText}>{errors.email.message}</span>}
               </div>
               <div className={styles.formGroup}>
@@ -177,17 +179,25 @@ export const Clients = () => {
                 {errors.phone && <span className={styles.errorText}>{errors.phone.message}</span>}
               </div>
               <div className={styles.formGroup}>
+                <label htmlFor="client-tax-id">TRN (Tax Registration Number)</label>
+                <input id="client-tax-id" data-testid="client-tax-id" {...register('tax_id')} />
+                <span className={styles.hint}>Buyer TRN. Required to send a standard (B2B) tax invoice.</span>
+                {errors.tax_id && <span className={styles.errorText}>{errors.tax_id.message}</span>}
+              </div>
+              <div className={styles.formGroup}>
                 <label>Address</label>
-                <input {...register('address')} />
+                <input data-testid="client-address" {...register('address')} />
+                <span className={styles.hint}>Required to send a standard (B2B) tax invoice.</span>
                 {errors.address && <span className={styles.errorText}>{errors.address.message}</span>}
               </div>
               <div className={styles.modalActions}>
                 <button type="button" className={styles.secondaryBtn} onClick={closeModal}>
                   Cancel
                 </button>
-                <button 
-                  type="submit" 
+                <button
+                  type="submit"
                   className={styles.primaryBtn}
+                  data-testid="client-form-submit"
                   disabled={createMutation.isPending || updateMutation.isPending}
                 >
                   {editingClient ? 'Update' : 'Create'}

@@ -115,7 +115,7 @@
   padding: 2rem;
   border-radius: 8px;
   width: 100%;
-  max-width: 800px;
+  max-width: 1040px;
   max-height: 90vh;
   overflow-y: auto;
   box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1);
@@ -155,7 +155,7 @@
 .itemRow {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 1rem;
+  gap: 0.75rem;
   margin-bottom: 1rem;
   align-items: start;
   background: #f8fafc;
@@ -163,11 +163,26 @@
   border-radius: 8px;
 }
 
+.itemRowMain {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+}
+
+.itemRowNums {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
 @media (min-width: 768px) {
-  .itemRow {
-    grid-template-columns: 3fr 1fr 1fr auto;
-    background: none;
-    padding: 0;
+  .itemRowMain {
+    grid-template-columns: 1.1fr 1.6fr;
+  }
+
+  .itemRowNums {
+    grid-template-columns: repeat(5, minmax(0, 1fr)) auto;
+    align-items: start;
   }
 }
 
@@ -178,6 +193,23 @@
   cursor: pointer;
   padding: 0.5rem;
   margin-top: 1.75rem;
+}
+
+.hint {
+  color: #64748b;
+  font-size: 0.75rem;
+  margin-top: 0.25rem;
+  display: block;
+}
+
+.currencyLabel {
+  display: inline-block;
+  background: #f1f5f9;
+  color: #334155;
+  font-weight: 600;
+  font-size: 0.8rem;
+  padding: 0.45rem 0.75rem;
+  border-radius: 4px;
 }
 
 .errorText {
@@ -207,12 +239,13 @@
   color: #334155;
 }
 
-.formGroup input, .formGroup select {
+.formGroup input, .formGroup select, .formGroup textarea {
   width: 100%;
   padding: 0.5rem;
   border: 1px solid #cbd5e1;
   border-radius: 4px;
   box-sizing: border-box;
+  font-family: inherit;
 }
 
 .itemsSection {
@@ -226,4 +259,27 @@
   justify-content: space-between;
   align-items: center;
   margin-bottom: 1rem;
+}
+
+.ftaBanner {
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+}
+
+.pdfPreview {
+  background: white;
+  padding: 2rem;
+  border-radius: 8px;
+  width: 100%;
+  max-width: 520px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+}
+
+.pdfPreview p {
+  margin: 0.35rem 0;
+  color: #334155;
 }

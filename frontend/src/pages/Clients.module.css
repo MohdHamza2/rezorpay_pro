@@ -147,6 +147,13 @@
   display: block;
 }
 
+.hint {
+  color: #64748b;
+  font-size: 0.75rem;
+  margin-top: 0.25rem;
+  display: block;
+}
+
 .modalActions {
   display: flex;
   justify-content: flex-end;

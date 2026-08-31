@@ -2,6 +2,7 @@ import axios, { AxiosError } from 'axios';
 import type { InternalAxiosRequestConfig } from 'axios';
 import type { AuthTokens } from '../types/auth';
 import toast from 'react-hot-toast';
+import { extractApiError } from './errors';
 
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -70,9 +71,9 @@ apiClient.interceptors.response.use(
         toast.error('Unauthorized access. Please log in.');
       }
     } else if (error.response) {
-      const message = (error.response.data as any)?.error?.message || 'An error occurred';
-      if (error.response.status !== 401) {
-        toast.error(message);
+      const parsed = extractApiError(error);
+      if (error.response.status !== 401 && parsed.code !== 'FTA_SEND_BLOCKED') {
+        toast.error(parsed.message);
       }
     } else {
       toast.error('Network error. Please try again.');

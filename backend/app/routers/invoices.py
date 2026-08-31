@@ -11,6 +11,7 @@ Endpoints:
 - POST /invoices/{id}/void - Void invoice
 """
 
+from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
@@ -19,10 +20,10 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app.auth.dependencies import get_current_user, get_current_workspace_id
 from app.database import get_session
 from app.models.client import Client
 from app.models.invoice import Invoice, InvoiceStatus
-from app.models.invoice_item import InvoiceItem
 from app.models.user import User
 from app.schemas.common import (
     ErrorDetail,
@@ -38,7 +39,6 @@ from app.schemas.invoices import (
     InvoiceVoidRequest,
 )
 from app.services.invoice_service import InvoiceService
-from app.auth.dependencies import get_current_user, get_current_workspace_id
 
 router = APIRouter(prefix="/invoices", tags=["Invoices"])
 
@@ -60,7 +60,6 @@ async def create_invoice(
 
     Invoice number is generated atomically with row locking.
     """
-    # Validate client exists and belongs to workspace
     client_result = await session.execute(
         select(Client)
         .where(Client.id == invoice_data.client_id)
@@ -74,7 +73,6 @@ async def create_invoice(
             status_code=status.HTTP_404_NOT_FOUND, detail="Client not found"
         )
 
-    # Create invoice
     invoice = await InvoiceService.create_invoice(
         session=session,
         workspace_id=workspace_id,
@@ -85,21 +83,13 @@ async def create_invoice(
         currency=invoice_data.currency.value,
         notes=invoice_data.notes,
         items=[item.model_dump() for item in invoice_data.items],
+        supply_date=invoice_data.supply_date,
     )
 
-    # Eager load items for response
-    result = await session.execute(
-        select(Invoice)
-        .options(selectinload(Invoice.items))
-        .where(Invoice.id == invoice.id)
-    )
-    invoice_with_items = result.scalar_one()
-
+    loaded = await InvoiceService.get_for_response(session, invoice.id, workspace_id)
     await session.commit()
 
-    return SuccessResponse(
-        data=InvoiceService.serialize_invoice_response(invoice_with_items)
-    )
+    return SuccessResponse(data=InvoiceService.serialize_invoice_response(loaded))
 
 
 @router.get("", response_model=PaginatedResponse)
@@ -179,15 +169,8 @@ async def get_invoice(
     session: AsyncSession = Depends(get_session),
     workspace_id: UUID = Depends(get_current_workspace_id),
 ):
-    """Get a specific invoice with items."""
-    result = await session.execute(
-        select(Invoice)
-        .options(selectinload(Invoice.items))
-        .where(Invoice.id == invoice_id)
-        .where(Invoice.workspace_id == workspace_id)
-        .where(Invoice.deleted_at.is_(None))
-    )
-    invoice = result.scalar_one_or_none()
+    """Get a specific invoice with items and payments."""
+    invoice = await InvoiceService.get_for_response(session, invoice_id, workspace_id)
 
     if not invoice:
         raise HTTPException(
@@ -224,7 +207,6 @@ async def update_invoice(
             status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found"
         )
 
-    # Check if invoice can be edited (draft only)
     if not await InvoiceService.can_edit(invoice):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -235,57 +217,18 @@ async def update_invoice(
             ).model_dump(),
         )
 
-    # Update fields
-    update_data = invoice_data.model_dump(exclude_unset=True)
-
-    # Handle items update if provided
-    if "items" in update_data:
-        items_data = update_data.pop("items")
-        # Delete existing items
-        await session.execute(
-            InvoiceItem.__table__.delete().where(InvoiceItem.invoice_id == invoice_id)
-        )
-        # Add new items
-        for item_data in items_data:
-            item = InvoiceItem(invoice_id=invoice_id, **item_data)
-            item.total_price = (
-                item.quantity * item.unit_price * (1 + item.tax_rate / 100)
-            )
-            session.add(item)
-
-    # Update other fields
-    for field, value in update_data.items():
-        if field == "currency":
-            value = value.value
-        setattr(invoice, field, value)
-
-    # Recalculate totals
-    await InvoiceService._recalculate_totals(session, invoice)
-
-    # Log update event
-    from app.services.audit_service import AuditService
-
-    await AuditService.log_invoice_updated(
+    patch = invoice_data.model_dump(exclude_unset=True)
+    items = patch.pop("items", None)
+    await InvoiceService.update_draft(
         session=session,
-        invoice_id=invoice.id,
+        invoice=invoice,
         user_id=user.id,
-        changed_fields=list(update_data.keys()),
+        patch=patch,
+        items=items,
     )
-
     await session.commit()
-    await session.refresh(invoice)
-
-    # Reload with items
-    result = await session.execute(
-        select(Invoice)
-        .options(selectinload(Invoice.items))
-        .where(Invoice.id == invoice.id)
-    )
-    invoice_with_items = result.scalar_one()
-
-    return SuccessResponse(
-        data=InvoiceService.serialize_invoice_response(invoice_with_items)
-    )
+    loaded = await InvoiceService.get_for_response(session, invoice.id, workspace_id)
+    return SuccessResponse(data=InvoiceService.serialize_invoice_response(loaded))
 
 
 @router.delete("/{invoice_id}", status_code=status.HTTP_200_OK)
@@ -300,8 +243,6 @@ async def delete_invoice(
 
     Only allowed for DRAFT invoices. Use /void for sent/paid invoices.
     """
-    from datetime import datetime, timezone
-
     result = await session.execute(
         select(Invoice)
         .where(Invoice.id == invoice_id)
@@ -345,7 +286,7 @@ async def send_invoice(
     workspace_id: UUID = Depends(get_current_workspace_id),
 ):
     """
-    Mark invoice as sent.
+    Mark invoice as sent after FTA hard-fails.
 
     Only allowed for DRAFT invoices.
     """
@@ -362,8 +303,7 @@ async def send_invoice(
             status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found"
         )
 
-    # Mark as sent
-    await InvoiceService.mark_as_sent(
+    await InvoiceService.send_invoice(
         session=session,
         invoice=invoice,
         user_id=user.id,
@@ -372,17 +312,8 @@ async def send_invoice(
     )
 
     await session.commit()
-    await session.refresh(invoice)
-
-    # Reload with items
-    result = await session.execute(
-        select(Invoice)
-        .options(selectinload(Invoice.items))
-        .where(Invoice.id == invoice.id)
-    )
-    invoice_with_items = result.scalar_one()
-
-    return SuccessResponse(data=InvoiceResponse.model_validate(invoice_with_items))
+    loaded = await InvoiceService.get_for_response(session, invoice.id, workspace_id)
+    return SuccessResponse(data=InvoiceService.serialize_invoice_response(loaded))
 
 
 @router.post("/{invoice_id}/void", response_model=SuccessResponse[InvoiceResponse])
@@ -418,6 +349,5 @@ async def void_invoice(
     )
 
     await session.commit()
-    await session.refresh(invoice)
-
-    return SuccessResponse(data=InvoiceResponse.model_validate(invoice))
+    loaded = await InvoiceService.get_for_response(session, invoice.id, workspace_id)
+    return SuccessResponse(data=InvoiceService.serialize_invoice_response(loaded))

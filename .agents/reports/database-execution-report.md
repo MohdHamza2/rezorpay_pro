@@ -1,4 +1,67 @@
 # Database Execution Report
+
+---
+
+## 2026-08-31 — WP-A FTA Tax Invoice schema (planned BEFORE code)
+
+**Spec:** `architecture/wave-fta-tax-invoice-addendum.md` §6. Architect lock: Alembic YES, new revision only.
+
+### Locked
+
+- `down_revision = "06c9b4b1dcda"` (current HEAD). NEVER rewrite `d3e4c7fdb29f` or any ancestor.
+- No `clients.trn` (buyer TRN stays `clients.tax_id`). No IBAN. No header `discount_amount` column. No quotation/cpo/retention/einvoice columns.
+- `invoice_kind` is `String(20)` nullable (not a PostgreSQL ENUM). Null on DRAFT; `STANDARD`/`SIMPLIFIED` at send.
+
+### Columns
+
+| Table | Column | Type | Notes |
+|---|---|---|---|
+| `workspaces` | `address` | Text nullable | Seller FTA address |
+| `invoices` | `supply_date` | Date NOT NULL | Backfill = `issue_date` |
+| `invoices` | `invoice_kind` | String(20) nullable | Set at send |
+| `invoices` | `seller_trn_snapshot` | String(15) nullable | Frozen at send |
+| `invoices` | `seller_name_snapshot` | String(255) nullable | |
+| `invoices` | `seller_address_snapshot` | Text nullable | |
+| `invoices` | `buyer_trn_snapshot` | String(15) nullable | |
+| `invoices` | `buyer_name_snapshot` | String(255) nullable | |
+| `invoices` | `buyer_address_snapshot` | Text nullable | |
+| `invoice_items` | `product_id` | UUID FK `products.id` nullable, index | Catalog line |
+| `invoice_items` | `uom_id` | UUID FK `units_of_measure.id` nullable | Snapshot only |
+| `invoice_items` | `sku_snapshot` | String(100) nullable | |
+| `invoice_items` | `discount_percent` | Numeric(5,2) NOT NULL default 0 | `>= 0` |
+| `invoice_items` | `discount_amount` | Numeric(12,2) NOT NULL default 0 | `>= 0` |
+| `invoice_items` | `line_net` | Numeric(12,2) NOT NULL default 0 | After discount, excl VAT |
+| `invoice_items` | `tax_amount` | Numeric(12,2) NOT NULL default 0 | Line VAT |
+
+Keep `invoice_items.total_price` as **gross**. Keep `quantity` Numeric(10,2).
+
+### Backfill (same revision)
+
+```
+invoices.supply_date = issue_date
+invoice_items.line_net = round(quantity * unit_price, 2)
+invoice_items.tax_amount = round(line_net * tax_rate/100, 2)
+invoice_items.total_price = line_net + tax_amount
+```
+
+Existing SENT rows: best-effort; snapshots stay null until a new send.
+
+### Verification
+
+`alembic upgrade head` on DATABASE_URL (host 5434) and test DB. `alembic check` clean. Tests use SQLModel `create_all` on `{DATABASE_URL}_test` plus this model shape.
+
+---
+
+## 2026-08-31 — WP-A FTA Tax Invoice schema (implemented)
+
+**Revision:** `c8e1a4f2b6d0` revises `06c9b4b1dcda`. File: `backend/alembic/versions/c8e1a4f2b6d0_fta_tax_invoice_fields.py`.
+
+Applied: `alembic upgrade head` on `invoicesaas` (was at `06c9b4b1dcda`) and full chain on `invoicesaas_test`. `alembic check`: "No new upgrade operations detected" on both.
+
+Backfill in the same revision: `invoices.supply_date = issue_date`; line `line_net` / `tax_amount` / `total_price` from qty×price×rate. No `clients.trn`. No IBAN. `invoice_kind` is String(20), not a PG ENUM.
+
+---
+
 ## Step 5: Goods Receipt Note (GRN) & Receiving
 ### Action: Creating GRN models
 - Overwrote backend/app/models/grn.py to match Wave 14/15 Step 5 requirements.

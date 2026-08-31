@@ -56,6 +56,30 @@
   box-shadow: 0 0 0 1px #2563eb;
 }
 
+.formGroup textarea {
+  padding: 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.formGroup textarea:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 1px #2563eb;
+}
+
+.formGroupWide {
+  grid-column: 1 / -1;
+}
+
+.hint {
+  color: #6b7280;
+  font-size: 0.75rem;
+}
+
 .errorText {
   color: #dc2626;
   font-size: 0.75rem;

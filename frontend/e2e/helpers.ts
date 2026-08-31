@@ -4,6 +4,9 @@ export const API_URL = process.env.VITE_API_URL || 'http://localhost:8000';
 export const E2E_PASSWORD = 'Passw0rd1';
 export const PRODUCT_SKU = 'CBL-4MM-001';
 export const PRODUCT_NAME = 'NYA 4mm2 cable';
+export const FTA_TRN = '100123456789003';
+export const FTA_SELLER_ADDRESS = 'Warehouse 12, Al Quoz, Dubai';
+export const FTA_BUYER_ADDRESS = 'Plot 4, Mussafah, Abu Dhabi';
 
 export function uniqueSuffix(): string {
   return `${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
@@ -11,6 +14,10 @@ export function uniqueSuffix(): string {
 
 export function uniqueEmail(prefix: string): string {
   return `${prefix}.${uniqueSuffix()}@example.com`;
+}
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export async function waitForModalClosed(page: Page): Promise<void> {
@@ -58,17 +65,34 @@ export async function createBrand(page: Page, name: string): Promise<void> {
   await expect(page.getByTestId(`brand-row-${name}`)).toBeVisible();
 }
 
-export async function registerViaUi(page: Page): Promise<{ email: string; suffix: string }> {
+export async function registerViaUi(
+  page: Page,
+  prefix = 'catalog',
+): Promise<{ email: string; suffix: string }> {
   const suffix = uniqueSuffix();
-  const email = uniqueEmail('catalog');
+  const email = uniqueEmail(prefix);
   await page.goto('/register');
   await page.locator('#name').fill(`E2E User ${suffix}`);
   await page.locator('#email').fill(email);
   await page.locator('#password').fill(E2E_PASSWORD);
-  await page.locator('#workspace_name').fill(`E2E Catalog ${suffix}`);
-  await page.getByTestId('register-submit').click();
-  await expect(page.getByTestId('app-layout')).toBeVisible();
+  await page.locator('#workspace_name').fill(`E2E ${prefix} ${suffix}`);
+  await submitRegisterUntilReady(page);
   return { email, suffix };
+}
+
+async function submitRegisterUntilReady(page: Page): Promise<void> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    await page.getByTestId('register-submit').click();
+    const layout = page.getByTestId('app-layout');
+    try {
+      await expect(layout).toBeVisible({ timeout: 20_000 });
+      return;
+    } catch {
+      const limited = await page.getByText(/rate limit/i).isVisible();
+      if (!limited && attempt === 4) throw new Error('register did not reach app layout');
+      await sleep(16_000);
+    }
+  }
 }
 
 export async function registerWorkspace(
@@ -76,30 +100,96 @@ export async function registerWorkspace(
   label: string,
 ): Promise<{ token: string; email: string }> {
   const email = uniqueEmail(label);
-  const response = await request.post(`${API_URL}/auth/register`, {
-    data: {
-      name: `Owner ${label}`,
-      email,
-      password: E2E_PASSWORD,
-      workspace_name: `Workspace ${label} ${uniqueSuffix()}`,
-    },
-  });
-  expect(response.ok(), await response.text()).toBeTruthy();
+  const response = await postRegisterWithRetry(request, label, email);
   const body = await response.json();
   return { token: body.data.access_token as string, email };
 }
 
+async function postRegisterWithRetry(
+  request: APIRequestContext,
+  label: string,
+  email: string,
+) {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const response = await request.post(`${API_URL}/auth/register`, {
+      data: {
+        name: `Owner ${label}`,
+        email,
+        password: E2E_PASSWORD,
+        workspace_name: `Workspace ${label} ${uniqueSuffix()}`,
+      },
+    });
+    if (response.status() === 429) {
+      await sleep(16_000);
+      continue;
+    }
+    expect(response.ok(), await response.text()).toBeTruthy();
+    return response;
+  }
+  throw new Error('register rate-limited after retries');
+}
+
 export async function authJson(
   request: APIRequestContext,
-  method: 'GET' | 'POST',
+  method: 'GET' | 'POST' | 'PUT',
   path: string,
   token: string,
   data?: unknown,
 ) {
-  const response = await request.fetch(`${API_URL}${path}`, {
+  return request.fetch(`${API_URL}${path}`, {
     method,
     headers: { Authorization: `Bearer ${token}` },
     ...(data !== undefined ? { data } : {}),
   });
-  return response;
+}
+
+export async function saveWorkspaceFta(page: Page): Promise<void> {
+  await page.getByTestId('nav-settings').click();
+  await expect(page.getByTestId('settings-trn')).toBeVisible();
+  await expect(async () => {
+    expect(Number(await page.getByTestId('settings-tax-rate').inputValue())).toBe(5);
+  }).toPass();
+  await page.getByTestId('settings-trn').fill(FTA_TRN);
+  await page.getByTestId('settings-address').fill(FTA_SELLER_ADDRESS);
+  await page.getByTestId('settings-save').click();
+  await expect(page.getByText('Settings updated successfully')).toBeVisible();
+}
+
+export async function createClientViaUi(
+  page: Page,
+  input: { name: string; email: string; address?: string; taxId?: string },
+): Promise<void> {
+  await page.getByTestId('nav-clients').click();
+  await page.getByTestId('client-add').click();
+  await page.getByTestId('client-name').fill(input.name);
+  await page.getByTestId('client-email').fill(input.email);
+  if (input.address) await page.getByTestId('client-address').fill(input.address);
+  if (input.taxId) await page.getByTestId('client-tax-id').fill(input.taxId);
+  await page.getByTestId('client-form-submit').click();
+  await expect(page.getByTestId('client-modal')).toHaveCount(0);
+  await expect(page.getByTestId(`client-row-${input.name}`)).toBeVisible();
+}
+
+export async function createAdhocInvoiceViaUi(
+  page: Page,
+  input: { clientName: string; description: string; quantity: string; price: string },
+): Promise<void> {
+  await page.getByTestId('nav-invoices').click();
+  await page.getByTestId('invoice-create').click();
+  await expect(page.getByTestId('invoice-modal')).toBeVisible();
+  await selectOptionContaining(page, 'invoice-client-select', input.clientName);
+  const issue = await page.getByTestId('invoice-issue-date').inputValue();
+  await page.getByTestId('invoice-supply-date').fill(issue);
+  await page.getByTestId('invoice-item-0-description').fill(input.description);
+  await page.getByTestId('invoice-item-0-quantity').fill(input.quantity);
+  await page.getByTestId('invoice-item-0-price').fill(input.price);
+  await page.getByTestId('invoice-form-submit').click();
+  await expect(page.getByTestId('invoice-modal')).toHaveCount(0);
+  await expect(page.locator('[data-testid^="invoice-row-"]')).toBeVisible();
+}
+
+export function isoDate(offsetDays = 0): string {
+  const date = new Date();
+  date.setDate(date.getDate() + offsetDays);
+  return date.toISOString().slice(0, 10);
 }

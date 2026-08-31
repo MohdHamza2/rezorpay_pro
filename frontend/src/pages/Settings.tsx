@@ -1,5 +1,7 @@
 ﻿import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getCurrentWorkspace, updateCurrentWorkspace } from '../api/workspaces';
+import type { Workspace } from '../api/workspaces';
+import { extractApiError } from '../api/errors';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -11,6 +13,7 @@ import { Skeleton } from '../components/Skeleton';
 const settingsSchema = z.object({
   name: z.string().min(1, 'Workspace name is required'),
   trn: z.string().optional().nullable(),
+  address: z.string().optional().nullable(),
   whatsapp_number: z.string().optional().nullable(),
   default_tax_rate: z.number().min(0).max(100),
   credit_limit_default: z.number().min(0),
@@ -19,11 +22,27 @@ const settingsSchema = z.object({
 
 type SettingsValues = z.infer<typeof settingsSchema>;
 
+const SETTINGS_FIELDS = new Set<keyof SettingsValues>([
+  'name',
+  'trn',
+  'address',
+  'whatsapp_number',
+  'default_tax_rate',
+  'credit_limit_default',
+  'credit_hold_days',
+]);
+
+function formFieldFromApi(field?: string): keyof SettingsValues | undefined {
+  if (!field) return undefined;
+  const name = field.replace(/^workspace\./, '') as keyof SettingsValues;
+  return SETTINGS_FIELDS.has(name) ? name : undefined;
+}
+
 export const Settings = () => {
   const queryClient = useQueryClient();
   const { data: workspace, isLoading } = useQuery({ queryKey: ['workspace'], queryFn: getCurrentWorkspace });
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<SettingsValues>({
+  const { register, handleSubmit, reset, setError, formState: { errors } } = useForm<SettingsValues>({
     resolver: zodResolver(settingsSchema)
   });
 
@@ -32,6 +51,7 @@ export const Settings = () => {
       reset({
         name: workspace.name,
         trn: workspace.trn,
+        address: workspace.address ?? '',
         whatsapp_number: workspace.whatsapp_number,
         default_tax_rate: Number(workspace.default_tax_rate ?? 5),
         credit_limit_default: Number(workspace.credit_limit_default ?? 0),
@@ -41,18 +61,24 @@ export const Settings = () => {
   }, [workspace, reset]);
 
   const updateMutation = useMutation({
-    mutationFn: (data: SettingsValues) => updateCurrentWorkspace(data),
+    mutationFn: (data: SettingsValues) => updateCurrentWorkspace(data as Partial<Workspace>),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workspace'] });
       toast.success('Settings updated successfully');
     },
-    onError: () => {
-      toast.error('Failed to update settings');
+    onError: (error: unknown) => {
+      const parsed = extractApiError(error);
+      const key = formFieldFromApi(parsed.field);
+      if (key) setError(key, { type: 'server', message: parsed.message });
     }
   });
 
   const onSubmit = (data: SettingsValues) => {
-    updateMutation.mutate(data);
+    updateMutation.mutate({
+      ...data,
+      address: data.address?.trim() || null,
+      trn: data.trn?.trim() || null,
+    });
   };
 
   if (isLoading) {
@@ -82,7 +108,19 @@ export const Settings = () => {
             <div className={styles.formGroup}>
               <label htmlFor="settings-trn">TRN (Tax Registration Number)</label>
               <input id="settings-trn" type="text" data-testid="settings-trn" {...register('trn')} />
+              <span className={styles.hint}>15 digits starting with 100. Required to send a tax invoice.</span>
               {errors.trn && <span className={styles.errorText}>{errors.trn.message}</span>}
+            </div>
+            <div className={`${styles.formGroup} ${styles.formGroupWide}`}>
+              <label htmlFor="settings-address">Address</label>
+              <textarea
+                id="settings-address"
+                data-testid="settings-address"
+                rows={3}
+                {...register('address')}
+              />
+              <span className={styles.hint}>Required to send a tax invoice (FTA seller address).</span>
+              {errors.address && <span className={styles.errorText}>{errors.address.message}</span>}
             </div>
             <div className={styles.formGroup}>
               <label>WhatsApp Number</label>
@@ -120,7 +158,12 @@ export const Settings = () => {
         </div>
 
         <div className={styles.actions} style={{ maxWidth: '800px' }}>
-          <button type="submit" className={styles.primaryBtn} disabled={updateMutation.isPending}>
+          <button
+            type="submit"
+            className={styles.primaryBtn}
+            data-testid="settings-save"
+            disabled={updateMutation.isPending}
+          >
             {updateMutation.isPending ? 'Saving...' : 'Save Settings'}
           </button>
         </div>

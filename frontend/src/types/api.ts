@@ -23,6 +23,7 @@ export interface ErrorResponse {
   error: {
     message: string;
     code?: string;
+    field?: string;
   };
 }
 

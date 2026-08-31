@@ -65,8 +65,22 @@ class Invoice(SQLModel, table=True):
         )
     )
     issue_date: date = Field(sa_column=Column(Date, nullable=False))
+    supply_date: date = Field(sa_column=Column(Date, nullable=False))
     due_date: date = Field(sa_column=Column(Date, nullable=False))
     notes: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
+
+    # FTA snapshots — null on DRAFT; frozen at send
+    invoice_kind: Optional[str] = Field(default=None, max_length=20)
+    seller_trn_snapshot: Optional[str] = Field(default=None, max_length=15)
+    seller_name_snapshot: Optional[str] = Field(default=None, max_length=255)
+    seller_address_snapshot: Optional[str] = Field(
+        default=None, sa_column=Column(Text, nullable=True)
+    )
+    buyer_trn_snapshot: Optional[str] = Field(default=None, max_length=15)
+    buyer_name_snapshot: Optional[str] = Field(default=None, max_length=255)
+    buyer_address_snapshot: Optional[str] = Field(
+        default=None, sa_column=Column(Text, nullable=True)
+    )
 
     # Timestamps
     created_at: datetime = Field(

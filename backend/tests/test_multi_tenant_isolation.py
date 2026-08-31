@@ -183,6 +183,13 @@ def test_invoice_is_workspace_isolated():
     r = client.get(f"/api/v1/invoices/{invoice_id}", headers=headers_b)
     assert r.status_code == 404, f"cross-tenant read leaked: {r.status_code} {r.text}"
 
+    r = client.put(
+        f"/api/v1/invoices/{invoice_id}",
+        json={"notes": "HACKED"},
+        headers=headers_b,
+    )
+    assert r.status_code == 404, f"cross-tenant write leaked: {r.status_code} {r.text}"
+
     # Workspace B should not send invoice
     r = client.post(f"/api/v1/invoices/{invoice_id}/send", json={}, headers=headers_b)
     assert r.status_code == 404, f"cross-tenant send leaked: {r.status_code} {r.text}"
@@ -218,6 +225,13 @@ def test_payment_is_workspace_isolated():
     assert r.status_code == 201, r.text
     client_id = r.json()["data"]["id"]
 
+    r = client.put(
+        "/api/v1/workspaces/me",
+        json={"trn": "100123456789012", "address": "Warehouse 12, Dubai"},
+        headers=headers_a,
+    )
+    assert r.status_code == 200, r.text
+
     r = client.post(
         "/api/v1/invoices",
         json={
@@ -238,7 +252,7 @@ def test_payment_is_workspace_isolated():
     assert r.status_code == 201, r.text
     invoice_id = r.json()["data"]["id"]
 
-    # Send invoice so it can accept payments
+    # Send invoice so it can accept payments (FTA seller TRN + address)
     r = client.post(f"/api/v1/invoices/{invoice_id}/send", json={}, headers=headers_a)
     assert r.status_code == 200, r.text
 
@@ -247,7 +261,7 @@ def test_payment_is_workspace_isolated():
     headers_b = {"Authorization": f"Bearer {token_b}"}
 
     r = client.post(
-        f"/api/v1/payments/invoices/{invoice_id}/record",
+        f"/api/v1/invoices/{invoice_id}/payments",
         json={
             "amount": 100.0,
             "payment_method": "CASH",

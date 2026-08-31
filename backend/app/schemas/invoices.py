@@ -1,5 +1,5 @@
 """
-Invoice CRUD Schemas.
+Invoice CRUD Schemas (WP-A FTA tax invoice).
 """
 
 from datetime import date, datetime
@@ -8,49 +8,81 @@ from enum import Enum
 from typing import List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.models.invoice import InvoiceStatus
 
 
 class Currency(str, Enum):
-    """Supported currencies for MVP."""
+    """Write/send lock: AED only (USD tax invoices are out of this WP)."""
 
-    AED = "AED"  # UAE Dirham
-    USD = "USD"  # US Dollar
-
-
-class InvoiceItemBase(BaseModel):
-    """Base invoice item schema."""
-
-    description: str = Field(..., min_length=1, max_length=500)
-    quantity: Decimal = Field(..., gt=0)  # Must be > 0
-    unit_price: Decimal = Field(..., ge=0)  # Must be >= 0
-    tax_rate: Decimal = Field(default=0, ge=0)  # Must be >= 0
+    AED = "AED"
 
 
-class InvoiceItemCreate(InvoiceItemBase):
-    """Schema for creating an invoice item."""
+class InvoiceKind(str, Enum):
+    STANDARD = "STANDARD"
+    SIMPLIFIED = "SIMPLIFIED"
 
-    pass
+
+class InvoiceItemCreate(BaseModel):
+    """Create/replace line. Description and unit_price optional iff product_id."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    description: Optional[str] = Field(None, min_length=1, max_length=500)
+    quantity: Decimal = Field(..., gt=0)
+    unit_price: Optional[Decimal] = Field(None, ge=0)
+    tax_rate: Optional[Decimal] = Field(None, ge=0, le=100)
+    product_id: Optional[UUID] = None
+    discount_percent: Decimal = Field(default=Decimal("0"), ge=0)
+    discount_amount: Decimal = Field(default=Decimal("0"), ge=0)
+
+    @model_validator(mode="after")
+    def xor_discounts_and_adhoc_fields(self) -> "InvoiceItemCreate":
+        if self.discount_percent > 0 and self.discount_amount > 0:
+            raise ValueError(
+                "Provide either discount_percent or discount_amount, not both"
+            )
+        if self.product_id is None:
+            if not self.description:
+                raise ValueError("description is required when product_id is omitted")
+            if self.unit_price is None:
+                raise ValueError("unit_price is required when product_id is omitted")
+        return self
 
 
 class InvoiceItemUpdate(BaseModel):
-    """Schema for updating an invoice item."""
+    """Partial item patch (unused by current replace-all PUT)."""
+
+    model_config = ConfigDict(extra="forbid")
 
     description: Optional[str] = Field(None, min_length=1, max_length=500)
     quantity: Optional[Decimal] = Field(None, gt=0)
     unit_price: Optional[Decimal] = Field(None, ge=0)
-    tax_rate: Optional[Decimal] = Field(None, ge=0)
+    tax_rate: Optional[Decimal] = Field(None, ge=0, le=100)
+    product_id: Optional[UUID] = None
+    discount_percent: Optional[Decimal] = Field(None, ge=0)
+    discount_amount: Optional[Decimal] = Field(None, ge=0)
 
 
-class InvoiceItemResponse(InvoiceItemBase):
-    """Schema for invoice item response."""
+class InvoiceItemResponse(BaseModel):
+    """Line with resolved tax, net, VAT, and gross."""
 
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
     invoice_id: UUID
+    product_id: Optional[UUID] = None
+    uom_id: Optional[UUID] = None
+    sku_snapshot: Optional[str] = None
+    description: str
+    quantity: Decimal
+    unit_price: Decimal
+    tax_rate: Decimal
+    discount_percent: Decimal
+    discount_amount: Decimal
+    line_net: Decimal
+    tax_amount: Decimal
     total_price: Decimal
     created_at: datetime
     updated_at: datetime
@@ -77,20 +109,30 @@ class InvoiceBase(BaseModel):
 class InvoiceCreate(InvoiceBase):
     """Schema for creating a new invoice."""
 
+    model_config = ConfigDict(extra="forbid")
+
     client_id: UUID
-    items: List[InvoiceItemCreate] = Field(
-        ..., min_length=1
-    )  # At least 1 item required
+    supply_date: Optional[date] = None
+    items: List[InvoiceItemCreate] = Field(..., min_length=1)
+
+    @model_validator(mode="after")
+    def supply_not_after_issue(self) -> "InvoiceCreate":
+        if self.supply_date is not None and self.supply_date > self.issue_date:
+            raise ValueError("supply_date may not be after issue_date")
+        return self
 
 
 class InvoiceUpdate(BaseModel):
     """Schema for updating a draft invoice."""
 
+    model_config = ConfigDict(extra="forbid")
+
     issue_date: Optional[date] = None
+    supply_date: Optional[date] = None
     due_date: Optional[date] = None
     currency: Optional[Currency] = None
     notes: Optional[str] = Field(None, max_length=5000)
-    items: Optional[List[InvoiceItemCreate]] = None
+    items: Optional[List[InvoiceItemCreate]] = Field(None, min_length=1)
 
     @field_validator("due_date")
     @classmethod
@@ -103,6 +145,16 @@ class InvoiceUpdate(BaseModel):
             raise ValueError("Due date must be on or after issue date")
         return v
 
+    @model_validator(mode="after")
+    def supply_not_after_issue(self) -> "InvoiceUpdate":
+        if (
+            self.supply_date is not None
+            and self.issue_date is not None
+            and self.supply_date > self.issue_date
+        ):
+            raise ValueError("supply_date may not be after issue_date")
+        return self
+
 
 class InvoiceResponse(InvoiceBase):
     """Schema for invoice response."""
@@ -114,9 +166,19 @@ class InvoiceResponse(InvoiceBase):
     client_id: UUID
     invoice_number: str
     status: InvoiceStatus
+    supply_date: date
+    invoice_kind: Optional[InvoiceKind] = None
+    seller_trn_snapshot: Optional[str] = None
+    seller_name_snapshot: Optional[str] = None
+    seller_address_snapshot: Optional[str] = None
+    buyer_trn_snapshot: Optional[str] = None
+    buyer_name_snapshot: Optional[str] = None
+    buyer_address_snapshot: Optional[str] = None
     subtotal: Decimal
     tax_amount: Decimal
     total_amount: Decimal
+    amount_paid: Decimal
+    balance_due: Decimal
     items: List[InvoiceItemResponse]
     created_at: datetime
     updated_at: datetime
@@ -133,6 +195,8 @@ class InvoiceListItem(BaseModel):
     invoice_number: str
     status: InvoiceStatus
     total_amount: Decimal
+    amount_paid: Decimal
+    balance_due: Decimal
     issue_date: date
     due_date: date
     created_at: datetime
@@ -149,7 +213,7 @@ class InvoiceListResponse(BaseModel):
 class InvoiceSendRequest(BaseModel):
     """Schema for sending an invoice."""
 
-    recipient: Optional[str] = None  # Email or phone for notification
+    recipient: Optional[str] = None
 
 
 class InvoiceVoidRequest(BaseModel):

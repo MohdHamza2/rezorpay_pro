@@ -182,3 +182,159 @@ No selector/pagination/label failures during the run. First Playwright pass was 
 - Playwright not wired into GitHub Actions (explicitly out of scope)
 
 Those procurement/AR paths already have API e2e: `test_e2e_spo.py`, `test_e2e_grn.py`, `test_e2e_3way_match.py`.
+
+---
+
+# WP-B FTA Tax Invoice UI — Plan (before edits)
+
+**Date:** 2026-08-31
+**Owner:** frontend / coder
+**Depends on:** WP-A API (`c8e1a4f2b6d0`). Do not touch Alembic. Do not rewrite payment PUT.
+**Spec:** `architecture/wave-fta-tax-invoice-addendum.md` WP-B; `.agents/reports/wp-a-fta-tax-invoice-review.md` W2 snapshot fallback.
+
+## Goal
+
+Settings address + invoice form (optional `product_id`, line discount, optional tax inherit, `supply_date`, AED) + client-side PDF titled **Tax Invoice**. Existing Vite + React app only. No Next.js, no Playwright (WP-C), no Arabic font, no IBAN, no Net terms.
+
+## Files
+
+| File | Change |
+|---|---|
+| `frontend/src/api/errors.ts` | Extract `error.code` / `message` / `field` (incl. `FTA_SEND_BLOCKED`) |
+| `frontend/src/api/client.ts` | Toast extracted API message (not generic `detail`) |
+| `frontend/src/types/api.ts` | `ErrorResponse.error.field` |
+| `frontend/src/api/workspaces.ts` | `address` |
+| `frontend/src/api/clients.ts` | `tax_id` (buyer TRN) |
+| `frontend/src/api/invoices.ts` | Snapshots, `supply_date`, line net/VAT/discount/`product_id`; write payloads forbid extra keys |
+| `frontend/src/pages/Settings.tsx` | Address field; surface API field errors |
+| `frontend/src/pages/Clients.tsx` | Label `tax_id` as TRN; B2B address hint |
+| `frontend/src/pages/Invoices.tsx` | Catalog + ad-hoc lines; DRAFT-only edit; send surfaces FTA message |
+| `frontend/src/components/pdf/InvoicePDF.tsx` | Title Tax Invoice; seller/buyer TRN+address; supply date; line net/VAT/gross; snapshot-or-live fallback |
+| CSS modules | Address textarea, line-item grid, hints |
+
+## PDF fallback (W2)
+
+Prefer snapshots when `status !== DRAFT` **and** the snapshot string is non-null/non-empty; otherwise live `/workspaces/me` + client. GET `/invoices/{id}` before download (list rows have no items).
+
+## Out of scope
+
+Playwright WP-C, quotes/LPO, Arabic, IBAN, Net 30/45/60, Alembic, payment PUT, git commit.
+
+## Acceptance
+
+`cd frontend && npm run build` succeeds. Extra keys `hs_code` / `from_uom_id` never sent. `?? 0` before `toFixed` on amounts.
+
+---
+
+# WP-B FTA Tax Invoice UI — Implementation (completed)
+
+**Date:** 2026-08-31
+**Build:** `cd frontend && npm run build` — `tsc -b && vite build` succeeded (Vite 8.2.1). Pre-existing chunk-size warning only.
+
+## Shipped
+
+1. **Settings** — workspace `address` textarea (`data-testid="settings-address"`). TRN + default tax 5% kept. API `error.field` mapped onto the form (`workspace.address` → `address`). Address is not required to *save* (drafts allowed); hint states it is required to *send*.
+2. **Invoice form** — optional catalog `product_id` (GET products, DEFAULT_SALES fill) + ad-hoc name/qty/price; line discount % XOR amount; blank VAT inherits; `supply_date`; currency locked AED. Create/update bodies omit `hs_code`, `from_uom_id`, `total_price`, `client_id` on PUT. Edit still DRAFT-only; loads GET `/invoices/{id}` because list rows have no items.
+3. **PDF** — title **Tax Invoice**. Seller/buyer name, address, TRN; supply date; line net / VAT% / VAT AED / gross; AED totals. Snapshots when `status !== DRAFT` and non-empty; else live workspace + client (W2 old SENT rows). CANCELLED watermark. English only. Download fetches full invoice then `@react-pdf/renderer` `pdf().toBlob()`.
+4. **Send** — `FTA_SEND_BLOCKED` toasted from `error.message` on the send action (interceptor skips that code so the button handler is the surface).
+5. **Clients** — `tax_id` labeled TRN; address B2B send hint.
+
+Alembic, payment PUT, Playwright WP-C, Arabic, IBAN, Net terms: not touched.
+
+---
+
+# WP-C FTA Tax Invoice Playwright E2E — Plan (before edits)
+
+**Date:** 2026-08-31
+**Owner:** frontend / coder
+**Depends on:** WP-A API + WP-B UI
+**Spec:** `architecture/wave-fta-tax-invoice-addendum.md` WP-C; `.agents/reports/wp-a-fta-tax-invoice-review.md`
+
+## Goal
+
+Extend the existing Vite Playwright harness (`frontend/playwright.config.ts`, `frontend/e2e/`). Prove FTA send-block, SIMPLIFIED send + Tax Invoice preview, and cross-workspace invoice GET 404. No second frontend, no Next.js, no CI product, never SQLite.
+
+## Harness (reuse)
+
+| Item | Choice |
+|---|---|
+| Config | existing `frontend/playwright.config.ts` — `testDir: e2e`, Chromium, workers 1 |
+| Helpers | `frontend/e2e/helpers.ts`, `global-setup.ts` (`GET /health/ready`) |
+| Script | `npm run test:e2e` |
+| API | docker postgres **5434**, API **8000**, Vite **5173** |
+| Auth | unique emails, password `Passw0rd1` (8+); retry register on 429 (5/minute) |
+
+## Specs to add
+
+1. `frontend/e2e/fta-send-blocked.spec.ts` — register → client + DRAFT invoice → send without Settings TRN/address → user sees `FTA_SEND_BLOCKED` (toast or `data-testid="fta-send-blocked"`). Stays DRAFT.
+2. `frontend/e2e/fta-tax-invoice.spec.ts` — Settings TRN `100123456789003` + address; client with address (SIMPLIFIED, no buyer TRN); one AED line + supply_date; send → SENT; PDF preview **Tax Invoice** + seller TRN; reload still SENT.
+3. `frontend/e2e/fta-isolation.spec.ts` — workspace B GET `/api/v1/invoices/{id}` of A → **404** not 403 (request context, other token).
+
+## UI `data-testid` (keep CSS modules)
+
+Settings save; Clients add/TRN/address; invoice create/send/line/supply_date; FTA banner; PDF preview title + seller TRN. Preview modal (HTML, same snapshot-or-live as `InvoicePDF`) so E2E does not parse binary PDF.
+
+## Out of scope
+
+Arabic PDF, quotes/LPO, payments browser E2E, git commit, GitHub Actions.
+
+## Acceptance
+
+- `npm run test:e2e` green against docker API (not SQLite)
+- Existing product catalog + isolation still pass
+- `npm run build` still succeeds
+- Fix UI bugs hit in the run; API bugs → pytest on PostgreSQL after logging `backend-execution-report.md`
+
+---
+
+# WP-C FTA Tax Invoice Playwright E2E — Implementation (completed)
+
+**Date:** 2026-08-31
+**API:** docker postgres host **5434**, API **8000**, Vite **5173**. `/health/ready` 200. Not SQLite.
+
+## Result
+
+```
+Running 5 tests using 1 worker
+  ok 1 [chromium] › e2e\fta-isolation.spec.ts:4:1 › cross-tenant invoice GET returns 404 (733ms)
+  ok 2 [chromium] › e2e\fta-send-blocked.spec.ts:4:1 › send invoice without workspace TRN is blocked (1.6s)
+  ok 3 [chromium] › e2e\fta-tax-invoice.spec.ts:11:1 › simplified tax invoice send and preview (2.0s)
+  ok 4 [chromium] › e2e\product-catalog.spec.ts:12:1 › product master catalog happy path (2.4s)
+  ok 5 [chromium] › e2e\product-isolation.spec.ts:4:1 › cross-tenant product GET returns 404 (1.1m)
+  5 passed (1.2m)
+```
+
+`npm run build` — `tsc -b && vite build` succeeded (Vite 8.2.1). Pre-existing chunk-size warning only.
+
+No API bug found. No backend/pytest changes. Isolation 404 (not 403) confirmed in browser request-context.
+
+Product-isolation 1.1m is register `5/minute` retry (helpers wait 16s on 429). FTA specs themselves were ~2s each.
+
+## UI / harness
+
+- `data-testid` on Settings save, Clients add/TRN/address, invoice create/send/line/supply_date, FTA banner, PDF preview.
+- HTML **Tax Invoice** preview (snapshot-or-live, same `snapOrLive` as `InvoicePDF`) so E2E asserts title + seller TRN without parsing binary PDF. Download still works.
+- Persistent `fta-send-blocked` alert for `FTA_SEND_BLOCKED` (toast still fires).
+- Register helpers retry on 429. Password still 8+.
+- Happy path is **SIMPLIFIED** (seller TRN `100123456789003` + address; client address; no buyer TRN; one ad-hoc AED line).
+
+## Files
+
+- `frontend/e2e/fta-send-blocked.spec.ts` (new)
+- `frontend/e2e/fta-tax-invoice.spec.ts` (new)
+- `frontend/e2e/fta-isolation.spec.ts` (new)
+- `frontend/e2e/helpers.ts`
+- `frontend/src/pages/Invoices.tsx`, `Invoices.module.css`
+- `frontend/src/pages/Clients.tsx`, `Settings.tsx`
+- `frontend/src/components/pdf/invoicePdfFields.ts` (new)
+- `frontend/src/components/pdf/InvoicePdfPreview.tsx` (new)
+- `frontend/src/components/pdf/InvoicePDF.tsx` (shared `snapOrLive`)
+
+## Not covered (leftovers)
+
+- STANDARD send in the browser (B2B buyer TRN); API covers it
+- Catalog `product_id` line in this E2E (addendum WP-C listed it; this slice used ad-hoc per the WP-C brief)
+- Arabic PDF, quotes/LPO, payments browser E2E
+- Playwright not wired into GitHub Actions
+- Frontend register zod min-6 vs API min-8
+- Auth register 5/minute (retries; product-isolation can wait ~1m when the window is full)

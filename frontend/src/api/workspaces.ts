@@ -6,6 +6,7 @@ export interface Workspace {
   name: string;
   slug: string;
   trn: string | null;
+  address: string | null;
   logo_url: string | null;
   whatsapp_number: string | null;
   default_tax_rate: number;

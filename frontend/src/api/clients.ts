@@ -5,8 +5,9 @@ export interface Client {
   id: string;
   name: string;
   email: string;
-  address?: string;
+  address?: string | null;
   phone?: string;
+  tax_id?: string | null;
   created_at: string;
 }
 

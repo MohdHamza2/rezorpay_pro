@@ -105,11 +105,23 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
+    detail = exc.detail
+    if isinstance(detail, dict) and "code" in detail:
+        error = {
+            "code": detail.get("code"),
+            "message": detail.get("message", ""),
+        }
+        if detail.get("field"):
+            error["field"] = detail["field"]
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"success": False, "error": error},
+        )
     return JSONResponse(
         status_code=exc.status_code,
         content={
             "success": False,
-            "error": {"code": "HTTP_ERROR", "message": exc.detail},
+            "error": {"code": "HTTP_ERROR", "message": detail},
         },
     )
 

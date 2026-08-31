@@ -12,6 +12,7 @@ class WorkspaceResponse(BaseModel):
     name: str
     slug: str
     trn: Optional[str]
+    address: Optional[str] = None
     logo_url: Optional[str]
     whatsapp_number: Optional[str]
     default_tax_rate: Decimal
@@ -28,6 +29,7 @@ class WorkspaceResponse(BaseModel):
 class WorkspaceUpdate(BaseModel):
     name: Optional[str] = Field(None, max_length=255)
     trn: Optional[str] = Field(None, max_length=50)
+    address: Optional[str] = None
     logo_url: Optional[str] = Field(None, max_length=1000)
     whatsapp_number: Optional[str] = Field(None, max_length=50)
     default_tax_rate: Optional[Decimal] = Field(None, ge=0)

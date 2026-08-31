@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Optional, List, TYPE_CHECKING
 import uuid
 
-from sqlalchemy import Column, DateTime, String, Numeric
+from sqlalchemy import Column, DateTime, String, Numeric, Text
 from decimal import Decimal
 from sqlmodel import Field, Relationship, SQLModel
 
@@ -28,6 +28,7 @@ class Workspace(SQLModel, table=True):
 
     # Wave 2 Workspace Settings
     trn: Optional[str] = Field(default=None, max_length=50)
+    address: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
     logo_url: Optional[str] = Field(default=None, max_length=1000)
     whatsapp_number: Optional[str] = Field(default=None, max_length=50)
     default_tax_rate: Decimal = Field(

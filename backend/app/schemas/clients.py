@@ -6,17 +6,23 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, EmailStr, Field
 
 
 class ClientBase(BaseModel):
     """Base client schema with common fields."""
 
+    model_config = ConfigDict(populate_by_name=True)
+
     name: str = Field(..., min_length=1, max_length=100)
     email: Optional[EmailStr] = None
     phone: Optional[str] = Field(None, max_length=50)
     address: Optional[str] = Field(None, max_length=500)
-    tax_id: Optional[str] = Field(None, max_length=50)
+    tax_id: Optional[str] = Field(
+        None,
+        max_length=50,
+        validation_alias=AliasChoices("tax_id", "trn"),
+    )
 
 
 class ClientCreate(ClientBase):
@@ -28,11 +34,17 @@ class ClientCreate(ClientBase):
 class ClientUpdate(BaseModel):
     """Schema for updating a client."""
 
+    model_config = ConfigDict(populate_by_name=True)
+
     name: Optional[str] = Field(None, min_length=1, max_length=100)
     email: Optional[EmailStr] = None
     phone: Optional[str] = Field(None, max_length=50)
     address: Optional[str] = Field(None, max_length=500)
-    tax_id: Optional[str] = Field(None, max_length=50)
+    tax_id: Optional[str] = Field(
+        None,
+        max_length=50,
+        validation_alias=AliasChoices("tax_id", "trn"),
+    )
 
 
 class ClientResponse(ClientBase):
