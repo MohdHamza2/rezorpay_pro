@@ -160,6 +160,14 @@ def _convert(headers: dict, quote_id: str):
     )
 
 
+def _convert_lpo(headers: dict, quote_id: str, body: dict | None = None):
+    return client.post(
+        f"/api/v1/quotations/{quote_id}/convert-to-lpo",
+        json=body or {},
+        headers=headers,
+    )
+
+
 def _db_quote_status(quote_id: str) -> str:
     """Read status from PostgreSQL. Do not use GET — GET expires on-read."""
 
@@ -407,6 +415,7 @@ def test_isolation_workspace_b_404():
     assert _send(headers_b, qid).status_code == 404
     assert _accept(headers_b, qid).status_code == 404
     assert _convert(headers_b, qid).status_code == 404
+    assert _convert_lpo(headers_b, qid).status_code == 404
 
 
 def test_send_does_not_require_workspace_trn():
@@ -650,6 +659,51 @@ def test_convert_after_invoice_soft_delete_409():
     assert err["field"] == "quotation_id"
     listed = client.get("/api/v1/invoices", headers=headers)
     assert listed.json()["data"] == []
+    lpo = _convert_lpo(headers, quote["id"])
+    assert lpo.status_code == 409, lpo.text
+    assert lpo.json()["error"]["code"] == "CONFLICT"
+    assert lpo.json()["error"]["field"] == "quotation_id"
+
+
+def test_convert_to_lpo_then_invoice_409():
+    token, _ = _register("quo_lpo_mutex", "Quote LPO Mutex WS")
+    headers = _headers(token)
+    client_id = _create_client(headers)
+    quote = _create_quote(headers, client_id, [_adhoc_item()])
+    assert _send(headers, quote["id"]).status_code == 200
+    assert _accept(headers, quote["id"]).status_code == 200
+    first = _convert_lpo(headers, quote["id"])
+    assert first.status_code == 201, first.text
+    lpo = first.json()["data"]
+    assert lpo["status"] == "DRAFT"
+    assert lpo["quotation_id"] == quote["id"]
+    assert lpo["lpo_number"].startswith(f"LPO-{YEAR}-")
+    second = _convert_lpo(headers, quote["id"])
+    assert second.status_code == 200, second.text
+    assert second.json()["data"]["id"] == lpo["id"]
+    invoice = _convert(headers, quote["id"])
+    assert invoice.status_code == 409, invoice.text
+    assert invoice.json()["error"]["code"] == "CONFLICT"
+    assert invoice.json()["error"]["field"] == "quotation_id"
+    got = client.get(f"/api/v1/quotations/{quote['id']}", headers=headers)
+    assert got.json()["data"]["status"] == "CONVERTED"
+    assert got.json()["data"]["converted_lpo_id"] == lpo["id"]
+    assert got.json()["data"]["converted_invoice_id"] is None
+
+
+def test_convert_to_invoice_then_lpo_409():
+    token, _ = _register("quo_inv_mutex", "Quote INV Mutex WS")
+    headers = _headers(token)
+    client_id = _create_client(headers)
+    quote = _create_quote(headers, client_id, [_adhoc_item()])
+    assert _send(headers, quote["id"]).status_code == 200
+    assert _accept(headers, quote["id"]).status_code == 200
+    invoice = _convert(headers, quote["id"])
+    assert invoice.status_code == 201, invoice.text
+    lpo = _convert_lpo(headers, quote["id"])
+    assert lpo.status_code == 409, lpo.text
+    assert lpo.json()["error"]["code"] == "CONFLICT"
+    assert lpo.json()["error"]["field"] == "quotation_id"
 
 
 def test_concurrent_quotation_numbers_unique():

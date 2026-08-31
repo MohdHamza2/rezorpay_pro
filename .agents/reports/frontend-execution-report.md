@@ -512,3 +512,187 @@ Product-isolation 1.1m is register `5/minute` retry (helpers wait 16s on 429). Q
 - LPO / convert-to-CPO
 - Playwright not wired into GitHub Actions
 - Auth register 5/minute (retries; product-isolation can wait ~1m)
+
+---
+
+# WP-B Customer LPO UI + PDF — Plan (before edits)
+
+**Date:** 2026-09-01
+**Owner:** frontend / coder
+**Depends on:** WP-A API (`/api/v1/customer-purchase-orders`, Alembic `59084165d346`). Do not touch Alembic. Do not retitle Tax Invoice or Quotation PDFs. Do not change supplier `/spo` “Purchase Orders” nav.
+**Spec:** `architecture/wave-customer-lpo-addendum.md` WP-B; `.agents/reports/architect-customer-lpo-note.md`
+
+## Goal
+
+Add Customer LPO to the existing Vite + React app: list + filters, DRAFT create/edit, detail (receive / cancel / partial invoice), convert ACCEPTED quote → DRAFT LPO, client-side PDF titled **LPO**. Invoice PDF stays **Tax Invoice**. Quotation PDF stays **Quotation**. SPO nav stays “Purchase Orders”. No Next.js, no Playwright (WP-C), no OCR, no Arabic.
+
+## API client
+
+`frontend/src/api/lpos.ts`: list/get/create/update/delete, receive, cancel, POST invoices (partial).
+
+- List unwraps `PaginatedResponse.data` array (`response.data.data`) with `page` / `per_page`.
+- Write bodies only allow WP-A keys (`extra="forbid"`): never `hs_code`, `from_uom_id`, `line_net`, `total_price`, `quantity_invoiced`, `quotation_id` on manual create.
+- Partial invoice body: `{ items?: [{ customer_purchase_order_item_id, quantity }], notes? }` only.
+- Convert-from-quote lives on quotations client: `POST /quotations/{id}/convert-to-lpo`.
+
+## Files
+
+| File | Change |
+|---|---|
+| `frontend/src/api/lpos.ts` | CRUD + receive/cancel/invoices |
+| `frontend/src/api/quotations.ts` | `convertQuotationToLpo` + `converted_lpo_id` |
+| `frontend/src/pages/Lpos.tsx` | List + status/client/search filters |
+| `frontend/src/pages/LpoForm.tsx` | Create / DRAFT-only edit (catalog + ad-hoc, XOR discount, inherit tax, AED) |
+| `frontend/src/pages/LpoDetail.tsx` | Receive, cancel, remaining qty → DRAFT invoice |
+| `frontend/src/pages/lpoHelpers.ts` | Form payloads, dates, AED `?? 0` |
+| `frontend/src/pages/LpoStatusBadge.tsx` | DRAFT/RECEIVED/PARTIAL/INVOICED/CANCELLED |
+| `frontend/src/pages/Lpos.module.css` | LPO badges + invoice-remaining inputs |
+| `frontend/src/components/pdf/LpoPDF.tsx` | Title **LPO**; internal + customer PO; invoiced/remaining |
+| `frontend/src/components/pdf/LpoPdfPreview.tsx` | HTML preview title **LPO** |
+| `frontend/src/components/Layout.tsx` | Sales nav: Clients, Quotations, **LPO**, Invoices (`/lpos`) |
+| `frontend/src/App.tsx` | AuthGuard routes `/lpos`, `/lpos/new`, `/lpos/:id`, `/lpos/:id/edit` |
+| `frontend/src/pages/Quotations.tsx` | Convert to LPO next to convert-to-invoice; disable invoice convert if LPO |
+| `frontend/src/pages/QuotationDetail.tsx` | Same convert-to-LPO + open LPO when `converted_lpo_id` |
+
+## Out of scope
+
+Playwright WP-C, Alembic, InvoicePDF title, QuotationPDF title, SPO/GRN, OCR, git commit.
+
+## Acceptance
+
+`cd frontend && npm run build` succeeds. Extra keys never sent. `?? 0` before `toFixed`. PDF title **LPO** not Tax Invoice. `/spo` still “Purchase Orders”.
+
+---
+
+# WP-B Customer LPO UI + PDF — Implementation (completed)
+
+**Date:** 2026-09-01
+**Build:** `cd frontend && npm run build` — `tsc -b && vite build` succeeded (Vite 8.2.1). Pre-existing chunk-size warning only.
+
+## Shipped
+
+1. **API client** — `frontend/src/api/lpos.ts` unwraps paginated `data` for list. Write payloads omit extra keys (`hs_code`, `from_uom_id`, line totals, `quotation_id` on manual create). Receive sends `{}`. Partial invoice sends `{ items: [{ customer_purchase_order_item_id, quantity }], notes? }` only.
+2. **Nav / routes** — Sales: Clients → Quotations → **LPO** (`/lpos`) → Invoices. AuthGuard routes: `/lpos`, `/lpos/new`, `/lpos/:id/edit`, `/lpos/:id`. Purchasing **Purchase Orders** still `/spo`.
+3. **List** — status / client / search (LPO # or customer PO), badges, receive (DRAFT), both internal `LPO-YYYY-XXXX` and `customer_po_number`.
+4. **Form** — catalog + ad-hoc lines, XOR discount, blank VAT inherits 5%, AED, optional customer PO + expected delivery, DRAFT-only edit.
+5. **Detail** — Receive, Cancel (RECEIVED), Delete (DRAFT), remaining qty inputs → DRAFT invoice (navigates to `/invoices`). Status PARTIAL/INVOICED from API. Linked invoices listed.
+6. **Quote convert** — ACCEPTED quote: Convert to LPO next to Convert to invoice (`quotation-convert` unchanged). Invoice convert disabled if `converted_lpo_id`. Lands on DRAFT LPO.
+7. **PDF** — new `LpoPDF` title **LPO**, internal number, customer PO, quote ref, ordered/invoiced/remaining, CANCELLED watermark, English Helvetica. `InvoicePDF` still **Tax Invoice**. `QuotationPDF` still **Quotation**.
+
+Alembic, InvoicePDF title, QuotationPDF title, SPO nav, Playwright WP-C, OCR, git commit: not touched.
+
+## Files
+
+- `frontend/src/api/lpos.ts` (new)
+- `frontend/src/pages/Lpos.tsx` (new)
+- `frontend/src/pages/LpoForm.tsx` (new)
+- `frontend/src/pages/LpoDetail.tsx` (new)
+- `frontend/src/pages/lpoHelpers.ts` (new)
+- `frontend/src/pages/LpoStatusBadge.tsx` (new)
+- `frontend/src/pages/Lpos.module.css` (new)
+- `frontend/src/components/pdf/LpoPDF.tsx` (new)
+- `frontend/src/components/pdf/LpoPdfPreview.tsx` (new)
+- `frontend/src/api/quotations.ts`
+- `frontend/src/api/invoices.ts` (`customer_purchase_order_id` on GET type)
+- `frontend/src/pages/Quotations.tsx`
+- `frontend/src/pages/QuotationDetail.tsx`
+- `frontend/src/components/Layout.tsx`
+- `frontend/src/App.tsx`
+- `.agents/reports/frontend-execution-report.md`
+
+---
+
+# WP-C Customer LPO Playwright E2E — Plan (before edits)
+
+**Date:** 2026-09-01
+**Owner:** frontend / coder
+**Depends on:** WP-A API (`/api/v1/customer-purchase-orders`) + WP-B UI + PDF
+**Spec:** `architecture/wave-customer-lpo-addendum.md` WP-C; user brief (manual LPO receive + remaining qty → DRAFT invoice; PDF title **LPO**; quote ACCEPTED convert; cross-tenant GET 404 not 403)
+
+## Goal
+
+Extend the existing Vite Playwright harness (`frontend/playwright.config.ts`, `frontend/e2e/helpers.ts`, product + FTA + quotation specs). Prove manual LPO create → receive → partial remaining-qty invoice lands DRAFT, HTML preview title is **LPO** (not Tax Invoice), ACCEPTED quote converts to DRAFT LPO, and workspace B cannot GET workspace A's LPO. Do not break product/FTA/quotation tests. Do not rename supplier SPO nav. Never SQLite. No OCR.
+
+## Harness (reuse)
+
+| Item | Choice |
+|---|---|
+| Config | existing `frontend/playwright.config.ts` — `testDir: e2e`, Chromium, workers 1 |
+| Helpers | `frontend/e2e/helpers.ts`, `global-setup.ts` (`GET /health/ready`) |
+| Script | `npm run test:e2e` from `frontend/` |
+| API | docker postgres **5434**, API **8000**, Vite **5173** |
+| Auth | unique emails, password `Passw0rd1` (8+); retry register on 429 (5/minute) |
+
+## Specs to add
+
+1. `frontend/e2e/lpos.spec.ts` — register → client → DRAFT LPO (one AED ad-hoc line) → preview **LPO** (not Tax Invoice) → receive → invoice remaining qty (partial) → `/invoices` row is **DRAFT**. Cheap extra: after SENT/ACCEPTED quote, Convert to LPO lands DRAFT LPO; convert-to-invoice after LPO is 409. Invoice send without Settings TRN/address still `FTA_SEND_BLOCKED`.
+2. `frontend/e2e/lpo-isolation.spec.ts` — workspace A creates LPO via API; workspace B `GET /api/v1/customer-purchase-orders/{id}` → **404** not 403 (request context).
+
+## UI `data-testid` (keep CSS modules)
+
+Fill gaps: `lpo-invoice-qty-0` (index, not UUID), `lpo-remaining-0`. Reuse `nav-lpos`, `lpo-create`, `lpo-form`, `lpo-form-submit`, `lpo-receive`, `lpo-invoice`, `lpo-pdf-title` / `lpo-pdf-preview`, `quotation-convert-lpo`, invoice-status/send, `fta-send-blocked`.
+
+## Out of scope
+
+OCR, WhatsApp, delivery notes, credit HOLD, Arabic PDF, GitHub Actions, git commit, supplier SPO/GRN nav rename.
+
+## Acceptance
+
+- `npm run test:e2e` green (product + FTA + quotations + LPO)
+- `npm run build` still succeeds
+- Fix UI bugs hit in the run; API bugs → log only (pytest already covers WP-A)
+
+---
+
+# WP-C Customer LPO Playwright E2E — Implementation (completed)
+
+**Date:** 2026-09-01
+**API:** docker postgres host **5434**, API **8000**, Vite **5173**. `/health/ready` 200 (`database: connected`). Not SQLite.
+
+## Result
+
+```
+Running 9 tests using 1 worker
+  ok 1 [chromium] › e2e\fta-isolation.spec.ts:4:1 › cross-tenant invoice GET returns 404 (682ms)
+  ok 2 [chromium] › e2e\fta-send-blocked.spec.ts:4:1 › send invoice without workspace TRN is blocked (1.6s)
+  ok 3 [chromium] › e2e\fta-tax-invoice.spec.ts:11:1 › simplified tax invoice send and preview (2.1s)
+  ok 4 [chromium] › e2e\lpo-isolation.spec.ts:4:1 › cross-tenant LPO GET returns 404 (1.1m)
+  ok 5 [chromium] › e2e\lpos.spec.ts:12:1 › manual LPO receive partial invoice lands draft invoice (4.5s)
+  ok 6 [chromium] › e2e\product-catalog.spec.ts:12:1 › product master catalog happy path (2.5s)
+  ok 7 [chromium] › e2e\product-isolation.spec.ts:4:1 › cross-tenant product GET returns 404 (445ms)
+  ok 8 [chromium] › e2e\quotation-isolation.spec.ts:4:1 › cross-tenant quotation GET returns 404 (1.1m)
+  ok 9 [chromium] › e2e\quotations.spec.ts:12:1 › quotation send accept convert to draft invoice (2.1s)
+  9 passed (2.4m)
+```
+
+`npm run build` — `tsc -b && vite build` succeeded (Vite 8.2.1). Pre-existing chunk-size warning only.
+
+No UI or API bugs found in the run. Product + FTA + quotation specs still pass. Isolation 404 (not 403) confirmed in request context. Supplier `/spo` nav still **Purchase Orders**.
+
+LPO isolation 1.1m and quotation-isolation 1.1m are register `5/minute` retry (helpers wait 16s on 429). LPO UI spec itself was 4.5s.
+
+## Specs shipped
+
+1. **Happy path** — unique register (password 8+) → client → DRAFT LPO (qty 2 ad-hoc AED line) → HTML preview title **LPO** (invoice `pdf-title` absent) → receive → invoice remaining qty 1 → `/invoices` DRAFT → send without Settings TRN/address still `FTA_SEND_BLOCKED`. Cheap: ACCEPTED quote Convert to LPO lands DRAFT LPO; convert-to-invoice after LPO is 409 `CONFLICT`.
+2. **Isolation** — workspace B `GET /api/v1/customer-purchase-orders/{id}` → **404** not 403.
+
+## UI / harness
+
+- `data-testid`: `lpo-invoice-qty-0` (index, not UUID), `lpo-remaining-0`. Existing create/receive/preview/convert-lpo ids reused.
+- Helper: `createAdhocLpoViaUi`. Register still retries 429.
+
+## Files
+
+- `frontend/e2e/lpos.spec.ts` (new)
+- `frontend/e2e/lpo-isolation.spec.ts` (new)
+- `frontend/e2e/helpers.ts`
+- `frontend/src/pages/LpoDetail.tsx`
+- `.agents/reports/frontend-execution-report.md`
+
+## Not covered (leftovers)
+
+- Invoice rest of remaining qty in the browser (second `/invoices`); this slice invoices 50% then lands DRAFT
+- Over-invoice UI toast; API pytest covers 400
+- OCR, WhatsApp, delivery notes, credit HOLD
+- Playwright not wired into GitHub Actions
+- Auth register 5/minute (retries; isolation specs can wait ~1m)

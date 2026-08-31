@@ -199,6 +199,21 @@ export async function createAdhocQuotationViaUi(
   await expect(page.getByTestId('quotation-detail')).toBeVisible();
 }
 
+export async function createAdhocLpoViaUi(
+  page: Page,
+  input: { clientName: string; description: string; quantity: string; price: string },
+): Promise<void> {
+  await page.getByTestId('nav-lpos').click();
+  await page.getByTestId('lpo-create').click();
+  await expect(page.getByTestId('lpo-form')).toBeVisible();
+  await selectOptionContaining(page, 'lpo-client-select', input.clientName);
+  await page.getByTestId('lpo-item-0-description').fill(input.description);
+  await page.getByTestId('lpo-item-0-quantity').fill(input.quantity);
+  await page.getByTestId('lpo-item-0-price').fill(input.price);
+  await page.getByTestId('lpo-form-submit').click();
+  await expect(page.getByTestId('lpo-detail')).toBeVisible();
+}
+
 export async function createAdhocInvoiceViaUi(
   page: Page,
   input: { clientName: string; description: string; quantity: string; price: string },

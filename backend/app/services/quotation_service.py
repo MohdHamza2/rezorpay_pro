@@ -16,9 +16,11 @@ from app.models.invoice import Invoice
 from app.models.quotation import Quotation, QuotationStatus
 from app.models.quotation_event import QuotationEventType
 from app.models.quotation_item import QuotationItem
+from app.models.customer_purchase_order import CustomerPurchaseOrder
 from app.schemas.common import ErrorCode
 from app.services.invoice_service import AED, InvoiceService, _workspace_tax_rate
 from app.services.quotation_number import QuotationNumberService
+from app.services.customer_po_service import CustomerPurchaseOrderService
 from app.services.quotation_support import (
     CONVERTIBLE,
     INVOICE_DUE_DAYS,
@@ -30,6 +32,7 @@ from app.services.quotation_support import (
     assert_validity,
     converted_notes,
     existing_converted_invoice,
+    existing_converted_lpo,
     expire_locked,
     frozen_invoice_items,
     log_event,
@@ -47,21 +50,35 @@ class QuotationService:
 
     @staticmethod
     def serialize(
-        quotation: Quotation, converted_invoice_id: Optional[uuid.UUID] = None
+        quotation: Quotation,
+        converted_invoice_id: Optional[uuid.UUID] = None,
+        converted_lpo_id: Optional[uuid.UUID] = None,
     ):
         from app.schemas.quotations import QuotationResponse
 
         payload = QuotationResponse.model_validate(quotation)
-        return payload.model_copy(update={"converted_invoice_id": converted_invoice_id})
+        return payload.model_copy(
+            update={
+                "converted_invoice_id": converted_invoice_id,
+                "converted_lpo_id": converted_lpo_id,
+            }
+        )
 
     @staticmethod
     def serialize_list_item(
-        quotation: Quotation, converted_invoice_id: Optional[uuid.UUID] = None
+        quotation: Quotation,
+        converted_invoice_id: Optional[uuid.UUID] = None,
+        converted_lpo_id: Optional[uuid.UUID] = None,
     ):
         from app.schemas.quotations import QuotationListItem
 
         payload = QuotationListItem.model_validate(quotation)
-        return payload.model_copy(update={"converted_invoice_id": converted_invoice_id})
+        return payload.model_copy(
+            update={
+                "converted_invoice_id": converted_invoice_id,
+                "converted_lpo_id": converted_lpo_id,
+            }
+        )
 
     @staticmethod
     async def map_converted_ids(
@@ -78,6 +95,22 @@ class QuotationService:
             )
         )
         return {qid: iid for qid, iid in result.all() if qid is not None}
+
+    @staticmethod
+    async def map_converted_lpo_ids(
+        session: AsyncSession,
+        quotation_ids: Sequence[uuid.UUID],
+        workspace_id: uuid.UUID,
+    ) -> Dict[uuid.UUID, uuid.UUID]:
+        if not quotation_ids:
+            return {}
+        result = await session.execute(
+            select(CustomerPurchaseOrder.quotation_id, CustomerPurchaseOrder.id).where(
+                CustomerPurchaseOrder.quotation_id.in_(list(quotation_ids)),
+                CustomerPurchaseOrder.workspace_id == workspace_id,
+            )
+        )
+        return {qid: lid for qid, lid in result.all() if qid is not None}
 
     @staticmethod
     async def get_visible(
@@ -320,6 +353,14 @@ class QuotationService:
         """Return (invoice, created). created=False means idempotent 200."""
         await expire_locked(session, quotation, user_id)
         if quotation.status == QuotationStatus.CONVERTED:
+            lpo = await existing_converted_lpo(session, quotation, workspace_id)
+            if lpo is not None:
+                raise_error(
+                    status.HTTP_409_CONFLICT,
+                    ErrorCode.CONFLICT,
+                    "This quotation was already converted to an LPO.",
+                    "quotation_id",
+                )
             invoice = await existing_converted_invoice(session, quotation, workspace_id)
             return invoice, False
         if quotation.status != CONVERTIBLE:
@@ -356,3 +397,65 @@ class QuotationService:
             {"invoice_id": str(invoice.id)},
         )
         return invoice, True
+
+    @classmethod
+    async def convert_to_lpo(
+        cls,
+        session: AsyncSession,
+        quotation: Quotation,
+        user_id: uuid.UUID,
+        workspace_id: uuid.UUID,
+        customer_po_number: Optional[str] = None,
+        lpo_date: Optional[date] = None,
+        expected_delivery_date: Optional[date] = None,
+        notes: Optional[str] = None,
+    ) -> Tuple[CustomerPurchaseOrder, bool]:
+        """Return (lpo, created). created=False means idempotent 200."""
+        await expire_locked(session, quotation, user_id)
+        if quotation.status == QuotationStatus.CONVERTED:
+            lpo = await existing_converted_lpo(session, quotation, workspace_id)
+            if lpo is not None and lpo.deleted_at is None:
+                return lpo, False
+            if lpo is not None:
+                message = (
+                    "This quotation was already converted; the LPO was deleted. "
+                    "Create a new LPO manually."
+                )
+            else:
+                message = "This quotation was already converted to an invoice."
+            raise_error(
+                status.HTTP_409_CONFLICT,
+                ErrorCode.CONFLICT,
+                message,
+                "quotation_id",
+            )
+        if quotation.status != CONVERTIBLE:
+            raise_error(
+                status.HTTP_403_FORBIDDEN,
+                ErrorCode.INVALID_STATE,
+                f"Cannot convert quotation with status '{quotation.status.value}'. "
+                "Only ACCEPTED quotations can be converted.",
+            )
+        lpo = await CustomerPurchaseOrderService.create_from_quotation(
+            session=session,
+            quotation=quotation,
+            user_id=user_id,
+            workspace_id=workspace_id,
+            customer_po_number=customer_po_number,
+            lpo_date=lpo_date,
+            expected_delivery_date=expected_delivery_date,
+            notes=notes,
+        )
+        previous = quotation.status.value
+        quotation.status = QuotationStatus.CONVERTED
+        quotation.updated_at = now()
+        await log_event(
+            session,
+            quotation,
+            user_id,
+            QuotationEventType.QUOTATION_CONVERTED,
+            previous,
+            QuotationStatus.CONVERTED.value,
+            {"lpo_id": str(lpo.id)},
+        )
+        return lpo, True

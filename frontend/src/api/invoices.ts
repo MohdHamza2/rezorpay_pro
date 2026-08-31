@@ -48,6 +48,8 @@ export interface InvoiceListItem {
 
 export interface Invoice extends InvoiceListItem {
   supply_date: string;
+  customer_purchase_order_id?: string | null;
+  quotation_id?: string | null;
   currency?: InvoiceCurrency | string;
   invoice_kind?: InvoiceKind | null;
   seller_trn_snapshot?: string | null;

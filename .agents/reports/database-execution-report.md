@@ -2,6 +2,37 @@
 
 ---
 
+## 2026-09-01 — WP-A Customer LPO schema (planned BEFORE code)
+
+**Spec:** `architecture/wave-customer-lpo-addendum.md` §8. Architect lock: Alembic YES, new revision only. `down_revision = "cb01b6bef962"`. NEVER rewrite quotes (`cb01b6bef962`), FTA (`c8e1a4f2b6d0`), or Product Master.
+
+### Locked
+
+- Tables: `lpo_counters`, `customer_purchase_orders`, `customer_purchase_order_items`, `customer_purchase_order_events`.
+- Columns: `invoices.customer_purchase_order_id` UUID nullable indexed **not unique**; `invoice_items.customer_purchase_order_item_id` UUID nullable FK indexed.
+- Keep unique `invoices.quotation_id`. Unique `customer_purchase_orders.quotation_id`.
+- Partial unique `(workspace_id, client_id, customer_po_number)` WHERE `customer_po_number IS NOT NULL`.
+- Internal numbers `LPO-YYYY-XXXX` via **new** `lpo_counters` (composite PK workspace_id+year). Do **not** reuse invoice/quotation/spo counters.
+- Soft-delete does not rewind the counter.
+- PostgreSQL ENUMs: `customerpurchaseorderstatus`, `customerpurchaseordereventtype`.
+- No SPO/GRN changes. No `delivered_quantity`, retention, OCR URL, credit confirm columns.
+
+### Verification (planned)
+
+`alembic upgrade head` on DATABASE_URL and `alembic check` clean. Tests use SQLModel `create_all` on `{DATABASE_URL}_test`. Never SQLite.
+
+---
+
+## 2026-09-01 — WP-A Customer LPO schema (implemented)
+
+**Revision:** `59084165d346` revises `cb01b6bef962`. File: `backend/alembic/versions/59084165d346_add_customer_lpos.py`.
+
+Applied: `alembic upgrade head` on `invoicesaas` (was at `cb01b6bef962`). `alembic check`: "No new upgrade operations detected".
+
+Created: `lpo_counters`, `customer_purchase_orders`, `customer_purchase_order_items`, `customer_purchase_order_events`. Added `invoices.customer_purchase_order_id` UUID nullable indexed **not unique** (`fk_invoices_customer_purchase_order_id`). Added `invoice_items.customer_purchase_order_item_id` UUID nullable FK indexed (`fk_invoice_items_cpo_item_id`). Unique index on `customer_purchase_orders.quotation_id`. Partial unique `uq_cpo_workspace_client_po_number`. PostgreSQL ENUMs `customerpurchaseorderstatus` and `customerpurchaseordereventtype`. Quotes revision `cb01b6bef962` not rewritten. No SPO/GRN changes.
+
+---
+
 ## 2026-09-01 — WP-A Quotations schema (planned BEFORE code)
 
 **Spec:** `architecture/wave-quotations-addendum.md` §9. Architect lock: Alembic YES, new revision only. `down_revision = "c8e1a4f2b6d0"`. NEVER rewrite FTA (`c8e1a4f2b6d0`) or Product Master (`d3e4c7fdb29f`).

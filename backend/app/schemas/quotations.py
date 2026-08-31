@@ -103,6 +103,7 @@ class QuotationResponse(BaseModel):
     total_amount: Decimal
     items: List[QuotationItemResponse]
     converted_invoice_id: Optional[UUID] = None
+    converted_lpo_id: Optional[UUID] = None
     created_at: datetime
     updated_at: datetime
     deleted_at: Optional[datetime] = None
@@ -121,6 +122,7 @@ class QuotationListItem(BaseModel):
     quotation_date: date
     valid_until: date
     converted_invoice_id: Optional[UUID] = None
+    converted_lpo_id: Optional[UUID] = None
     created_at: datetime
 
 

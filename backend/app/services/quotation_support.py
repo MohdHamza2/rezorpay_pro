@@ -17,6 +17,7 @@ from app.models.product import Product
 from app.models.quotation import Quotation, QuotationStatus
 from app.models.quotation_event import QuotationEvent, QuotationEventType
 from app.models.quotation_item import QuotationItem
+from app.models.customer_purchase_order import CustomerPurchaseOrder
 from app.schemas.common import ErrorCode, ErrorDetail
 from app.services.invoice_service import _resolve_line
 from app.services.line_money import apply_line_money, money
@@ -142,6 +143,18 @@ async def existing_converted_invoice(
             "quotation_id",
         )
     return invoice
+
+
+async def existing_converted_lpo(
+    session: AsyncSession, quotation: Quotation, workspace_id: uuid.UUID
+) -> Optional[CustomerPurchaseOrder]:
+    result = await session.execute(
+        select(CustomerPurchaseOrder).where(
+            CustomerPurchaseOrder.quotation_id == quotation.id,
+            CustomerPurchaseOrder.workspace_id == workspace_id,
+        )
+    )
+    return result.scalar_one_or_none()
 
 
 def converted_notes(quotation: Quotation) -> str:

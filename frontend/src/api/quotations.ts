@@ -1,5 +1,6 @@
 import { apiClient } from './client';
 import type { Invoice } from './invoices';
+import type { CustomerPurchaseOrder } from './lpos';
 import type { PaginatedResponse, PaginationMeta, SuccessResponse } from '../types/api';
 
 export type QuotationStatus =
@@ -49,6 +50,7 @@ export interface QuotationListItem {
   quotation_date: string;
   valid_until: string;
   converted_invoice_id?: string | null;
+  converted_lpo_id?: string | null;
   created_at?: string;
 }
 
@@ -173,6 +175,29 @@ export const rejectQuotation = async (id: string, reason?: string): Promise<Quot
 export const convertQuotationToInvoice = async (id: string): Promise<Invoice> => {
   const response = await apiClient.post<SuccessResponse<Invoice>>(
     `/api/v1/quotations/${id}/convert-to-invoice`,
+  );
+  return response.data.data;
+};
+
+export interface ConvertToLpoPayload {
+  customer_po_number?: string;
+  lpo_date?: string;
+  expected_delivery_date?: string;
+  notes?: string;
+}
+
+export const convertQuotationToLpo = async (
+  id: string,
+  data: ConvertToLpoPayload = {},
+): Promise<CustomerPurchaseOrder> => {
+  const body: ConvertToLpoPayload = {};
+  if (data.customer_po_number?.trim()) body.customer_po_number = data.customer_po_number.trim();
+  if (data.lpo_date) body.lpo_date = data.lpo_date;
+  if (data.expected_delivery_date) body.expected_delivery_date = data.expected_delivery_date;
+  if (data.notes?.trim()) body.notes = data.notes.trim();
+  const response = await apiClient.post<SuccessResponse<CustomerPurchaseOrder>>(
+    `/api/v1/quotations/${id}/convert-to-lpo`,
+    body,
   );
   return response.data.data;
 };

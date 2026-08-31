@@ -84,6 +84,7 @@ class InvoiceItemResponse(BaseModel):
     line_net: Decimal
     tax_amount: Decimal
     total_price: Decimal
+    customer_purchase_order_item_id: Optional[UUID] = None
     created_at: datetime
     updated_at: datetime
 
@@ -175,6 +176,7 @@ class InvoiceResponse(InvoiceBase):
     buyer_name_snapshot: Optional[str] = None
     buyer_address_snapshot: Optional[str] = None
     quotation_id: Optional[UUID] = None
+    customer_purchase_order_id: Optional[UUID] = None
     subtotal: Decimal
     tax_amount: Decimal
     total_amount: Decimal

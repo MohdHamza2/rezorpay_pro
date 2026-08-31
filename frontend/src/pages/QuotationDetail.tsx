@@ -6,6 +6,7 @@ import { getClients } from '../api/clients';
 import {
   acceptQuotation,
   convertQuotationToInvoice,
+  convertQuotationToLpo,
   deleteQuotation,
   getQuotation,
   rejectQuotation,
@@ -70,6 +71,15 @@ export const QuotationDetail = () => {
       navigate('/invoices');
     },
   });
+  const convertLpoMutation = useMutation({
+    mutationFn: (quoteId: string) => convertQuotationToLpo(quoteId),
+    onSuccess: (lpo) => {
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ['lpos'] });
+      toast.success(`Converted to ${lpo.lpo_number} (DRAFT)`);
+      navigate(`/lpos/${lpo.id}`);
+    },
+  });
   const deleteMutation = useMutation({
     mutationFn: deleteQuotation,
     onSuccess: () => {
@@ -85,6 +95,7 @@ export const QuotationDetail = () => {
     acceptMutation.isPending ||
     rejectMutation.isPending ||
     convertMutation.isPending ||
+    convertLpoMutation.isPending ||
     deleteMutation.isPending;
 
   const handleReject = () => {
@@ -207,19 +218,40 @@ export const QuotationDetail = () => {
             </>
           )}
           {quote.status === 'ACCEPTED' && (
-            <button
-              type="button"
-              className={styles.primaryBtn}
-              data-testid="quotation-convert"
-              disabled={busy}
-              onClick={() => convertMutation.mutate(quote.id)}
-            >
-              Convert to invoice
-            </button>
+            <>
+              <button
+                type="button"
+                className={styles.primaryBtn}
+                data-testid="quotation-convert"
+                disabled={busy || Boolean(quote.converted_lpo_id)}
+                onClick={() => convertMutation.mutate(quote.id)}
+              >
+                Convert to invoice
+              </button>
+              <button
+                type="button"
+                className={styles.secondaryBtn}
+                data-testid="quotation-convert-lpo"
+                disabled={busy || Boolean(quote.converted_invoice_id)}
+                onClick={() => convertLpoMutation.mutate(quote.id)}
+              >
+                Convert to LPO
+              </button>
+            </>
           )}
           {quote.status === 'CONVERTED' && quote.converted_invoice_id && (
             <button type="button" className={styles.primaryBtn} onClick={() => navigate('/invoices')}>
               Open draft invoice
+            </button>
+          )}
+          {quote.status === 'CONVERTED' && quote.converted_lpo_id && (
+            <button
+              type="button"
+              className={styles.primaryBtn}
+              data-testid="quotation-open-lpo"
+              onClick={() => navigate(`/lpos/${quote.converted_lpo_id}`)}
+            >
+              Open LPO
             </button>
           )}
         </div>

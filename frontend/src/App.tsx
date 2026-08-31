@@ -10,6 +10,9 @@ import { Clients } from './pages/Clients';
 import { Quotations } from './pages/Quotations';
 import { QuotationForm } from './pages/QuotationForm';
 import { QuotationDetail } from './pages/QuotationDetail';
+import { Lpos } from './pages/Lpos';
+import { LpoForm } from './pages/LpoForm';
+import { LpoDetail } from './pages/LpoDetail';
 import { Invoices } from './pages/Invoices';
 import { Settings } from './pages/Settings';
 import { Products } from './pages/Products';
@@ -54,6 +57,10 @@ function App() {
               <Route path="quotations/new" element={<QuotationForm />} />
               <Route path="quotations/:id/edit" element={<QuotationForm />} />
               <Route path="quotations/:id" element={<QuotationDetail />} />
+              <Route path="lpos" element={<Lpos />} />
+              <Route path="lpos/new" element={<LpoForm />} />
+              <Route path="lpos/:id/edit" element={<LpoForm />} />
+              <Route path="lpos/:id" element={<LpoDetail />} />
               <Route path="invoices" element={<Invoices />} />
               <Route path="settings" element={<Settings />} />
               <Route path="products" element={<Products />} />

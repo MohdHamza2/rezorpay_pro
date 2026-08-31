@@ -164,6 +164,7 @@ class InvoiceService:
         items: Optional[List[dict]] = None,
         supply_date: Optional[date] = None,
         quotation_id: Optional[uuid.UUID] = None,
+        customer_purchase_order_id: Optional[uuid.UUID] = None,
     ) -> Invoice:
         """Create a new invoice with gapless numbering and FTA line math."""
         _assert_aed(currency)
@@ -184,6 +185,7 @@ class InvoiceService:
             due_date=due_date,
             notes=notes,
             quotation_id=quotation_id,
+            customer_purchase_order_id=customer_purchase_order_id,
             subtotal=Decimal("0"),
             tax_amount=Decimal("0"),
             total_amount=Decimal("0"),
@@ -214,6 +216,13 @@ class InvoiceService:
         items: Optional[List[dict]] = None,
     ) -> Invoice:
         """Replace draft header fields and optionally all lines."""
+        if invoice.customer_purchase_order_id is not None:
+            _raise(
+                status.HTTP_403_FORBIDDEN,
+                ErrorCode.INVALID_STATE,
+                "Cannot edit an invoice linked to an LPO. "
+                "Delete the DRAFT invoice and post remaining quantities again.",
+            )
         if invoice.status != InvoiceStatus.DRAFT:
             _raise(
                 status.HTTP_403_FORBIDDEN,
@@ -436,11 +445,31 @@ class InvoiceService:
             reason=reason,
             previous_status=old_status.value,
         )
+        await _recalc_linked_lpo(session, invoice, user_id)
 
     @staticmethod
     async def can_delete(invoice: Invoice) -> bool:
         """Check if invoice can be soft deleted (only drafts allowed)."""
         return invoice.status == InvoiceStatus.DRAFT
+
+    @classmethod
+    async def soft_delete_draft(
+        cls,
+        session: AsyncSession,
+        invoice: Invoice,
+        user_id: uuid.UUID,
+    ) -> None:
+        """Soft-delete a DRAFT invoice and release LPO remaining qty."""
+        if invoice.status != InvoiceStatus.DRAFT:
+            _raise(
+                status.HTTP_403_FORBIDDEN,
+                ErrorCode.INVALID_STATE,
+                f"Cannot delete invoice with status '{invoice.status.value}'. "
+                "Use POST /invoices/{id}/void instead.",
+            )
+        invoice.deleted_at = _now()
+        invoice.updated_at = _now()
+        await _recalc_linked_lpo(session, invoice, user_id)
 
     @staticmethod
     async def can_edit(invoice: Invoice) -> bool:
@@ -507,6 +536,9 @@ async def _add_items(
         )
         item = InvoiceItem(
             invoice_id=invoice.id,
+            customer_purchase_order_item_id=item_data.get(
+                "customer_purchase_order_item_id"
+            ),
             **resolved,
             line_net=Decimal("0"),
             tax_amount=Decimal("0"),
@@ -624,7 +656,12 @@ async def _load_invoice_product(
     if product is None:
         _raise(status.HTTP_404_NOT_FOUND, ErrorCode.NOT_FOUND, "Product not found")
     if not product.is_active:
-        target = "a quotation line" if line_owner == "quotation" else "an invoice"
+        if line_owner == "quotation":
+            target = "a quotation line"
+        elif line_owner == "lpo":
+            target = "an LPO line"
+        else:
+            target = "an invoice"
         _raise(
             status.HTTP_400_BAD_REQUEST,
             ErrorCode.VALIDATION_ERROR,
@@ -646,6 +683,18 @@ async def _default_sales_price(
     )
     row = result.scalars().first()
     return _dec(row.price) if row is not None else None
+
+
+async def _recalc_linked_lpo(
+    session: AsyncSession, invoice: Invoice, user_id: uuid.UUID
+) -> None:
+    if invoice.customer_purchase_order_id is None:
+        return
+    from app.services.customer_po_service import CustomerPurchaseOrderService
+
+    await CustomerPurchaseOrderService.recalc_invoiced(
+        session, invoice.customer_purchase_order_id, user_id
+    )
 
 
 async def _load_send_context(

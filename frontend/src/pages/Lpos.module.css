@@ -1,0 +1,29 @@
+.badgeReceived { background-color: #eff6ff; color: #2563eb; }
+.badgePartial { background-color: #fff7ed; color: #ea580c; }
+.badgeInvoiced { background-color: #f0fdf4; color: #16a34a; }
+.badgeCancelled { background-color: #fef2f2; color: #dc2626; }
+
+.invoicePanel {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #e2e8f0;
+}
+
+.invoicePanel h4 {
+  margin: 0 0 0.75rem;
+  color: #1e293b;
+}
+
+.qtyInput {
+  width: 6rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  box-sizing: border-box;
+  font-family: inherit;
+}
+
+.muted {
+  color: #64748b;
+  font-size: 0.8rem;
+}

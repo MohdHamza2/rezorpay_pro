@@ -71,6 +71,11 @@ class Invoice(SQLModel, table=True):
     quotation_id: Optional[uuid.UUID] = Field(
         default=None, foreign_key="quotations.id", unique=True, index=True
     )
+    customer_purchase_order_id: Optional[uuid.UUID] = Field(
+        default=None,
+        foreign_key="customer_purchase_orders.id",
+        index=True,
+    )
 
     # FTA snapshots — null on DRAFT; frozen at send
     invoice_kind: Optional[str] = Field(default=None, max_length=20)

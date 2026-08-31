@@ -47,6 +47,16 @@ from app.models.quotation import Quotation, QuotationStatus
 from app.models.quotation_item import QuotationItem
 from app.models.quotation_event import QuotationEvent, QuotationEventType
 from app.models.quotation_counter import QuotationCounter
+from app.models.customer_purchase_order import (
+    CustomerPurchaseOrder,
+    CustomerPurchaseOrderStatus,
+)
+from app.models.customer_purchase_order_item import CustomerPurchaseOrderItem
+from app.models.customer_purchase_order_event import (
+    CustomerPurchaseOrderEvent,
+    CustomerPurchaseOrderEventType,
+)
+from app.models.lpo_counter import LpoCounter
 
 __all__ = [
     "Workspace",
@@ -97,4 +107,10 @@ __all__ = [
     "QuotationEvent",
     "QuotationEventType",
     "QuotationCounter",
+    "CustomerPurchaseOrder",
+    "CustomerPurchaseOrderStatus",
+    "CustomerPurchaseOrderItem",
+    "CustomerPurchaseOrderEvent",
+    "CustomerPurchaseOrderEventType",
+    "LpoCounter",
 ]

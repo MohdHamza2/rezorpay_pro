@@ -34,6 +34,9 @@ from app.routers.spo import router as spo_router
 from app.routers.grn import router as grn_router
 from app.routers.supplier_invoices import router as supplier_invoices_router
 from app.routers.quotations import router as quotations_router
+from app.routers.customer_purchase_orders import (
+    router as customer_purchase_orders_router,
+)
 
 settings = get_settings()
 logger = logging.getLogger("uvicorn.error")
@@ -176,6 +179,7 @@ app.include_router(spo_router, prefix="/api/v1")
 app.include_router(grn_router, prefix="/api/v1")
 app.include_router(supplier_invoices_router, prefix="/api/v1")
 app.include_router(quotations_router, prefix="/api/v1")
+app.include_router(customer_purchase_orders_router, prefix="/api/v1")
 
 
 @app.get("/")

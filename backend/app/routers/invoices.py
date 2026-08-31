@@ -11,7 +11,6 @@ Endpoints:
 - POST /invoices/{id}/void - Void invoice
 """
 
-from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
@@ -97,6 +96,9 @@ async def list_invoices(
     request: Request,
     status: Optional[InvoiceStatus] = Query(None, description="Filter by status"),
     client_id: Optional[UUID] = Query(None, description="Filter by client"),
+    customer_purchase_order_id: Optional[UUID] = Query(
+        None, description="Filter by customer LPO"
+    ),
     search: Optional[str] = Query(None, description="Search invoice number"),
     page: int = Query(1, ge=1, description="Page number (1-based)"),
     per_page: int = Query(20, ge=1, le=100, description="Items per page"),
@@ -125,6 +127,11 @@ async def list_invoices(
     # Client filter
     if client_id:
         query = query.where(Invoice.client_id == client_id)
+
+    if customer_purchase_order_id:
+        query = query.where(
+            Invoice.customer_purchase_order_id == customer_purchase_order_id
+        )
 
     # Search filter
     if search:
@@ -236,6 +243,7 @@ async def delete_invoice(
     request: Request,
     invoice_id: UUID,
     session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
     workspace_id: UUID = Depends(get_current_workspace_id),
 ):
     """
@@ -256,19 +264,7 @@ async def delete_invoice(
             status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found"
         )
 
-    # Check if invoice can be deleted (draft only)
-    if not await InvoiceService.can_delete(invoice):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=ErrorDetail(
-                code="INVALID_STATE",
-                message=f"Cannot delete invoice with status '{invoice.status.value}'. "
-                "Use POST /invoices/{id}/void instead.",
-            ).model_dump(),
-        )
-
-    # Soft delete
-    invoice.deleted_at = datetime.now(timezone.utc)
+    await InvoiceService.soft_delete_draft(session, invoice, user.id)
     await session.commit()
 
     return SuccessResponse(

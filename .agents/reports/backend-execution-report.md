@@ -3,6 +3,118 @@
 
 ---
 
+## 2026-09-01 — WP-A customer LPO nit W1 (planned BEFORE code)
+
+**Source:** `.agents/reports/wp-a-customer-lpo-review.md` warning **W1**. Backend only. No UI. No Alembic rewrite. No git commit.
+
+### Bug
+
+`_resolve_slices` compares each requested qty to the line’s remaining **before this request**. Repeating the same `customer_purchase_order_item_id` in one `POST .../invoices` body (e.g. 60 + 60 against remaining 100) both pass; `InvoiceService` writes qty 120. `recalc_invoiced` then clamps `quantity_invoiced` to ordered qty, so GET LPO looks clean while the tax invoice over-states qty. Concurrent POSTs stay serialized by LPO `SELECT FOR UPDATE` — do not weaken that.
+
+### Planned
+
+1. Per-request remaining accumulator in `_resolve_slices`: each occurrence of a line id consumes leftover qty. Second occurrence that exceeds leftover → **400** `VALIDATION_ERROR` `field=quantity` **before** invoice create. Lines already fully invoiced before this POST still skip (spec remaining 0).
+2. Pytest: two allocations of the same `customer_purchase_order_item_id` in one POST that exceed ordered qty → 400; LPO `quantity_invoiced` cache unchanged; no invoice created.
+
+### Files
+
+- `backend/app/services/customer_po_service.py`
+- `backend/tests/test_customer_lpos.py`
+
+### Verification
+
+`pytest tests/test_customer_lpos.py tests/test_quotations.py tests/test_invoices.py tests/test_multi_tenant_isolation.py tests/test_concurrent_numbering.py -v` on PostgreSQL `_test`. black + ruff.
+
+---
+
+## 2026-09-01 — WP-A customer LPO nit W1 (implemented)
+
+Backend only. No UI. No Alembic rewrite. No git commit. Concurrent LPO `SELECT FOR UPDATE` on `/invoices` unchanged.
+
+### Done
+
+`_resolve_slices` keeps a per-request leftover map. Each occurrence of a line id consumes leftover qty. Qty that exceeds leftover → **400** `VALIDATION_ERROR` `field=quantity` before `InvoiceService.create_invoice`. Lines already fully invoiced before this POST still skip (spec remaining 0). Duplicate 60+60 against ordered 100 is rejected; `quantity_invoiced` cache stays 0.
+
+### Files
+
+- `backend/app/services/customer_po_service.py`
+- `backend/tests/test_customer_lpos.py`
+- `.agents/reports/backend-execution-report.md`
+
+### Pytest (PostgreSQL `_test`)
+
+- `tests/test_customer_lpos.py`: **17 passed** (includes `test_duplicate_line_ids_over_invoice_400_cache_unchanged`)
+- `tests/test_quotations.py`: **20 passed**
+- `tests/test_invoices.py`: **25 passed**
+- `tests/test_multi_tenant_isolation.py`: **5 passed**
+- `tests/test_concurrent_numbering.py`: **4 passed**
+- Combined: **71 passed, 0 failed** (72.37s)
+
+black + ruff clean.
+
+---
+
+## 2026-09-01 — WP-A Customer LPO API (planned BEFORE code)
+
+**Spec:** `architecture/wave-customer-lpo-addendum.md` WP-A. Architect note: `.agents/reports/architect-customer-lpo-note.md`.
+
+### Locked
+
+- Router `/api/v1/customer-purchase-orders` (JWT). Convert `POST /quotations/{id}/convert-to-lpo`. No `/confirm`, no UI/PDF.
+- States: DRAFT → RECEIVED → PARTIAL → INVOICED. CANCELLED from RECEIVED with zero countable invoices. DRAFT DELETE = soft-delete.
+- Internal `LPO-YYYY-XXXX` via `lpo_counters` + SELECT FOR UPDATE. `customer_po_number` unique per (workspace, client) when set.
+- Lines: `quantity` vs `quantity_invoiced`; remaining = ordered − SUM countable (DRAFT counts; CANCELLED/deleted do not). Over-invoice 400. Shared `line_money`.
+- Quote convert ACCEPTED → DRAFT LPO frozen lines. Mutex with convert-to-invoice 409. Idempotent 200. Manual LPO without quotation_id allowed.
+- `POST .../invoices` → `InvoiceService.create_invoice` DRAFT; many invoices per LPO; `quotation_id` null. FTA send waits. Recalc on void and DRAFT delete. PUT forbidden on LPO-linked invoices.
+- Wrapper pagination. Extra keys 422. Decimal AED. Cross-tenant 404.
+- Tests: `backend/tests/test_customer_lpos.py` + quotation convert mutex. PostgreSQL `_test`.
+
+### Out
+
+WP-B UI/PDF, WP-C Playwright, OCR, credit HOLD, delivery notes, SPO/GRN changes.
+
+---
+
+## 2026-09-01 — WP-A Customer LPO API (implemented)
+
+**Revision:** `59084165d346` (`down_revision = "cb01b6bef962"`). Partial invoices use `InvoiceService.create_invoice`. Shared `line_money`. FTA send stays on invoice `/send`. No UI/PDF. No git commit.
+
+### Done
+
+- Models + Alembic: `lpo_counters`, `customer_purchase_orders`, `customer_purchase_order_items`, `customer_purchase_order_events`, `invoices.customer_purchase_order_id` (indexed, not unique), `invoice_items.customer_purchase_order_item_id`. Unique `customer_purchase_orders.quotation_id`. Partial unique customer PO number per client.
+- Number `LPO-YYYY-XXXX` via `LpoNumberService` SELECT FOR UPDATE. Prefix LPO- not CPO-.
+- States: DRAFT → RECEIVED (`/receive`) → PARTIAL → INVOICED. CANCELLED from RECEIVED with zero countable invoices. DRAFT soft-delete. Recalc on invoice create/void/DRAFT delete.
+- Quote `POST /quotations/{id}/convert-to-lpo` ACCEPTED → DRAFT LPO, frozen lines, quote CONVERTED. Idempotent 200. Mutex 409 with convert-to-invoice.
+- `POST /customer-purchase-orders/{id}/invoices` → many DRAFT invoices, `quotation_id` null. Over-invoice 400. PUT on LPO-linked invoices 403.
+- Router mounted at `/api/v1/customer-purchase-orders`. JWT, wrapper pagination, extra keys 422, AED, cross-tenant 404.
+
+### Files
+
+- `backend/app/models/lpo_counter.py`
+- `backend/app/models/customer_purchase_order.py`
+- `backend/app/models/customer_purchase_order_item.py`
+- `backend/app/models/customer_purchase_order_event.py`
+- `backend/app/schemas/customer_purchase_orders.py`
+- `backend/app/services/lpo_number.py`
+- `backend/app/services/customer_po_support.py`
+- `backend/app/services/customer_po_service.py`
+- `backend/app/routers/customer_purchase_orders.py`
+- `backend/app/main.py`, quotation/invoice services and routers
+- `backend/tests/test_customer_lpos.py`, `backend/tests/test_quotations.py`
+
+### Pytest (PostgreSQL `_test`)
+
+- `tests/test_customer_lpos.py`: **16 passed**
+- `tests/test_quotations.py`: **20 passed** (includes convert mutex)
+- `tests/test_invoices.py`: **25 passed**
+- `tests/test_multi_tenant_isolation.py`: **5 passed**
+- `tests/test_concurrent_numbering.py`: **4 passed**
+- Combined: **70 passed, 0 failed** (68.45s)
+
+black + ruff clean. `alembic check`: No new upgrade operations detected.
+
+---
+
 ## 2026-09-01 — WP-A review nits W1–W3 (planned BEFORE code)
 
 **Source:** `.agents/reports/wp-a-quotations-review.md` (APPROVE_WITH_NITS). Backend only. No UI. No Alembic rewrite. No git commit.

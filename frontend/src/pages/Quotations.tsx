@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { getClients } from '../api/clients';
 import {
   convertQuotationToInvoice,
+  convertQuotationToLpo,
   getQuotation,
   getQuotations,
   sendQuotation,
@@ -66,6 +67,16 @@ export const Quotations = () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       toast.success(`Converted to ${invoice.invoice_number} (DRAFT)`);
       navigate('/invoices');
+    },
+  });
+
+  const convertLpoMutation = useMutation({
+    mutationFn: (quoteId: string) => convertQuotationToLpo(quoteId),
+    onSuccess: (lpo) => {
+      queryClient.invalidateQueries({ queryKey: ['quotations'] });
+      queryClient.invalidateQueries({ queryKey: ['lpos'] });
+      toast.success(`Converted to ${lpo.lpo_number} (DRAFT)`);
+      navigate(`/lpos/${lpo.id}`);
     },
   });
 
@@ -228,14 +239,24 @@ export const Quotations = () => {
                         </>
                       )}
                       {row.status === 'ACCEPTED' && (
-                        <button
-                          className={styles.primaryBtn}
-                          data-testid="quotation-convert"
-                          disabled={convertMutation.isPending}
-                          onClick={() => convertMutation.mutate(row.id)}
-                        >
-                          Convert
-                        </button>
+                        <>
+                          <button
+                            className={styles.primaryBtn}
+                            data-testid="quotation-convert"
+                            disabled={convertMutation.isPending || Boolean(row.converted_lpo_id)}
+                            onClick={() => convertMutation.mutate(row.id)}
+                          >
+                            Convert
+                          </button>
+                          <button
+                            className={styles.secondaryBtn}
+                            data-testid="quotation-convert-lpo"
+                            disabled={convertLpoMutation.isPending || Boolean(row.converted_invoice_id)}
+                            onClick={() => convertLpoMutation.mutate(row.id)}
+                          >
+                            Convert to LPO
+                          </button>
+                        </>
                       )}
                     </td>
                   </tr>

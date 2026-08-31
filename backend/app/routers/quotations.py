@@ -13,6 +13,10 @@ from app.models.client import Client
 from app.models.quotation import Quotation, QuotationStatus
 from app.models.user import User
 from app.schemas.common import PaginatedResponse, PaginationMeta, SuccessResponse
+from app.schemas.customer_purchase_orders import (
+    CustomerPurchaseOrderResponse,
+    QuotationConvertToLpoRequest,
+)
 from app.schemas.invoices import InvoiceResponse
 from app.schemas.quotations import (
     QuotationCreate,
@@ -21,6 +25,7 @@ from app.schemas.quotations import (
     QuotationSendRequest,
     QuotationUpdate,
 )
+from app.services.customer_po_service import CustomerPurchaseOrderService
 from app.services.invoice_service import InvoiceService
 from app.services.quotation_service import QuotationService
 
@@ -65,8 +70,13 @@ async def _wrapped(
     converted = await QuotationService.map_converted_ids(
         session, [quote.id], workspace_id
     )
+    lpos = await QuotationService.map_converted_lpo_ids(
+        session, [quote.id], workspace_id
+    )
     return SuccessResponse(
-        data=QuotationService.serialize(quote, converted.get(quote.id))
+        data=QuotationService.serialize(
+            quote, converted.get(quote.id), lpos.get(quote.id)
+        )
     )
 
 
@@ -145,6 +155,9 @@ async def list_quotations(
     converted = await QuotationService.map_converted_ids(
         session, [q.id for q in quotes], workspace_id
     )
+    lpos = await QuotationService.map_converted_lpo_ids(
+        session, [q.id for q in quotes], workspace_id
+    )
     await session.commit()
     pages = (total + per_page - 1) // per_page if total else 0
     pagination = PaginationMeta(
@@ -157,7 +170,8 @@ async def list_quotations(
     )
     return PaginatedResponse(
         data=[
-            QuotationService.serialize_list_item(q, converted.get(q.id)) for q in quotes
+            QuotationService.serialize_list_item(q, converted.get(q.id), lpos.get(q.id))
+            for q in quotes
         ],
         pagination=pagination,
     )
@@ -300,3 +314,43 @@ async def convert_quotation_to_invoice(
         )
     response.status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
     return SuccessResponse(data=InvoiceService.serialize_invoice_response(loaded))
+
+
+@router.post(
+    "/{quotation_id}/convert-to-lpo",
+    response_model=SuccessResponse[CustomerPurchaseOrderResponse],
+)
+async def convert_quotation_to_lpo(
+    quotation_id: UUID,
+    response: Response,
+    body: QuotationConvertToLpoRequest = Body(
+        default_factory=QuotationConvertToLpoRequest
+    ),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+    workspace_id: UUID = Depends(get_current_workspace_id),
+):
+    """ACCEPTED → CONVERTED + DRAFT LPO. Idempotent 200; mutex with invoice convert."""
+    quote = await _load_and_expire(session, quotation_id, workspace_id, user.id)
+    lpo, created = await QuotationService.convert_to_lpo(
+        session,
+        quote,
+        user.id,
+        workspace_id,
+        customer_po_number=body.customer_po_number,
+        lpo_date=body.lpo_date,
+        expected_delivery_date=body.expected_delivery_date,
+        notes=body.notes,
+    )
+    await session.commit()
+    loaded = await CustomerPurchaseOrderService.get_visible(
+        session, lpo.id, workspace_id
+    )
+    if loaded is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="LPO not found"
+        )
+    response.status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+    return SuccessResponse(
+        data=await CustomerPurchaseOrderService.wrapped(session, loaded, workspace_id)
+    )
