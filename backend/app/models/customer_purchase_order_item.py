@@ -26,6 +26,12 @@ class CustomerPurchaseOrderItem(SQLModel, table=True):
         CheckConstraint(
             "quantity_invoiced <= quantity", name="check_cpo_qty_invoiced_lte_qty"
         ),
+        CheckConstraint(
+            "quantity_delivered >= 0", name="check_cpo_qty_delivered_nonneg"
+        ),
+        CheckConstraint(
+            "quantity_delivered <= quantity", name="check_cpo_qty_delivered_lte_qty"
+        ),
     )
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
@@ -42,6 +48,9 @@ class CustomerPurchaseOrderItem(SQLModel, table=True):
     description: str = Field(max_length=500)
     quantity: Decimal = Field(sa_column=Column(Numeric(10, 2), nullable=False))
     quantity_invoiced: Decimal = Field(
+        default=Decimal("0.00"), sa_column=Column(Numeric(10, 2), nullable=False)
+    )
+    quantity_delivered: Decimal = Field(
         default=Decimal("0.00"), sa_column=Column(Numeric(10, 2), nullable=False)
     )
     unit_price: Decimal = Field(sa_column=Column(Numeric(12, 2), nullable=False))
@@ -78,3 +87,7 @@ class CustomerPurchaseOrderItem(SQLModel, table=True):
     @property
     def quantity_remaining(self) -> Decimal:
         return self.quantity - self.quantity_invoiced
+
+    @property
+    def quantity_undelivered(self) -> Decimal:
+        return self.quantity - self.quantity_delivered

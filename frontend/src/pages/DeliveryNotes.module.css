@@ -1,0 +1,31 @@
+.badgeConfirmed { background-color: #f0fdf4; color: #16a34a; }
+.badgeCancelled { background-color: #fef2f2; color: #dc2626; }
+
+.parentXor {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.parentXor label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 500;
+  color: #334155;
+}
+
+.qtyInput {
+  width: 6rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  box-sizing: border-box;
+  font-family: inherit;
+}
+
+.muted {
+  color: #64748b;
+  font-size: 0.8rem;
+}

@@ -38,3 +38,8 @@ export function extractApiError(error: unknown): ApiErrorInfo {
 export function skipInterceptorToast(code?: string): boolean {
   return Boolean(code && HANDLED_TOAST_CODES.has(code));
 }
+
+/** WP-A DN isolation uses HTTP 404; wrapper code may be HTTP_ERROR, not NOT_FOUND. */
+export function isHttpNotFound(error: unknown): boolean {
+  return (error as AxiosError).response?.status === 404;
+}

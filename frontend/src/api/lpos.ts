@@ -26,6 +26,8 @@ export interface LpoItem {
   quantity: number;
   quantity_invoiced: number;
   quantity_remaining: number;
+  quantity_delivered?: number;
+  quantity_undelivered?: number;
   unit_price: number;
   tax_rate: number;
   discount_percent: number;

@@ -20,6 +20,7 @@ class CreditEventReason(str, Enum):
     PAYMENT = "PAYMENT"
     SEND_CHECK = "SEND_CHECK"
     RECEIVE_CHECK = "RECEIVE_CHECK"
+    DN_CONFIRM = "DN_CONFIRM"
 
 
 class CreditStatusEvent(SQLModel, table=True):

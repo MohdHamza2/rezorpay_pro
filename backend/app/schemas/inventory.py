@@ -1,8 +1,18 @@
-from typing import Optional
-from decimal import Decimal
-from pydantic import BaseModel, ConfigDict, Field
-import uuid
 from datetime import datetime
+from decimal import Decimal
+from enum import Enum
+from typing import Optional
+import uuid
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+
+class AdjustReason(str, Enum):
+    DAMAGE = "DAMAGE"
+    COUNT_CORRECTION = "COUNT_CORRECTION"
+    LOSS = "LOSS"
+    OPENING = "OPENING"
+    OTHER = "OTHER"
 
 
 class WarehouseBase(BaseModel):
@@ -52,12 +62,28 @@ class InventoryLevelResponse(BaseModel):
     on_hand: Decimal
     reserved: Decimal
     damaged: Decimal
-    available: Decimal  # Computed dynamically
+    available: Decimal = Decimal("0.00")
 
 
 class StockAdjustmentRequest(BaseModel):
+    """ADMIN/OWNER stock back door. Extra keys → 422."""
+
+    model_config = ConfigDict(extra="forbid")
+
     product_id: uuid.UUID
     warehouse_id: uuid.UUID
     bin_id: uuid.UUID
     quantity: Decimal
-    reference: str
+    reason: AdjustReason
+    notes: Optional[str] = Field(None, min_length=3)
+    reference: Optional[str] = Field(None, min_length=3)
+
+    @model_validator(mode="after")
+    def notes_alias_and_nonzero(self) -> "StockAdjustmentRequest":
+        notes = self.notes or self.reference
+        if notes is None or len(notes.strip()) < 3:
+            raise ValueError("notes is required (min 3 characters)")
+        if self.quantity == 0:
+            raise ValueError("quantity must not be zero")
+        self.notes = notes
+        return self

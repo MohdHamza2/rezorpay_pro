@@ -1,4 +1,4 @@
-import { expect, type APIRequestContext, type Page } from '@playwright/test';
+import { expect, type APIRequestContext, type APIResponse, type Page } from '@playwright/test';
 
 export const API_URL = process.env.VITE_API_URL || 'http://localhost:8000';
 export const E2E_PASSWORD = 'Passw0rd1';
@@ -281,4 +281,115 @@ export function isoDate(offsetDays = 0): string {
   const date = new Date();
   date.setDate(date.getDate() + offsetDays);
   return date.toISOString().slice(0, 10);
+}
+
+export async function expectApiData<T>(
+  response: APIResponse,
+  allowed: number | readonly number[],
+): Promise<T> {
+  const text = await response.text();
+  const statuses = typeof allowed === 'number' ? [allowed] : [...allowed];
+  expect(statuses, text).toContain(response.status());
+  return (JSON.parse(text) as { data: T }).data;
+}
+
+export async function createWarehouseBinViaApi(
+  request: APIRequestContext,
+  token: string,
+  suffix: string,
+): Promise<{ warehouseId: string; warehouseCode: string; binId: string }> {
+  const warehouseCode = `WH-${suffix.slice(0, 8)}`;
+  const warehouse = await expectApiData<{ id: string }>(
+    await authJson(request, 'POST', '/api/v1/inventory/warehouses', token, {
+      code: warehouseCode,
+      name: 'Main warehouse',
+    }),
+    [200, 201],
+  );
+  const bin = await expectApiData<{ id: string }>(
+    await authJson(
+      request,
+      'POST',
+      `/api/v1/inventory/warehouses/${warehouse.id}/bins`,
+      token,
+      { code: 'A-01' },
+    ),
+    [200, 201],
+  );
+  return { warehouseId: warehouse.id, warehouseCode, binId: bin.id };
+}
+
+export async function seedCatalogOpeningStock(
+  request: APIRequestContext,
+  token: string,
+  suffix: string,
+  opening = '10',
+): Promise<{
+  productId: string;
+  sku: string;
+  warehouseId: string;
+  warehouseCode: string;
+  binId: string;
+}> {
+  const sku = `CBL-DN-${suffix.slice(0, 8)}`;
+  const uom = await expectApiData<{ id: string }>(
+    await authJson(request, 'POST', '/api/v1/products/uom', token, {
+      code: `M-${suffix.slice(0, 6)}`,
+      name: 'Metre',
+    }),
+    201,
+  );
+  const product = await expectApiData<{ id: string }>(
+    await authJson(request, 'POST', '/api/v1/products', token, {
+      name: PRODUCT_NAME,
+      internal_sku: sku,
+      base_uom_id: uom.id,
+    }),
+    201,
+  );
+  const loc = await createWarehouseBinViaApi(request, token, suffix);
+  await expectApiData(
+    await authJson(request, 'POST', '/api/v1/inventory/adjust', token, {
+      product_id: product.id,
+      warehouse_id: loc.warehouseId,
+      bin_id: loc.binId,
+      quantity: opening,
+      reason: 'OPENING',
+      notes: 'Opening stock',
+    }),
+    200,
+  );
+  return { productId: product.id, sku, ...loc };
+}
+
+export async function inventoryOnHand(
+  request: APIRequestContext,
+  token: string,
+  productId: string,
+): Promise<number> {
+  const rows = await expectApiData<{ on_hand: string | number }[]>(
+    await authJson(
+      request,
+      'GET',
+      `/api/v1/inventory/levels?product_id=${productId}`,
+      token,
+    ),
+    200,
+  );
+  return rows.reduce((sum, row) => sum + Number(row.on_hand ?? 0), 0);
+}
+
+export async function createCatalogLpoViaUi(
+  page: Page,
+  input: { clientName: string; sku: string; quantity: string; price: string },
+): Promise<void> {
+  await page.getByTestId('nav-lpos').click();
+  await page.getByTestId('lpo-create').click();
+  await expect(page.getByTestId('lpo-form')).toBeVisible();
+  await selectOptionContaining(page, 'lpo-client-select', input.clientName);
+  await selectOptionContaining(page, 'lpo-item-0-product', input.sku);
+  await page.getByTestId('lpo-item-0-quantity').fill(input.quantity);
+  await page.getByTestId('lpo-item-0-price').fill(input.price);
+  await page.getByTestId('lpo-form-submit').click();
+  await expect(page.getByTestId('lpo-detail')).toBeVisible();
 }

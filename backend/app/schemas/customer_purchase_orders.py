@@ -30,6 +30,8 @@ class CustomerPurchaseOrderItemResponse(BaseModel):
     quantity: Decimal
     quantity_invoiced: Decimal
     quantity_remaining: Decimal
+    quantity_delivered: Decimal
+    quantity_undelivered: Decimal
     unit_price: Decimal
     tax_rate: Decimal
     discount_percent: Decimal

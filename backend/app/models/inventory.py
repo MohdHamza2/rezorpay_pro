@@ -8,6 +8,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     Numeric,
+    Text,
     UniqueConstraint,
     CheckConstraint,
 )
@@ -140,6 +141,8 @@ class InventoryTransaction(SQLModel, table=True):
     reference_id: Optional[uuid.UUID] = Field(
         default=None
     )  # Foreign key to the exact document
+    reason: Optional[str] = Field(default=None, max_length=30)
+    notes: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
 
     user_id: uuid.UUID = Field(foreign_key="users.id", nullable=False)
 

@@ -14,6 +14,7 @@ export interface Workspace {
   credit_warning_days: number;
   credit_hold_days: number;
   block_po_on_hold: boolean;
+  block_do_on_hold: boolean;
   created_at: string;
   updated_at: string;
 }

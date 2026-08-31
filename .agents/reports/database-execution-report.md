@@ -2,6 +2,37 @@
 
 ---
 
+## 2026-09-01 — WP-A Delivery Notes schema (planned BEFORE code)
+
+**Spec:** `architecture/wave-delivery-notes-addendum.md` §10. Architect lock: Alembic YES, new revision only. `down_revision = "9f3a7c2e1d04"`. NEVER rewrite credit (`9f3a7c2e1d04`), LPO, quotes, FTA, or Product Master.
+
+### Locked
+
+- Tables: `dn_counters`, `delivery_notes`, `delivery_note_items`, `delivery_note_events`.
+- `dn_counters` composite PK `(workspace_id, year)` — clone LPO counters. Do **not** reuse invoice/quotation/lpo/spo counters. Numbers `DN-YYYY-XXXX`. Soft-delete does not rewind.
+- `delivery_notes` XOR parent check: `(customer_purchase_order_id IS NULL) <> (invoice_id IS NULL)`.
+- `customer_purchase_order_items.quantity_delivered` Numeric(10,2) NOT NULL default 0; checks `>= 0` and `<= quantity`.
+- `inventory_transactions.reason` String(30) nullable; `notes` Text nullable.
+- PG enum value `DN_CONFIRM` on `crediteventreason` via `ALTER TYPE ... ADD VALUE`.
+- PostgreSQL ENUMs: `deliverynotestatus` (DRAFT|CONFIRMED|CANCELLED), `deliverynoteeventtype` (DN_CREATED|DN_UPDATED|DN_CONFIRMED|DN_CANCELLED).
+- No `stock_reservations`. No DeliveryOrder module. No invoice delivered column.
+
+### Verification (planned)
+
+`alembic upgrade head` on DATABASE_URL and `alembic check` clean. Tests use SQLModel `create_all` on `{DATABASE_URL}_test`. Never SQLite.
+
+---
+
+## 2026-09-01 — WP-A Delivery Notes schema (implemented)
+
+**Revision:** `a7c4e9d2b105` revises `9f3a7c2e1d04`. File: `backend/alembic/versions/a7c4e9d2b105_add_delivery_notes.py`.
+
+Applied: `alembic upgrade head` on `invoicesaas` (was at `9f3a7c2e1d04`). `alembic check`: "No new upgrade operations detected".
+
+Created: `dn_counters`, `delivery_notes` (XOR parent check `check_dn_parent_xor`), `delivery_note_items`, `delivery_note_events`. Added `customer_purchase_order_items.quantity_delivered` Numeric(10,2) NOT NULL default 0 with `>= 0` and `<= quantity` checks. Added `inventory_transactions.reason` String(30) and `notes` Text. `ALTER TYPE crediteventreason ADD VALUE IF NOT EXISTS 'DN_CONFIRM'`. ENUMs `deliverynotestatus`, `deliverynoteeventtype`. Credit revision `9f3a7c2e1d04` not rewritten. No `stock_reservations`.
+
+---
+
 ## 2026-09-01 — WP-A Credit HOLD / overdue schema (planned BEFORE code)
 
 **Spec:** `architecture/wave-credit-control-addendum.md` §2, §8. Architect lock: Alembic YES, new revision only. `down_revision = "59084165d346"`. NEVER rewrite LPO (`59084165d346`), quotes, FTA, or Product Master.

@@ -11,8 +11,6 @@ from app.models.inventory import (
     Warehouse,
     WarehouseBin,
     InventoryLevel,
-    InventoryTransaction,
-    TransactionType,
 )
 from app.schemas.inventory import (
     WarehouseCreate,
@@ -23,6 +21,7 @@ from app.schemas.inventory import (
     StockAdjustmentRequest,
 )
 from app.schemas.common import SuccessResponse
+from app.services.inventory_ledger import adjust, available
 
 router = APIRouter(prefix="/inventory", tags=["Inventory Management"])
 
@@ -119,54 +118,19 @@ async def adjust_stock(
     workspace_id: uuid.UUID = Depends(get_current_workspace_id),
     user: User = Depends(get_current_user),
 ):
-    # Get or create level
-    result = await session.execute(
-        select(InventoryLevel)
-        .where(
-            InventoryLevel.workspace_id == workspace_id,
-            InventoryLevel.product_id == data.product_id,
-            InventoryLevel.warehouse_id == data.warehouse_id,
-            InventoryLevel.bin_id == data.bin_id,
-        )
-        .with_for_update()
+    level = await adjust(
+        session,
+        workspace_id,
+        user,
+        data.product_id,
+        data.warehouse_id,
+        data.bin_id,
+        data.quantity,
+        data.reason.value,
+        data.notes,
     )
-    level = result.scalar_one_or_none()
-
-    if not level:
-        level = InventoryLevel(
-            workspace_id=workspace_id,
-            product_id=data.product_id,
-            warehouse_id=data.warehouse_id,
-            bin_id=data.bin_id,
-            on_hand=0,
-            reserved=0,
-            damaged=0,
-        )
-        session.add(level)
-
-    level.on_hand += data.quantity
-
-    if level.on_hand < 0:
-        raise HTTPException(
-            status_code=400, detail="Cannot have negative on-hand stock"
-        )
-
-    txn = InventoryTransaction(
-        workspace_id=workspace_id,
-        product_id=data.product_id,
-        transaction_type=TransactionType.ADJUSTMENT,
-        quantity=data.quantity,
-        destination_bin_id=data.bin_id if data.quantity > 0 else None,
-        source_bin_id=data.bin_id if data.quantity < 0 else None,
-        reference_type="MANUAL_ADJUSTMENT",
-        reference_id=None,
-        user_id=user.id,
-    )
-    session.add(txn)
-
     await session.commit()
     await session.refresh(level)
-
     resp = InventoryLevelResponse.model_validate(level)
-    resp.available = level.on_hand - level.reserved - level.damaged
+    resp.available = available(level)
     return SuccessResponse(data=resp)

@@ -21,6 +21,7 @@ const settingsSchema = z
     credit_warning_days: z.number().min(0),
     credit_hold_days: z.number().min(0),
     block_po_on_hold: z.boolean(),
+    block_do_on_hold: z.boolean(),
   })
   .superRefine((data, ctx) => {
     if (data.credit_warning_days > data.credit_hold_days) {
@@ -44,6 +45,7 @@ const SETTINGS_FIELDS = new Set<keyof SettingsValues>([
   'credit_warning_days',
   'credit_hold_days',
   'block_po_on_hold',
+  'block_do_on_hold',
 ]);
 
 function formFieldFromApi(field?: string): keyof SettingsValues | undefined {
@@ -72,6 +74,7 @@ export const Settings = () => {
         credit_warning_days: Number(workspace.credit_warning_days ?? 30),
         credit_hold_days: Number(workspace.credit_hold_days ?? 90),
         block_po_on_hold: workspace.block_po_on_hold ?? true,
+        block_do_on_hold: workspace.block_do_on_hold ?? true,
       });
     }
   }, [workspace, reset]);
@@ -206,7 +209,15 @@ export const Settings = () => {
                 />
                 <span>Block LPO receive when client is on HOLD</span>
               </label>
-              <span className={styles.hint}>Delivery-note block is not enforced yet (unused until DN).</span>
+              <label className={styles.checkboxRow} htmlFor="settings-block-do-on-hold">
+                <input
+                  id="settings-block-do-on-hold"
+                  type="checkbox"
+                  data-testid="settings-block-do-on-hold"
+                  {...register('block_do_on_hold')}
+                />
+                <span>Block delivery-note confirm when client is on HOLD</span>
+              </label>
             </div>
           </div>
         </div>

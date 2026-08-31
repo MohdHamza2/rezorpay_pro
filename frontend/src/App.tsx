@@ -13,6 +13,9 @@ import { QuotationDetail } from './pages/QuotationDetail';
 import { Lpos } from './pages/Lpos';
 import { LpoForm } from './pages/LpoForm';
 import { LpoDetail } from './pages/LpoDetail';
+import { DeliveryNotes } from './pages/DeliveryNotes';
+import { DeliveryNoteForm } from './pages/DeliveryNoteForm';
+import { DeliveryNoteDetail } from './pages/DeliveryNoteDetail';
 import { Invoices } from './pages/Invoices';
 import { Settings } from './pages/Settings';
 import { Products } from './pages/Products';
@@ -61,6 +64,10 @@ function App() {
               <Route path="lpos/new" element={<LpoForm />} />
               <Route path="lpos/:id/edit" element={<LpoForm />} />
               <Route path="lpos/:id" element={<LpoDetail />} />
+              <Route path="delivery-notes" element={<DeliveryNotes />} />
+              <Route path="delivery-notes/new" element={<DeliveryNoteForm />} />
+              <Route path="delivery-notes/:id/edit" element={<DeliveryNoteForm />} />
+              <Route path="delivery-notes/:id" element={<DeliveryNoteDetail />} />
               <Route path="invoices" element={<Invoices />} />
               <Route path="settings" element={<Settings />} />
               <Route path="products" element={<Products />} />

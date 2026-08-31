@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from app.models.invoice_event import InvoiceEvent
     from app.models.quotation_event import QuotationEvent
     from app.models.customer_purchase_order_event import CustomerPurchaseOrderEvent
+    from app.models.delivery_note_event import DeliveryNoteEvent
 
 
 class UserRole(str, Enum):
@@ -52,5 +53,8 @@ class User(SQLModel, table=True):
         back_populates="changed_by_user"
     )
     customer_purchase_order_events: list["CustomerPurchaseOrderEvent"] = Relationship(
+        back_populates="changed_by_user"
+    )
+    delivery_note_events: list["DeliveryNoteEvent"] = Relationship(
         back_populates="changed_by_user"
     )

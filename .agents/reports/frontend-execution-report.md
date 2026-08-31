@@ -877,3 +877,197 @@ LPO isolation 1.1m and product-isolation 1.1m are register `5/minute` retry (hel
 - AR PDF, DN / `block_do_on_hold`, PDC bounce
 - Playwright not wired into GitHub Actions
 - Auth register 5/minute (retries; isolation specs can wait ~1m)
+
+---
+
+# WP-B Delivery Notes UI + PDF — Plan (before edits)
+
+**Date:** 2026-09-01
+**Owner:** frontend / coder
+**Depends on:** WP-A API (`/api/v1/delivery-notes`, Alembic `a7c4e9d2b105`). Do not touch Alembic.
+**Spec:** `architecture/wave-delivery-notes-addendum.md` WP-B; `.agents/reports/wp-a-delivery-notes-review.md` W1 (isolation 404 may be `HTTP_ERROR` — key off status).
+
+## Goal
+
+Add Delivery Notes to the existing Vite + React app: list + filters, XOR create from LPO remaining **or** invoice remaining, DRAFT edit/delete, confirm / cancel, client-side PDF titled **Delivery Note**. Settings exposes `block_do_on_hold`. Invoice PDF stays **Tax Invoice**. Quotation stays **Quotation**. LPO stays **LPO**. GRN inbound nav unchanged. No Next.js, no Playwright (WP-C), no adjust UI, no Arabic.
+
+## API client
+
+`frontend/src/api/deliveryNotes.ts`: list/get/create/update/delete, confirm (`{}`), cancel (`{ reason? }`).
+
+- List unwraps `PaginatedResponse.data` array (`response.data.data`) with `page` / `per_page`.
+- Write bodies only allow WP-A keys (`extra="forbid"`): never `hs_code`, `from_uom_id`, prices, `client_id`, both parents.
+- Isolation: treat **HTTP 404** (W1), not only `error.code === "NOT_FOUND"`.
+- Confirm CREDIT_HOLD: interceptor already skips that code; handler toasts + banner (no duplicate).
+
+## Files
+
+| File | Change |
+|---|---|
+| `frontend/src/api/deliveryNotes.ts` | CRUD + confirm/cancel |
+| `frontend/src/api/errors.ts` | `isHttpNotFound` (status 404) |
+| `frontend/src/api/inventory.ts` | `getWarehouseBins` |
+| `frontend/src/api/lpos.ts` | `quantity_delivered` / `quantity_undelivered` on items |
+| `frontend/src/api/workspaces.ts` | `block_do_on_hold` |
+| `frontend/src/pages/DeliveryNotes.tsx` | List + filters + confirm |
+| `frontend/src/pages/DeliveryNoteForm.tsx` | XOR parent, remaining qty, warehouse/bin |
+| `frontend/src/pages/DeliveryNoteDetail.tsx` | Confirm / cancel / PDF |
+| `frontend/src/pages/deliveryNoteHelpers.ts` | Payloads, remaining, `?? 0` qty |
+| `frontend/src/pages/DeliveryNoteStatusBadge.tsx` | DRAFT / CONFIRMED / CANCELLED |
+| `frontend/src/pages/DeliveryNotes.module.css` | Badges |
+| `frontend/src/components/pdf/DeliveryNotePDF.tsx` | Title **Delivery Note**; SKU/qty; CANCELLED watermark |
+| `frontend/src/components/pdf/DeliveryNotePdfPreview.tsx` | HTML title **Delivery Note** |
+| `frontend/src/components/Layout.tsx` | Sales nav after LPO (`/delivery-notes`) |
+| `frontend/src/App.tsx` | AuthGuard routes |
+| `frontend/src/pages/Settings.tsx` | `block_do_on_hold` checkbox |
+
+## Out of scope
+
+Playwright WP-C, Alembic, inventory adjust UI, InvoicePDF / QuotationPDF / LpoPDF titles, GRN inbound nav, git commit.
+
+## Acceptance
+
+`cd frontend && npm run build` succeeds. Extra keys never sent. Qty `?? 0` before `toFixed`. PDF title **Delivery Note**. Isolation 404 keyed off HTTP status. Confirm CREDIT_HOLD toast without interceptor duplicate.
+
+---
+
+# WP-B Delivery Notes UI + PDF — Implementation (completed)
+
+**Date:** 2026-09-01
+**Build:** `cd frontend && npm run build` — `tsc -b && vite build` succeeded (Vite 8.2.1). Pre-existing chunk-size warning only.
+
+## Shipped
+
+1. **API client** — `frontend/src/api/deliveryNotes.ts` unwraps paginated `data` for list. Create/update bodies omit extra keys (no prices, `client_id`, both parents). Confirm sends `{}`. Cancel sends `{ reason }` only when provided.
+2. **Nav / routes** — Sales: Clients → Quotations → LPO → **Delivery Notes** (`/delivery-notes`) → Invoices. AuthGuard routes: `/delivery-notes`, `/delivery-notes/new`, `/delivery-notes/:id/edit`, `/delivery-notes/:id`. GRN stays **Inbound Shipments** (`/grn`).
+3. **Create** — XOR LPO remaining **or** invoice remaining. Warehouse/bin picker. Ordered / delivered / remaining columns. Confirm / cancel. DRAFT edit/delete.
+4. **CREDIT_HOLD** — interceptor already skips that code; confirm handler toasts + banner (`data-testid="credit-hold"`). Isolation 404 keyed off HTTP status (`isHttpNotFound`), not `NOT_FOUND`.
+5. **Settings** — `block_do_on_hold` checkbox (`settings-block-do-on-hold`).
+6. **PDF** — new `DeliveryNotePDF` title **Delivery Note**, DN number, LPO or invoice ref, SKU/description/qty, CANCELLED watermark, English Helvetica. `InvoicePDF` still **Tax Invoice**. `QuotationPDF` still **Quotation**. `LpoPDF` still **LPO**. Qty uses `?? 0` before `toFixed`.
+
+Alembic, inventory adjust UI, Playwright WP-C, git commit: not touched.
+
+## Files
+
+- `frontend/src/api/deliveryNotes.ts` (new)
+- `frontend/src/pages/DeliveryNotes.tsx` (new)
+- `frontend/src/pages/DeliveryNoteForm.tsx` (new)
+- `frontend/src/pages/DeliveryNoteDetail.tsx` (new)
+- `frontend/src/pages/deliveryNoteHelpers.ts` (new)
+- `frontend/src/pages/DeliveryNoteStatusBadge.tsx` (new)
+- `frontend/src/pages/DeliveryNotes.module.css` (new)
+- `frontend/src/components/pdf/DeliveryNotePDF.tsx` (new)
+- `frontend/src/components/pdf/DeliveryNotePdfPreview.tsx` (new)
+- `frontend/src/api/errors.ts`
+- `frontend/src/api/inventory.ts`
+- `frontend/src/api/lpos.ts`
+- `frontend/src/api/workspaces.ts`
+- `frontend/src/pages/Settings.tsx`
+- `frontend/src/components/Layout.tsx`
+- `frontend/src/App.tsx`
+- `.agents/reports/frontend-execution-report.md`
+
+---
+
+# WP-C Delivery Notes Playwright E2E — Plan (before edits)
+
+**Date:** 2026-09-01
+**Owner:** frontend / coder
+**Depends on:** WP-A API (`/api/v1/delivery-notes`, ISSUE on confirm) + WP-B UI (`/delivery-notes`, PDF title **Delivery Note**, Settings `block_do_on_hold`)
+**Spec:** `architecture/wave-delivery-notes-addendum.md` WP-C
+
+## Goal
+
+Extend the existing Vite Playwright harness (`frontend/playwright.config.ts`, `frontend/e2e/helpers.ts`, product + FTA + quotation + LPO + credit specs). Prove catalog LPO remaining → DRAFT DN → confirm ISSUEs stock (levels drop), HTML preview title is **Delivery Note** (not Tax Invoice), and workspace B cannot GET workspace A's DN (404 not 403). Optional cheap HOLD: confirm 400 `CREDIT_HOLD` when `block_do_on_hold`. Do not break product/FTA/quote/LPO/credit specs. Never SQLite.
+
+## Harness (reuse)
+
+| Item | Choice |
+|---|---|
+| Config | existing `frontend/playwright.config.ts` — `testDir: e2e`, Chromium, workers 1 |
+| Helpers | `frontend/e2e/helpers.ts`, `global-setup.ts` (`GET /health/ready`) |
+| Script | `npm run test:e2e` from `frontend/` |
+| API | docker postgres **5434**, API **8000**, Vite **5173** |
+| Auth | unique emails, password `Passw0rd1` (8+); retry register on 429 (5/minute) |
+| Stock seed | Playwright `request` + JWT: warehouse+bin, product, ADMIN `OPENING` adjust (not GRN UI) |
+
+## Specs to add
+
+1. `frontend/e2e/delivery-notes.spec.ts` — register → Settings `block_do_on_hold` checked → client → API warehouse/bin/product/opening stock → UI LPO catalog line + receive → DN from remaining → preview **Delivery Note** → confirm CONFIRMED → GET inventory `on_hand` decreased. Cheap extra: request-only HOLD confirm blocked then allowed when flag is off.
+2. `frontend/e2e/delivery-note-isolation.spec.ts` — workspace A creates DN via API; workspace B `GET /api/v1/delivery-notes/{id}` → **404** not 403.
+
+## UI `data-testid`
+
+Reuse `nav-delivery-notes`, `dn-create`, `dn-form`, `dn-parent-type-lpo`, `dn-parent-select`, `dn-warehouse`, `dn-qty-0`, `dn-remaining-0`, `dn-form-submit`, `dn-detail`, `dn-number`, `dn-status`, `dn-confirm`, `dn-preview-pdf`, `dn-pdf-title`, `settings-block-do-on-hold`, `lpo-item-0-product`. Isolation keys off HTTP 404.
+
+## Out of scope
+
+GRN receiving UI, inventory adjust UI, transfers, counts, WhatsApp, tax credit notes, Arabic PDF, GitHub Actions, git commit.
+
+## Acceptance
+
+- `npm run test:e2e` green (product + FTA + quotations + LPO + credit + DN)
+- `npm run build` still succeeds
+- Fix UI bugs hit in the run; API bugs → log only (pytest already covers WP-A)
+
+---
+
+# WP-C Delivery Notes Playwright E2E — Implementation (completed)
+
+**Date:** 2026-09-01
+**API:** docker postgres host **5434**, API **8000**, Vite **5173**. `/health/ready` 200 (`database: connected`). Not SQLite.
+
+## Result
+
+```
+Running 14 tests using 1 worker
+  ok  1 [chromium] › e2e\credit-hold.spec.ts:12:1 › COD client second invoice send is credit HOLD (7.0s)
+  ok  2 [chromium] › e2e\credit-isolation.spec.ts:4:1 › cross-tenant client credit GET returns 404 (32.5s)
+  ok  3 [chromium] › e2e\delivery-note-isolation.spec.ts:11:1 › cross-tenant delivery note GET returns 404 (519ms)
+  ok  4 [chromium] › e2e\delivery-notes.spec.ts:21:1 › catalog LPO delivery note confirm issues stock (4.3s)
+  ok  5 [chromium] › e2e\delivery-notes.spec.ts:77:1 › HOLD blocks DN confirm when block_do_on_hold (1.1m)
+  ok  6 [chromium] › e2e\fta-isolation.spec.ts:4:1 › cross-tenant invoice GET returns 404 (458ms)
+  ok  7 [chromium] › e2e\fta-send-blocked.spec.ts:4:1 › send invoice without workspace TRN is blocked (1.4s)
+  ok  8 [chromium] › e2e\fta-tax-invoice.spec.ts:11:1 › simplified tax invoice send and preview (2.0s)
+  ok  9 [chromium] › e2e\lpo-isolation.spec.ts:4:1 › cross-tenant LPO GET returns 404 (1.1m)
+  ok 10 [chromium] › e2e\lpos.spec.ts:12:1 › manual LPO receive partial invoice lands draft invoice (4.6s)
+  ok 11 [chromium] › e2e\product-catalog.spec.ts:12:1 › product master catalog happy path (2.4s)
+  ok 12 [chromium] › e2e\product-isolation.spec.ts:4:1 › cross-tenant product GET returns 404 (1.1m)
+  ok 13 [chromium] › e2e\quotation-isolation.spec.ts:4:1 › cross-tenant quotation GET returns 404 (475ms)
+  ok 14 [chromium] › e2e\quotations.spec.ts:12:1 › quotation send accept convert to draft invoice (2.1s)
+  14 passed (4.2m)
+```
+
+`npm run build` — `tsc -b && vite build` succeeded (Vite 8.2.1). Pre-existing chunk-size warning only.
+
+Product + FTA + quotation + LPO + credit specs still pass. Isolation 404 (not 403) confirmed for `GET /delivery-notes/{id}`. Confirm ISSUEd stock: opening 10 → after ship qty 2, `on_hand` 8.
+
+HOLD 1.1m, LPO isolation 1.1m, and product-isolation 1.1m are register `5/minute` retry (helpers wait 16s on 429). DN UI spec itself was 4.3s; isolation 519ms.
+
+## Specs shipped
+
+1. **Happy path** — unique register (password 8+) → Settings `block_do_on_hold` checked → client → API warehouse+bin+catalog product + ADMIN `OPENING` adjust 10 → UI LPO catalog line qty 2 + receive → DN from remaining → HTML preview title **Delivery Note** (invoice `pdf-title` absent) → confirm **CONFIRMED** → GET inventory `on_hand` 8.
+2. **HOLD (cheap)** — request-only: COD send → HOLD; `block_do_on_hold` true → confirm 400 `CREDIT_HOLD`; flag false → confirm 200.
+3. **Isolation** — workspace B `GET /api/v1/delivery-notes/{id}` → **404** not 403.
+
+## UI / harness
+
+- Reused existing WP-B `data-testid`s (no new UI ids needed).
+- Helpers: `expectApiData`, `createWarehouseBinViaApi`, `seedCatalogOpeningStock`, `inventoryOnHand`, `createCatalogLpoViaUi`. Register still retries 429.
+
+## Files
+
+- `frontend/e2e/delivery-notes.spec.ts` (new)
+- `frontend/e2e/delivery-note-isolation.spec.ts` (new)
+- `frontend/e2e/helpers.ts`
+- `.agents/reports/frontend-execution-report.md`
+
+## Not covered (leftovers)
+
+- Invoice-parent DN in the browser (this slice used LPO remaining)
+- GRN receiving UI to seed stock (ADMIN opening adjust via request)
+- Cancel CONFIRMED / stock reverse in the browser; API pytest covers it
+- Over-deliver remaining qty toast in the browser
+- Playwright not wired into GitHub Actions
+- Auth register 5/minute (retries; isolation specs can wait ~1m)
+- Next after A–C: tax credit notes (gap 10)

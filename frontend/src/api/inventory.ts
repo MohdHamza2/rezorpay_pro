@@ -10,6 +10,14 @@ export interface Warehouse {
   created_at: string;
 }
 
+export interface WarehouseBin {
+  id: string;
+  warehouse_id: string;
+  code: string;
+  barcode?: string | null;
+  is_active: boolean;
+}
+
 export interface InventoryLevel {
   id: string;
   product_id: string;
@@ -23,6 +31,13 @@ export interface InventoryLevel {
 
 export const getWarehouses = async (): Promise<Warehouse[]> => {
   const response = await apiClient.get<SuccessResponse<Warehouse[]>>('/api/v1/inventory/warehouses');
+  return response.data.data;
+};
+
+export const getWarehouseBins = async (warehouseId: string): Promise<WarehouseBin[]> => {
+  const response = await apiClient.get<SuccessResponse<WarehouseBin[]>>(
+    `/api/v1/inventory/warehouses/${warehouseId}/bins`,
+  );
   return response.data.data;
 };
 

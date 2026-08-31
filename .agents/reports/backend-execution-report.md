@@ -3,6 +3,67 @@
 
 ---
 
+## 2026-09-01 — WP-A Delivery Notes API (planned BEFORE code)
+
+**Spec:** `architecture/wave-delivery-notes-addendum.md` WP-A. Architect note: `.agents/reports/architect-delivery-notes-note.md`. No UI/PDF/Playwright. No git commit.
+
+### Locked
+
+- `DnNumberService` SELECT FOR UPDATE `DN-YYYY-XXXX` on `dn_counters`.
+- XOR parent: exactly one of LPO or invoice. Both/neither 422. Over-deliver 400. LPO remaining = ordered − CONFIRMED DN qty (not invoiced). Invoice remaining = invoice qty − CONFIRMED DN qty.
+- State: DRAFT → CONFIRMED (ISSUE −qty) → CANCELLED (ISSUE +qty, `reference_type=DN_CANCEL`). DRAFT soft-delete. Confirm idempotent 200. `/cancel` CONFIRMED only.
+- Catalog `product_id` required to move stock; ad-hoc confirm with no ledger. Must reference parent line. Inactive product 400. Other-workspace 404.
+- HOLD confirm iff `block_do_on_hold` → 400 `CREDIT_HOLD` via `CreditControlService.assert_not_hold` + `CreditEventReason.DN_CONFIRM`. Create/PUT never blocked.
+- `inventory_ledger.py`: GRN-style FOR UPDATE + bin, filter `workspace_id`. Never float. Never call adjust from DN.
+- Tighten `POST /inventory/adjust`: OWNER/ADMIN; reason allow-list; notes min 3; workspace 404; MEMBER 403. Keep endpoint.
+- LPO GET: `quantity_delivered` / `quantity_undelivered`.
+- Tests: `backend/tests/test_delivery_notes.py` §13 + GRN/inventory regression + credit HOLD confirm. PostgreSQL `_test`.
+
+### Files (planned)
+
+- `backend/app/models/dn_counter.py`, `delivery_note.py`, `delivery_note_item.py`, `delivery_note_event.py`
+- `backend/alembic/versions/a7c4e9d2b105_add_delivery_notes.py` (`down_revision = "9f3a7c2e1d04"`)
+- `backend/app/services/dn_number.py`, `inventory_ledger.py`, `delivery_note_support.py`, `delivery_note_service.py`
+- `backend/app/schemas/delivery_notes.py`, `routers/delivery_notes.py`, `main.py`
+- `backend/app/routers/inventory.py` + `schemas/inventory.py` adjust tighten
+- `backend/tests/test_delivery_notes.py`
+
+---
+
+## 2026-09-01 — WP-A Delivery Notes API (implemented)
+
+**Spec:** addendum WP-A. No UI/PDF/Playwright. No git commit.
+
+### Done
+
+- `DnNumberService` SELECT FOR UPDATE `DN-YYYY-XXXX` via `dn_counters` (savepoint on first-year insert race).
+- XOR parent: LPO remaining = ordered − CONFIRMED DN qty (independent of `quantity_invoiced`). Invoice remaining = invoice qty − CONFIRMED DN qty. Both/neither 422. Over-deliver 400.
+- DRAFT → CONFIRMED posts `ISSUE` (−qty, `reference_type=DN`). Cancel CONFIRMED posts `ISSUE` (+qty, `DN_CANCEL`) and restores `quantity_delivered`. Confirm idempotent 200. DRAFT soft-delete. DN never calls adjust.
+- HOLD confirm iff `block_do_on_hold` → 400 `CREDIT_HOLD` + `DN_CONFIRM`. Create/PUT never blocked.
+- `POST /inventory/adjust`: OWNER/ADMIN; reason allow-list + notes; workspace 404; MEMBER 403.
+- LPO GET: `quantity_delivered` / `quantity_undelivered`.
+
+### Files
+
+- models: `dn_counter.py`, `delivery_note.py`, `delivery_note_item.py`, `delivery_note_event.py` + CPO item / inventory / credit enum / user
+- `backend/alembic/versions/a7c4e9d2b105_add_delivery_notes.py`
+- `dn_number.py`, `inventory_ledger.py`, `delivery_note_support.py`, `delivery_note_service.py`
+- `schemas/delivery_notes.py`, `routers/delivery_notes.py`, `main.py`, `routers/inventory.py`
+- `backend/tests/test_delivery_notes.py`
+
+### Pytest (PostgreSQL `_test`)
+
+- `tests/test_delivery_notes.py`: **14 passed**
+- `tests/test_grn.py`: **2 passed**
+- `tests/test_credit_control.py`: **17 passed**
+- `tests/test_customer_lpos.py`: **17 passed**
+- `tests/test_invoices.py`: **25 passed**
+- Combined: **75 passed, 0 failed**
+
+`alembic upgrade head` + `alembic check` clean. black + ruff clean on touched files.
+
+---
+
 ## 2026-09-01 — WP-A credit nits W1/W2/W4 (planned BEFORE code)
 
 **Source:** `.agents/reports/wp-a-credit-control-review.md` W1, optional W2, test for FTA-valid HOLD send. Spec: `architecture/wave-credit-control-addendum.md` §6–7. Backend only. No UI. No Alembic rewrite. No git commit. Skip client-list in-memory pagination (W3).
