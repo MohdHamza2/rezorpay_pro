@@ -68,6 +68,9 @@ class Invoice(SQLModel, table=True):
     supply_date: date = Field(sa_column=Column(Date, nullable=False))
     due_date: date = Field(sa_column=Column(Date, nullable=False))
     notes: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
+    quotation_id: Optional[uuid.UUID] = Field(
+        default=None, foreign_key="quotations.id", unique=True, index=True
+    )
 
     # FTA snapshots — null on DRAFT; frozen at send
     invoice_kind: Optional[str] = Field(default=None, max_length=20)

@@ -170,6 +170,35 @@ export async function createClientViaUi(
   await expect(page.getByTestId(`client-row-${input.name}`)).toBeVisible();
 }
 
+export async function pageAccessToken(page: Page): Promise<string> {
+  const token = await page.evaluate(() => {
+    const raw = window.localStorage.getItem('auth_tokens');
+    if (!raw) return '';
+    try {
+      return (JSON.parse(raw) as { access_token?: string }).access_token ?? '';
+    } catch {
+      return '';
+    }
+  });
+  expect(token, 'missing access_token').toBeTruthy();
+  return token;
+}
+
+export async function createAdhocQuotationViaUi(
+  page: Page,
+  input: { clientName: string; description: string; quantity: string; price: string },
+): Promise<void> {
+  await page.getByTestId('nav-quotations').click();
+  await page.getByTestId('quotation-create').click();
+  await expect(page.getByTestId('quotation-form')).toBeVisible();
+  await selectOptionContaining(page, 'quotation-client-select', input.clientName);
+  await page.getByTestId('quotation-item-0-description').fill(input.description);
+  await page.getByTestId('quotation-item-0-quantity').fill(input.quantity);
+  await page.getByTestId('quotation-item-0-price').fill(input.price);
+  await page.getByTestId('quotation-form-submit').click();
+  await expect(page.getByTestId('quotation-detail')).toBeVisible();
+}
+
 export async function createAdhocInvoiceViaUi(
   page: Page,
   input: { clientName: string; description: string; quantity: string; price: string },

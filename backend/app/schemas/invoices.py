@@ -174,6 +174,7 @@ class InvoiceResponse(InvoiceBase):
     buyer_trn_snapshot: Optional[str] = None
     buyer_name_snapshot: Optional[str] = None
     buyer_address_snapshot: Optional[str] = None
+    quotation_id: Optional[UUID] = None
     subtotal: Decimal
     tax_amount: Decimal
     total_amount: Decimal

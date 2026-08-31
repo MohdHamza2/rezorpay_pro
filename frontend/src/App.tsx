@@ -7,6 +7,9 @@ import { Register } from './pages/Register';
 import { Layout } from './components/Layout';
 import { Dashboard } from './pages/Dashboard';
 import { Clients } from './pages/Clients';
+import { Quotations } from './pages/Quotations';
+import { QuotationForm } from './pages/QuotationForm';
+import { QuotationDetail } from './pages/QuotationDetail';
 import { Invoices } from './pages/Invoices';
 import { Settings } from './pages/Settings';
 import { Products } from './pages/Products';
@@ -47,6 +50,10 @@ function App() {
             >
               <Route index element={<Dashboard />} />
               <Route path="clients" element={<Clients />} />
+              <Route path="quotations" element={<Quotations />} />
+              <Route path="quotations/new" element={<QuotationForm />} />
+              <Route path="quotations/:id/edit" element={<QuotationForm />} />
+              <Route path="quotations/:id" element={<QuotationDetail />} />
               <Route path="invoices" element={<Invoices />} />
               <Route path="settings" element={<Settings />} />
               <Route path="products" element={<Products />} />
@@ -62,7 +69,7 @@ function App() {
               <Route path="supplier-invoices" element={<SupplierInvoices />} />
               <Route path="supplier-invoices/:id" element={<SupplierInvoiceDetail />} />
             </Route>
-            
+
             {/* Catch-all redirect */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

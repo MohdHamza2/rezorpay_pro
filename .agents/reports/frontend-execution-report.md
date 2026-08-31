@@ -338,3 +338,177 @@ Product-isolation 1.1m is register `5/minute` retry (helpers wait 16s on 429). F
 - Playwright not wired into GitHub Actions
 - Frontend register zod min-6 vs API min-8
 - Auth register 5/minute (retries; product-isolation can wait ~1m when the window is full)
+
+---
+
+# WP-B Quotations UI + PDF — Plan (before edits)
+
+**Date:** 2026-09-01
+**Owner:** frontend / coder
+**Depends on:** WP-A API (`/api/v1/quotations`, Alembic `cb01b6bef962`). Do not touch Alembic. Do not retitle invoice PDF.
+**Spec:** `architecture/wave-quotations-addendum.md` WP-B; `.agents/reports/architect-quotations-note.md`
+
+## Goal
+
+Add Quotations to the existing Vite + React app: list + filters, DRAFT create/edit, detail actions, convert to DRAFT invoice, client-side PDF titled **Quotation**. Invoice PDF stays **Tax Invoice**. No Next.js, no Playwright (WP-C), no Arabic, no LPO.
+
+## API client
+
+`frontend/src/api/quotations.ts`: list/get/create/update/delete, send, accept, reject, convert.
+
+- List unwraps `PaginatedResponse.data` array (`response.data.data`) with `page` / `per_page`.
+- Write bodies only allow WP-A keys (`extra="forbid"`): never `hs_code`, `from_uom_id`, `line_net`, `total_price` on writes.
+- Convert returns `Invoice` (201 first / 200 idempotent). Navigate to `/invoices` (DRAFT invoice list).
+
+## Files
+
+| File | Change |
+|---|---|
+| `frontend/src/api/quotations.ts` | CRUD + send/accept/reject/convert |
+| `frontend/src/pages/Quotations.tsx` | List + status/client/search filters |
+| `frontend/src/pages/QuotationForm.tsx` | Create / DRAFT-only edit (catalog + ad-hoc, XOR discount, inherit tax, AED, valid_until +14) |
+| `frontend/src/pages/QuotationDetail.tsx` | Status badges, send/accept/reject, convert on ACCEPTED only |
+| `frontend/src/pages/quotationHelpers.ts` | Form payloads, dates, AED `?? 0` |
+| `frontend/src/pages/Quotations.module.css` | Filters, badges, detail |
+| `frontend/src/components/pdf/QuotationPDF.tsx` | Title **Quotation**; quote number; valid until; line net/VAT; EXPIRED/REJECTED watermark |
+| `frontend/src/components/Layout.tsx` | Sales nav: Clients, **Quotations**, Invoices |
+| `frontend/src/App.tsx` | AuthGuard routes `/quotations`, `/quotations/new`, `/quotations/:id`, `/quotations/:id/edit` |
+
+## Out of scope
+
+Playwright WP-C, Alembic, InvoicePDF title, LPO, public accept, git commit.
+
+## Acceptance
+
+`cd frontend && npm run build` succeeds. Convert only when ACCEPTED, lands on invoices. PDF says Quotation not Tax Invoice. `?? 0` before `toFixed`. Toasts on errors (existing interceptor).
+
+---
+
+# WP-B Quotations UI + PDF — Implementation (completed)
+
+**Date:** 2026-09-01
+**Build:** `cd frontend && npm run build` — `tsc -b && vite build` succeeded (Vite 8.2.1). Pre-existing chunk-size warning only.
+
+## Shipped
+
+1. **API client** — `frontend/src/api/quotations.ts` unwraps `PaginatedResponse.data` for list. Write payloads omit extra keys (`hs_code`, `from_uom_id`, line totals). Send `{}`; reject sends `{ reason }` only when provided; convert returns `Invoice`.
+2. **Nav / routes** — Sales: Clients → Quotations → Invoices. AuthGuard routes: `/quotations`, `/quotations/new`, `/quotations/:id/edit`, `/quotations/:id`.
+3. **List** — status / client / search filters, badges, send (DRAFT), convert (ACCEPTED only).
+4. **Form** — catalog + ad-hoc lines, XOR discount, blank VAT inherits 5%, AED, `valid_until` default +14, DRAFT-only edit.
+5. **Detail** — send / accept / reject (optional reason) / convert. Convert toasts invoice number and navigates to `/invoices` (DRAFT).
+6. **PDF** — new `QuotationPDF` title **Quotation**, quote number, valid until, line net/VAT/gross, EXPIRED/REJECTED watermark, English Helvetica. `InvoicePDF` still **Tax Invoice**.
+
+Alembic, InvoicePDF title, Playwright WP-C, LPO, git commit: not touched.
+
+## Files
+
+- `frontend/src/api/quotations.ts` (new)
+- `frontend/src/pages/Quotations.tsx` (new)
+- `frontend/src/pages/QuotationForm.tsx` (new)
+- `frontend/src/pages/QuotationDetail.tsx` (new)
+- `frontend/src/pages/quotationHelpers.ts` (new)
+- `frontend/src/pages/QuotationStatusBadge.tsx` (new)
+- `frontend/src/pages/Quotations.module.css` (new)
+- `frontend/src/components/pdf/QuotationPDF.tsx` (new)
+- `frontend/src/components/pdf/QuotationPdfPreview.tsx` (new)
+- `frontend/src/components/Layout.tsx`
+- `frontend/src/App.tsx`
+- `.agents/reports/frontend-execution-report.md`
+
+---
+
+# WP-C Quotations Playwright E2E — Plan (before edits)
+
+**Date:** 2026-09-01
+**Owner:** frontend / coder
+**Depends on:** WP-A API (`/api/v1/quotations`) + WP-B UI + PDF
+**Spec:** `architecture/wave-quotations-addendum.md` WP-C; user brief (client + one AED line; convert → DRAFT invoice; PDF title **Quotation**; cross-tenant GET 404 not 403)
+
+## Goal
+
+Extend the existing Vite Playwright harness (`frontend/playwright.config.ts`, `frontend/e2e/helpers.ts`, FTA + product specs). Prove quote create → send → accept → convert lands on a DRAFT invoice, HTML preview title is **Quotation** (not Tax Invoice), and workspace B cannot GET workspace A's quote. Do not break product/FTA tests. No LPO. Never SQLite.
+
+## Harness (reuse)
+
+| Item | Choice |
+|---|---|
+| Config | existing `frontend/playwright.config.ts` — `testDir: e2e`, Chromium, workers 1 |
+| Helpers | `frontend/e2e/helpers.ts`, `global-setup.ts` (`GET /health/ready`) |
+| Script | `npm run test:e2e` from `frontend/` |
+| API | docker postgres **5434**, API **8000**, Vite **5173** |
+| Auth | unique emails, password `Passw0rd1` (8+); retry register on 429 (5/minute) |
+
+## Specs to add
+
+1. `frontend/e2e/quotations.spec.ts` — register → client → DRAFT quote (one AED ad-hoc line) → preview **Quotation** (not Tax Invoice) → send → accept → convert → `/invoices` row is **DRAFT**. Cheap extra: after SENT, edit URL redirects and PUT cannot save. After convert, invoice send without Settings TRN/address still shows `FTA_SEND_BLOCKED`.
+2. `frontend/e2e/quotation-isolation.spec.ts` — workspace A creates quote via API; workspace B `GET /api/v1/quotations/{id}` → **404** not 403 (request context).
+
+## UI `data-testid` (keep CSS modules)
+
+Fill gaps on list/form/detail: `quotation-edit`, `quotation-number`, `quotation-notes`, `quotation-add-item`. Preview already uses `quotation-pdf-title` / `quotation-pdf-preview`. Reuse `nav-quotations`, `quotation-create`, send/accept/convert, invoice-status/send, `fta-send-blocked`.
+
+## Out of scope
+
+LPO / convert-to-CPO, expired-quote UI, second-convert UI, Arabic PDF, GitHub Actions, git commit.
+
+## Acceptance
+
+- `npm run test:e2e` green (product + FTA + quotations)
+- `npm run build` still succeeds
+- Fix UI bugs hit in the run; API bugs → log only (pytest already covers WP-A)
+
+---
+
+# WP-C Quotations Playwright E2E — Implementation (completed)
+
+**Date:** 2026-09-01
+**API:** docker postgres host **5434**, API **8000**, Vite **5173**. `/health/ready` 200 (`database: connected`). Not SQLite.
+
+## Result
+
+```
+Running 7 tests using 1 worker
+  ok 1 [chromium] › e2e\fta-isolation.spec.ts:4:1 › cross-tenant invoice GET returns 404 (669ms)
+  ok 2 [chromium] › e2e\fta-send-blocked.spec.ts:4:1 › send invoice without workspace TRN is blocked (1.5s)
+  ok 3 [chromium] › e2e\fta-tax-invoice.spec.ts:11:1 › simplified tax invoice send and preview (2.0s)
+  ok 4 [chromium] › e2e\product-catalog.spec.ts:12:1 › product master catalog happy path (2.6s)
+  ok 5 [chromium] › e2e\product-isolation.spec.ts:4:1 › cross-tenant product GET returns 404 (1.1m)
+  ok 6 [chromium] › e2e\quotation-isolation.spec.ts:4:1 › cross-tenant quotation GET returns 404 (490ms)
+  ok 7 [chromium] › e2e\quotations.spec.ts:12:1 › quotation send accept convert to draft invoice (2.3s)
+  7 passed (1.3m)
+```
+
+`npm run build` — `tsc -b && vite build` succeeded (Vite 8.2.1). Pre-existing chunk-size warning only.
+
+No UI or API bugs found in the run. Product + FTA specs still pass. Isolation 404 (not 403) confirmed in request context.
+
+Product-isolation 1.1m is register `5/minute` retry (helpers wait 16s on 429). Quotation specs themselves were ~2.3s (UI) and 490ms (isolation).
+
+## Specs shipped
+
+1. **Happy path** — unique register (password 8+) → client → DRAFT quote (one AED ad-hoc line) → HTML preview title **Quotation** (invoice `pdf-title` absent) → send → SENT PUT 403 `INVALID_STATE` + `/edit` redirects → accept → convert → `/invoices` DRAFT → send without Settings TRN/address still `FTA_SEND_BLOCKED`.
+2. **Isolation** — workspace B `GET /api/v1/quotations/{id}` → **404** not 403.
+
+## UI / harness
+
+- `data-testid`: `quotation-edit`, `quotation-number`, `quotation-notes`, `quotation-add-item`, `quotation-open-{number}` (list/form/detail). Existing send/accept/convert/preview ids reused.
+- Helpers: `createAdhocQuotationViaUi`, `pageAccessToken`. Register still retries 429.
+
+## Files
+
+- `frontend/e2e/quotations.spec.ts` (new)
+- `frontend/e2e/quotation-isolation.spec.ts` (new)
+- `frontend/e2e/helpers.ts`
+- `frontend/src/pages/Quotations.tsx`
+- `frontend/src/pages/QuotationForm.tsx`
+- `frontend/src/pages/QuotationDetail.tsx`
+- `.agents/reports/frontend-execution-report.md`
+
+## Not covered (leftovers)
+
+- Expired-quote cannot convert (browser); API pytest covers it
+- Second convert same invoice (browser); API pytest covers it
+- Catalog `product_id` line in this E2E (ad-hoc AED line per WP-C brief)
+- LPO / convert-to-CPO
+- Playwright not wired into GitHub Actions
+- Auth register 5/minute (retries; product-isolation can wait ~1m)

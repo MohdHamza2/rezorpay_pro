@@ -14,7 +14,7 @@ import logging
 import re
 import uuid
 from datetime import date, datetime, timezone
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 from typing import Any, Dict, List, NoReturn, Optional, Sequence
 
 from fastapi import HTTPException, status
@@ -31,22 +31,17 @@ from app.models.workspace import Workspace
 from app.schemas.common import ErrorCode, ErrorDetail
 from app.services.audit_service import AuditService
 from app.services.invoice_number import InvoiceNumberService
+from app.services.line_money import apply_line_money as _apply_line_money
+from app.services.line_money import money, xor_discounts
 
 logger = logging.getLogger(__name__)
 
-FILS = Decimal("0.01")
-HUNDRED = Decimal("100")
 STANDARD_THRESHOLD = Decimal("10000.00")
 TRN_RE = re.compile(r"^100[0-9]{12}$")
 KIND_STANDARD = "STANDARD"
 KIND_SIMPLIFIED = "SIMPLIFIED"
 AED = "AED"
 DEFAULT_SALES = "DEFAULT_SALES"
-
-
-def money(value: Decimal) -> Decimal:
-    """ROUND_HALF_UP to 0.01 (fils) — per line, then sum."""
-    return Decimal(value).quantize(FILS, rounding=ROUND_HALF_UP)
 
 
 def _now() -> datetime:
@@ -84,24 +79,6 @@ def _raise(
 def _fta_blocked(field: str, message: str) -> NoReturn:
     logger.info("fta_send_blocked", extra={"fta_field": field})
     _raise(status.HTTP_400_BAD_REQUEST, ErrorCode.FTA_SEND_BLOCKED, message, field)
-
-
-def _apply_line_money(item: InvoiceItem) -> None:
-    extended = money(item.quantity * item.unit_price)
-    if item.discount_amount > 0:
-        disc = money(item.discount_amount)
-    else:
-        disc = money(extended * item.discount_percent / HUNDRED)
-    if disc > extended:
-        _raise(
-            status.HTTP_400_BAD_REQUEST,
-            ErrorCode.VALIDATION_ERROR,
-            "Discount exceeds line extended amount",
-            "discount_amount",
-        )
-    item.line_net = money(extended - disc)
-    item.tax_amount = money(item.line_net * item.tax_rate / HUNDRED)
-    item.total_price = money(item.line_net + item.tax_amount)
 
 
 def _resolve_kind(client: Client, total: Decimal) -> str:
@@ -186,6 +163,7 @@ class InvoiceService:
         notes: Optional[str] = None,
         items: Optional[List[dict]] = None,
         supply_date: Optional[date] = None,
+        quotation_id: Optional[uuid.UUID] = None,
     ) -> Invoice:
         """Create a new invoice with gapless numbering and FTA line math."""
         _assert_aed(currency)
@@ -205,6 +183,7 @@ class InvoiceService:
             supply_date=resolved_supply,
             due_date=due_date,
             notes=notes,
+            quotation_id=quotation_id,
             subtotal=Decimal("0"),
             tax_amount=Decimal("0"),
             total_amount=Decimal("0"),
@@ -545,13 +524,17 @@ async def _resolve_line(
     workspace_id: uuid.UUID,
     default_tax_rate: Decimal,
     item_data: dict,
+    *,
+    line_owner: str = "invoice",
 ) -> dict:
     product_id = item_data.get("product_id")
     product: Optional[Product] = None
     sku_snapshot = None
     uom_id = None
     if product_id is not None:
-        product = await _load_invoice_product(session, workspace_id, product_id)
+        product = await _load_invoice_product(
+            session, workspace_id, product_id, line_owner=line_owner
+        )
         sku_snapshot = product.internal_sku
         uom_id = product.base_uom_id
     description = _line_description(item_data, product)
@@ -559,12 +542,7 @@ async def _resolve_line(
     tax_rate = _line_tax_rate(item_data, product, default_tax_rate)
     discount_percent = _dec(item_data.get("discount_percent") or 0)
     discount_amount = _dec(item_data.get("discount_amount") or 0)
-    if discount_percent > 0 and discount_amount > 0:
-        _raise(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
-            ErrorCode.VALIDATION_ERROR,
-            "Provide either discount_percent or discount_amount, not both",
-        )
+    xor_discounts(discount_percent, discount_amount)
     return {
         "product_id": product.id if product else None,
         "uom_id": uom_id,
@@ -629,7 +607,11 @@ def _line_tax_rate(
 
 
 async def _load_invoice_product(
-    session: AsyncSession, workspace_id: uuid.UUID, product_id: uuid.UUID
+    session: AsyncSession,
+    workspace_id: uuid.UUID,
+    product_id: uuid.UUID,
+    *,
+    line_owner: str = "invoice",
 ) -> Product:
     result = await session.execute(
         select(Product).where(
@@ -642,10 +624,11 @@ async def _load_invoice_product(
     if product is None:
         _raise(status.HTTP_404_NOT_FOUND, ErrorCode.NOT_FOUND, "Product not found")
     if not product.is_active:
+        target = "a quotation line" if line_owner == "quotation" else "an invoice"
         _raise(
             status.HTTP_400_BAD_REQUEST,
             ErrorCode.VALIDATION_ERROR,
-            "Cannot add an inactive product to an invoice",
+            f"Cannot add an inactive product to {target}",
             "product_id",
         )
     return product

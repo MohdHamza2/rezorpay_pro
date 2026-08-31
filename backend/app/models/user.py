@@ -9,6 +9,7 @@ from sqlmodel import Field, Relationship, SQLModel
 if TYPE_CHECKING:
     from app.models.workspace import Workspace
     from app.models.invoice_event import InvoiceEvent
+    from app.models.quotation_event import QuotationEvent
 
 
 class UserRole(str, Enum):
@@ -44,5 +45,8 @@ class User(SQLModel, table=True):
     # Relationships
     workspace: Optional["Workspace"] = Relationship(back_populates="users")
     invoice_events: list["InvoiceEvent"] = Relationship(
+        back_populates="changed_by_user"
+    )
+    quotation_events: list["QuotationEvent"] = Relationship(
         back_populates="changed_by_user"
     )

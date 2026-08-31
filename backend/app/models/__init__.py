@@ -43,6 +43,10 @@ from app.models.spo import SupplierPurchaseOrder, SupplierPurchaseOrderItem
 from app.models.spo_counter import SPOCounter
 from app.models.grn import GoodsReceiptNote, GRNItem
 from app.models.supplier_invoice import SupplierInvoice, SupplierInvoiceItem
+from app.models.quotation import Quotation, QuotationStatus
+from app.models.quotation_item import QuotationItem
+from app.models.quotation_event import QuotationEvent, QuotationEventType
+from app.models.quotation_counter import QuotationCounter
 
 __all__ = [
     "Workspace",
@@ -87,4 +91,10 @@ __all__ = [
     "GRNItem",
     "SupplierInvoice",
     "SupplierInvoiceItem",
+    "Quotation",
+    "QuotationStatus",
+    "QuotationItem",
+    "QuotationEvent",
+    "QuotationEventType",
+    "QuotationCounter",
 ]
