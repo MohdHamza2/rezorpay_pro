@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Download, Edit2, Eye, Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { extractApiError } from '../api/errors';
 import { getClients } from '../api/clients';
 import { getLpo, getLpos, receiveLpo, type LpoListItem, type LpoStatus } from '../api/lpos';
 import { getQuotation } from '../api/quotations';
@@ -13,6 +14,7 @@ import { formatAed } from './quotationHelpers';
 import { LpoStatusBadge } from './LpoStatusBadge';
 import quoteStyles from './Quotations.module.css';
 import styles from './Lpos.module.css';
+import inv from './Invoices.module.css';
 
 const STATUSES: LpoStatus[] = ['DRAFT', 'RECEIVED', 'PARTIAL', 'INVOICED', 'CANCELLED'];
 
@@ -24,6 +26,7 @@ export const Lpos = () => {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [pdfBusyId, setPdfBusyId] = useState<string | null>(null);
+  const [creditHoldMessage, setCreditHoldMessage] = useState<string | null>(null);
 
   const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: getClients });
   const { data: workspace } = useQuery({ queryKey: ['workspace'], queryFn: getCurrentWorkspace });
@@ -43,7 +46,15 @@ export const Lpos = () => {
     mutationFn: receiveLpo,
     onSuccess: (lpo) => {
       queryClient.invalidateQueries({ queryKey: ['lpos'] });
+      setCreditHoldMessage(null);
       toast.success(`${lpo.lpo_number} received`);
+    },
+    onError: (error: unknown) => {
+      const parsed = extractApiError(error);
+      if (parsed.code === 'CREDIT_HOLD') {
+        setCreditHoldMessage(parsed.message);
+        toast.error(parsed.message);
+      }
     },
   });
 
@@ -86,6 +97,12 @@ export const Lpos = () => {
           Create LPO
         </button>
       </div>
+
+      {creditHoldMessage && (
+        <div className={inv.ftaBanner} data-testid="credit-hold" role="alert">
+          {creditHoldMessage}
+        </div>
+      )}
 
       <div className={quoteStyles.filters}>
         <div className={quoteStyles.filterGroup}>
@@ -210,6 +227,11 @@ export const Lpos = () => {
                             className={quoteStyles.primaryBtn}
                             data-testid="lpo-receive"
                             disabled={receiveMutation.isPending}
+                            title={
+                              client?.credit_status === 'HOLD' && workspace?.block_po_on_hold
+                                ? 'Blocked while this client is on credit HOLD'
+                                : 'Receive'
+                            }
                             onClick={() => receiveMutation.mutate(row.id)}
                           >
                             Receive

@@ -22,6 +22,9 @@ function firstDetailMessage(details?: PydanticDetail[]): string | undefined {
   return typeof msg === 'string' && msg ? msg : undefined;
 }
 
+/** Handlers toast these; interceptor must not duplicate. */
+export const HANDLED_TOAST_CODES = new Set(['FTA_SEND_BLOCKED', 'CREDIT_HOLD']);
+
 export function extractApiError(error: unknown): ApiErrorInfo {
   const body = (error as AxiosError<ErrorBody>).response?.data?.error;
   if (!body) return { message: 'An error occurred' };
@@ -30,4 +33,8 @@ export function extractApiError(error: unknown): ApiErrorInfo {
     field: body.field,
     message: body.message || firstDetailMessage(body.details) || 'An error occurred',
   };
+}
+
+export function skipInterceptorToast(code?: string): boolean {
+  return Boolean(code && HANDLED_TOAST_CODES.has(code));
 }

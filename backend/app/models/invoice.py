@@ -9,6 +9,7 @@ from sqlalchemy import (
     Text,
     DateTime,
     Date,
+    Index,
     Numeric,
     CheckConstraint,
     UniqueConstraint,
@@ -43,6 +44,12 @@ class Invoice(SQLModel, table=True):
         CheckConstraint("subtotal >= 0", name="check_subtotal_positive"),
         CheckConstraint("tax_amount >= 0", name="check_tax_amount_positive"),
         CheckConstraint("total_amount >= 0", name="check_total_amount_positive"),
+        Index(
+            "ix_invoices_workspace_id_client_id_status",
+            "workspace_id",
+            "client_id",
+            "status",
+        ),
     )
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)

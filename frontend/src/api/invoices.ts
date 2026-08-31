@@ -1,7 +1,13 @@
 import { apiClient } from './client';
 import type { PaginatedResponse, SuccessResponse } from '../types/api';
 
-export type InvoiceStatus = 'DRAFT' | 'SENT' | 'PARTIALLY_PAID' | 'PAID' | 'CANCELLED';
+export type InvoiceStatus =
+  | 'DRAFT'
+  | 'SENT'
+  | 'PARTIALLY_PAID'
+  | 'OVERDUE'
+  | 'PAID'
+  | 'CANCELLED';
 export type InvoiceKind = 'STANDARD' | 'SIMPLIFIED';
 export type InvoiceCurrency = 'AED';
 

@@ -466,7 +466,7 @@ def test_accept_convert_draft_invoice_frozen_prices():
     today = _utc_today()
     assert inv["issue_date"] == today.isoformat()
     assert inv["supply_date"] == today.isoformat()
-    assert inv["due_date"] == (today + timedelta(days=30)).isoformat()
+    assert inv["due_date"] == today.isoformat()
     assert inv["notes"].startswith(f"Converted from {quote['quotation_number']}.")
     got = client.get(f"/api/v1/quotations/{quote['id']}", headers=headers)
     assert got.status_code == 200, got.text

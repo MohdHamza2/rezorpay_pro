@@ -23,6 +23,7 @@ from sqlalchemy.orm import selectinload
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.models.client import Client
+from app.models.credit_status_event import CreditEventReason
 from app.models.invoice import Invoice, InvoiceStatus
 from app.models.invoice_item import InvoiceItem
 from app.models.payment import PaymentStatus
@@ -30,6 +31,10 @@ from app.models.product import Product, ProductPrice
 from app.models.workspace import Workspace
 from app.schemas.common import ErrorCode, ErrorDetail
 from app.services.audit_service import AuditService
+from app.services.credit_control_service import (
+    CreditControlService,
+    should_mark_overdue,
+)
 from app.services.invoice_number import InvoiceNumberService
 from app.services.line_money import apply_line_money as _apply_line_money
 from app.services.line_money import money, xor_discounts
@@ -288,16 +293,16 @@ class InvoiceService:
 
         Source of truth calculation.
         """
+        if invoice.status in (InvoiceStatus.CANCELLED, InvoiceStatus.DRAFT):
+            return invoice.status
         balance = InvoiceService.calculate_balance_due(invoice)
-
         if balance <= 0:
             return InvoiceStatus.PAID
-        elif balance < invoice.total_amount:
+        if should_mark_overdue(invoice):
+            return InvoiceStatus.OVERDUE
+        if balance < invoice.total_amount:
             return InvoiceStatus.PARTIALLY_PAID
-        else:
-            # No payments or full balance remaining
-            # Keep current status if draft/sent/overdue
-            return invoice.status
+        return InvoiceStatus.SENT
 
     @classmethod
     async def update_status_from_payments(
@@ -411,9 +416,14 @@ class InvoiceService:
                 f"Cannot mark as sent: invoice is {invoice.status.value}",
             )
         await cls.assert_fta_sendable(session, invoice)
+        workspace, client, _items = await _load_send_context(session, invoice)
+        await CreditControlService.assert_not_hold(
+            session, client, workspace, user_id, CreditEventReason.SEND_CHECK
+        )
         await _apply_send_snapshots(session, invoice)
         invoice.status = InvoiceStatus.SENT
         invoice.updated_at = datetime.now(timezone.utc)
+        await CreditControlService.apply_overdue_invoice(session, invoice)
         await AuditService.log_invoice_sent(
             session=session,
             invoice_id=invoice.id,

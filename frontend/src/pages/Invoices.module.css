@@ -96,6 +96,7 @@
 .badgeSent { background-color: #eff6ff; color: #3b82f6; }
 .badgePartial { background-color: #fff7ed; color: #ea580c; }
 .badgePaid { background-color: #f0fdf4; color: #16a34a; }
+.badgeOverdue { background-color: #fff7ed; color: #c2410c; }
 .badgeCancelled { background-color: #fef2f2; color: #dc2626; }
 
 /* Modal and form styles */

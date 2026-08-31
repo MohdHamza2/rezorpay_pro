@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { extractApiError } from '../api/errors';
 import { getClients } from '../api/clients';
 import {
   cancelLpo,
@@ -70,6 +71,7 @@ export const LpoDetail = () => {
   const [pdfBusy, setPdfBusy] = useState(false);
   const [qtyMap, setQtyMap] = useState<Record<string, string>>({});
   const [invoiceNotes, setInvoiceNotes] = useState('');
+  const [creditHoldMessage, setCreditHoldMessage] = useState<string | null>(null);
 
   const { data: lpo, isLoading } = useQuery({
     queryKey: ['lpo', id],
@@ -97,7 +99,15 @@ export const LpoDetail = () => {
     mutationFn: receiveLpo,
     onSuccess: () => {
       invalidate();
+      setCreditHoldMessage(null);
       toast.success('LPO received');
+    },
+    onError: (error: unknown) => {
+      const parsed = extractApiError(error);
+      if (parsed.code === 'CREDIT_HOLD') {
+        setCreditHoldMessage(parsed.message);
+        toast.error(parsed.message);
+      }
     },
   });
   const cancelMutation = useMutation({
@@ -204,6 +214,11 @@ export const LpoDetail = () => {
       </div>
 
       <div className={quoteStyles.pageCard}>
+        {creditHoldMessage && (
+          <div className={inv.ftaBanner} data-testid="credit-hold" role="alert">
+            {creditHoldMessage}
+          </div>
+        )}
         <div className={quoteStyles.actions}>
           <LpoStatusBadge status={lpo.status} />
           <button
@@ -238,6 +253,11 @@ export const LpoDetail = () => {
                 className={quoteStyles.primaryBtn}
                 data-testid="lpo-receive"
                 disabled={busy}
+                title={
+                  client?.credit_status === 'HOLD' && workspace?.block_po_on_hold
+                    ? 'Blocked while this client is on credit HOLD'
+                    : 'Receive'
+                }
                 onClick={() => receiveMutation.mutate(lpo.id)}
               >
                 Receive

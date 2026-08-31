@@ -2,6 +2,33 @@
 
 ---
 
+## 2026-09-01 — WP-A Credit HOLD / overdue schema (planned BEFORE code)
+
+**Spec:** `architecture/wave-credit-control-addendum.md` §2, §8. Architect lock: Alembic YES, new revision only. `down_revision = "59084165d346"`. NEVER rewrite LPO (`59084165d346`), quotes, FTA, or Product Master.
+
+### Locked
+
+- `clients`: `credit_limit` Numeric(12,2) nullable (NULL inherit workspace default; 0 COD; >0 cap; check `>= 0` when not null). `payment_terms_days` int NOT NULL default 0, allow-list `{0,30,45,60}`. `credit_status` ENUM ACTIVE|WARNING|HOLD NOT NULL default ACTIVE. `credit_status_changed_at` timestamptz nullable. `credit_status_changed_by` UUID FK `users.id` nullable.
+- Table `credit_status_events`: id, client_id, workspace_id, previous_status, new_status, exposure, effective_limit, oldest_overdue_days nullable, reason (EVALUATE/PAYMENT/SEND_CHECK/RECEIVE_CHECK), changed_by FK users, timestamp, metadata_log JSONB.
+- Reuse Workspace flags. No new Workspace columns. No invoice columns. No `SUSPENDED`, no `credit_unlimited`.
+- Optional index `invoices (workspace_id, client_id, status)` for exposure SUM.
+
+### Verification (planned)
+
+`alembic upgrade head` on DATABASE_URL and `alembic check` clean. Tests use SQLModel `create_all` on `{DATABASE_URL}_test`. Never SQLite.
+
+---
+
+## 2026-09-01 — WP-A Credit HOLD / overdue schema (implemented)
+
+**Revision:** `9f3a7c2e1d04` revises `59084165d346`. File: `backend/alembic/versions/9f3a7c2e1d04_add_client_credit_control.py`.
+
+Applied: `alembic upgrade head` on `invoicesaas` (was at `59084165d346`). `alembic check`: "No new upgrade operations detected".
+
+Added to `clients`: `credit_limit` Numeric(12,2) nullable, `payment_terms_days` int NOT NULL default 0 (check IN 0/30/45/60), `credit_status` ENUM ACTIVE|WARNING|HOLD default ACTIVE, `credit_status_changed_at`, `credit_status_changed_by` FK users. Table `credit_status_events` with exposure/effective_limit Decimal(12,2), reason ENUM EVALUATE/PAYMENT/SEND_CHECK/RECEIVE_CHECK, JSONB `metadata_log`. Index `ix_invoices_workspace_id_client_id_status`. No Workspace columns. No invoice columns. LPO revision `59084165d346` not rewritten.
+
+---
+
 ## 2026-09-01 — WP-A Customer LPO schema (planned BEFORE code)
 
 **Spec:** `architecture/wave-customer-lpo-addendum.md` §8. Architect lock: Alembic YES, new revision only. `down_revision = "cb01b6bef962"`. NEVER rewrite quotes (`cb01b6bef962`), FTA (`c8e1a4f2b6d0`), or Product Master.

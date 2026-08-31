@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getInvoices,
@@ -113,12 +113,25 @@ function refineInvoiceDates(
   }
 }
 
-function todayIso(): string {
-  return new Date().toISOString().split('T')[0];
+function pad2(value: number): string {
+  return String(value).padStart(2, '0');
 }
 
-function plusDaysIso(days: number): string {
-  return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+function localIso(date: Date): string {
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+}
+
+function todayIso(): string {
+  return localIso(new Date());
+}
+
+function addDaysToIso(iso: string, days: number): string {
+  const [year, month, day] = iso.split('-').map(Number);
+  return localIso(new Date(year, (month ?? 1) - 1, (day ?? 1) + days));
+}
+
+function dueDateFromTerms(issueDate: string, termsDays: number | undefined): string {
+  return addDaysToIso(issueDate || todayIso(), termsDays ?? 0);
 }
 
 function formatAed(value: string | number | null | undefined): string {
@@ -143,7 +156,7 @@ function blankInvoiceForm(): InvoiceFormValues {
     client_id: '',
     issue_date: issue,
     supply_date: issue,
-    due_date: plusDaysIso(30),
+    due_date: issue,
     items: [emptyLine()],
   };
 }
@@ -223,7 +236,7 @@ export const Invoices = () => {
   const [pdcDate, setPdcDate] = useState('');
   const [pdfBusyId, setPdfBusyId] = useState<string | null>(null);
   const [previewInvoice, setPreviewInvoice] = useState<Invoice | null>(null);
-  const [ftaSendMessage, setFtaSendMessage] = useState<string | null>(null);
+  const [sendBlock, setSendBlock] = useState<{ code: string; message: string } | null>(null);
 
   const { data: invoices, isLoading } = useQuery({ queryKey: ['invoices'], queryFn: getInvoices });
   const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: getClients });
@@ -237,6 +250,7 @@ export const Invoices = () => {
     mutationFn: ({ id, data }: { id: string; data: PaymentData }) => recordPayment(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['clients'] });
       setIsPaymentModalOpen(false);
       setPaymentInvoice(null);
       setPaymentAmount('');
@@ -269,22 +283,31 @@ export const Invoices = () => {
       action === 'send' ? sendInvoice(id) : voidInvoice(id, payload?.reason || 'Cancelled'),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
-      if (variables.action === 'send') setFtaSendMessage(null);
+      queryClient.invalidateQueries({ queryKey: ['clients'] });
+      if (variables.action === 'send') setSendBlock(null);
       toast.success(`Invoice ${variables.action === 'send' ? 'sent' : 'voided'}`);
     },
     onError: (error: unknown) => {
       const parsed = extractApiError(error);
-      if (parsed.code === 'FTA_SEND_BLOCKED') {
-        setFtaSendMessage(parsed.message);
+      if (parsed.code === 'FTA_SEND_BLOCKED' || parsed.code === 'CREDIT_HOLD') {
+        setSendBlock({ code: parsed.code, message: parsed.message });
         toast.error(parsed.message);
       }
     },
   });
 
-  const { register, control, handleSubmit, reset, setValue, formState: { errors } } = useForm<InvoiceFormValues>({
+  const { register, control, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm<InvoiceFormValues>({
     resolver: zodResolver(invoiceSchema),
     defaultValues: blankInvoiceForm(),
   });
+  const selectedClientId = watch('client_id');
+  const issueDate = watch('issue_date');
+
+  useEffect(() => {
+    if (!isModalOpen || editingInvoice) return;
+    const terms = clients?.find((entry) => entry.id === selectedClientId)?.payment_terms_days;
+    setValue('due_date', dueDateFromTerms(issueDate, terms));
+  }, [isModalOpen, editingInvoice, selectedClientId, issueDate, clients, setValue]);
 
   const { fields, append, remove } = useFieldArray({ control, name: 'items' });
 
@@ -371,6 +394,7 @@ export const Invoices = () => {
       DRAFT: styles.badgeDraft,
       SENT: styles.badgeSent,
       PARTIALLY_PAID: styles.badgePartial,
+      OVERDUE: styles.badgeOverdue,
       PAID: styles.badgePaid,
       CANCELLED: styles.badgeCancelled,
     };
@@ -391,9 +415,13 @@ export const Invoices = () => {
         </button>
       </div>
 
-      {ftaSendMessage && (
-        <div className={styles.ftaBanner} data-testid="fta-send-blocked" role="alert">
-          {ftaSendMessage}
+      {sendBlock && (
+        <div
+          className={styles.ftaBanner}
+          data-testid={sendBlock.code === 'FTA_SEND_BLOCKED' ? 'fta-send-blocked' : 'credit-hold'}
+          role="alert"
+        >
+          {sendBlock.message}
         </div>
       )}
 
@@ -456,7 +484,11 @@ export const Invoices = () => {
                             className={styles.actionBtn}
                             data-testid="invoice-send"
                             onClick={() => actionMutation.mutate({ id: inv.id, action: 'send' })}
-                            title="Mark as Sent"
+                            title={
+                              client?.credit_status === 'HOLD'
+                                ? 'Blocked while this client is on credit HOLD'
+                                : 'Mark as Sent'
+                            }
                           >
                             <Send size={16} />
                           </button>
@@ -476,7 +508,7 @@ export const Invoices = () => {
                           </button>
                         </>
                       )}
-                      {inv.status === 'SENT' && (
+                      {(inv.status === 'SENT' || inv.status === 'PARTIALLY_PAID' || inv.status === 'OVERDUE') && (
                         <button
                           className={styles.actionBtn}
                           onClick={() => {
@@ -525,6 +557,11 @@ export const Invoices = () => {
                     ))}
                   </select>
                   {errors.client_id && <span className={styles.errorText}>{errors.client_id.message}</span>}
+                  {clients?.find((entry) => entry.id === selectedClientId)?.credit_status === 'HOLD' && (
+                    <span className={styles.hint}>
+                      This client is on credit HOLD. Send will be blocked until exposure or overdue is cleared.
+                    </span>
+                  )}
                 </div>
                 <div className={styles.formGroup}>
                   <label>Currency</label>
@@ -543,7 +580,7 @@ export const Invoices = () => {
                 </div>
                 <div className={styles.formGroup}>
                   <label>Due Date</label>
-                  <input type="date" {...register('due_date')} />
+                  <input type="date" data-testid="invoice-due-date" {...register('due_date')} />
                   {errors.due_date && <span className={styles.errorText}>{errors.due_date.message}</span>}
                 </div>
               </div>

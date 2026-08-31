@@ -3,6 +3,123 @@
 
 ---
 
+## 2026-09-01 — WP-A credit nits W1/W2/W4 (planned BEFORE code)
+
+**Source:** `.agents/reports/wp-a-credit-control-review.md` W1, optional W2, test for FTA-valid HOLD send. Spec: `architecture/wave-credit-control-addendum.md` §6–7. Backend only. No UI. No Alembic rewrite. No git commit. Skip client-list in-memory pagination (W3).
+
+### Bugs / nits
+
+1. **W1 — SENT→OVERDUE not persisted on send/evaluate.** GET/list invoices flip; `mark_as_sent` always writes SENT (even when `due_date` is already yesterday). `evaluate` recomputes HOLD from due_date/balance but never calls `apply_overdue_*`. Send of a past-due tax invoice can return SENT until the next GET/list.
+2. **Test gap — FTA-valid HOLD send.** Code order is FTA then `assert_not_hold`. Need an explicit test: HOLD client + valid workspace TRN/address → send 400 `CREDIT_HOLD` (not `FTA_SEND_BLOCKED`), invoice stays DRAFT.
+3. **W2 (optional, few lines) — no row lock on HOLD check.** Concurrent first SENDs on COD can both see exposure 0. Addendum does not forbid `SELECT FOR UPDATE`. Lock invoice on send + client during `assert_not_hold`.
+
+### Planned
+
+1. After DRAFT→SENT snapshots, call `apply_overdue_invoice` so past-due + `balance_due > 0` persists OVERDUE on the send path. Never flip PAID/CANCELLED/DRAFT (`FLIP_STATUSES` only).
+2. `evaluate` bulk-flips this client's SENT/PARTIALLY_PAID rows matching the overdue predicate (same as list/GET on-read) before snapshot. GET `/clients/{id}/credit` and other evaluate callers persist OVERDUE.
+3. Pytest: send of already-past-due invoice returns OVERDUE; evaluate (credit GET) flips a backdated SENT row; PAID/CANCELLED still untouched; FTA-valid HOLD send is 400 CREDIT_HOLD.
+4. Send: `SELECT FOR UPDATE` on the invoice row. `assert_not_hold`: `SELECT FOR UPDATE` on the client row before evaluate.
+
+### Files
+
+- `backend/app/services/credit_control_service.py`
+- `backend/app/services/invoice_service.py`
+- `backend/app/routers/invoices.py`
+- `backend/tests/test_credit_control.py`
+- this report
+
+---
+
+## 2026-09-01 — WP-A credit nits W1/W2/W4 (implemented)
+
+**Spec:** addendum §6–7. No UI. No Alembic rewrite. No git commit. W3 client-list pagination skipped.
+
+### Done
+
+- `evaluate` calls `apply_overdue_client` before snapshot so GET credit / send HOLD check persist SENT/PARTIALLY_PAID → OVERDUE. Predicate unchanged: not deleted, `FLIP_STATUSES` only, `due_date < UTC today`, `balance_due > 0`. PAID/CANCELLED/DRAFT never flipped.
+- `mark_as_sent` sets SENT then `apply_overdue_invoice` so a past-due send response is OVERDUE, not SENT.
+- Send loads the invoice `SELECT FOR UPDATE`. `assert_not_hold` locks the client row before evaluate (W2, addendum does not forbid).
+- Tests: send of yesterday-due invoice returns OVERDUE; credit evaluate flips a backdated SENT row and leaves PAID; FTA-valid HOLD send is 400 `CREDIT_HOLD` (not `FTA_SEND_BLOCKED`).
+
+### Files
+
+- `backend/app/services/credit_control_service.py`
+- `backend/app/services/invoice_service.py`
+- `backend/app/routers/invoices.py`
+- `backend/tests/test_credit_control.py`
+- `.agents/reports/backend-execution-report.md`
+
+### Pytest (PostgreSQL `_test`)
+
+- `tests/test_credit_control.py`: **17 passed**
+- `tests/test_invoices.py`: **25 passed**
+- `tests/test_customer_lpos.py`: **17 passed**
+- `tests/test_multi_tenant_isolation.py`: **5 passed**
+- Combined: **64 passed, 0 failed**
+
+black + ruff clean on the touched files.
+
+---
+
+## 2026-09-01 — WP-A Credit HOLD / overdue API (planned BEFORE code)
+
+**Spec:** `architecture/wave-credit-control-addendum.md` WP-A. Architect note: `.agents/reports/architect-credit-control-note.md`.
+
+### Locked
+
+- `CreditControlService`: exposure SUM (SENT+PARTIALLY_PAID+OVERDUE, SUCCESS payments, Decimal), evaluate HOLD/WARNING/ACTIVE, persist status+`credit_status_events`, `assert_not_hold`.
+- Invoice SEND always blocked on HOLD (after FTA). LPO `/receive` blocked iff `block_po_on_hold`. DRAFT create, quote convert, payments not blocked.
+- OVERDUE on-read + payment status lock: past-due partial stays OVERDUE. Never mutate PAID/CANCELLED.
+- Replace quote/LPO convert hardcoded +30 with `issue_date + client.payment_terms_days`.
+- `GET /clients/{id}/credit` aging JSON. `CREDIT_HOLD` is 400. Isolation 404. Extra keys 422.
+- Tests: `backend/tests/test_credit_control.py` + existing invoices/payments/LPO isolation. PostgreSQL `_test`. No UI/Playwright. No git commit.
+
+### Files (planned)
+
+- `backend/app/models/client.py`, `credit_status_event.py`, `models/__init__.py`, `invoice.py` (composite index only)
+- `backend/alembic/versions/*_add_client_credit_control.py` (`down_revision = "59084165d346"`)
+- `backend/app/services/credit_control_service.py`
+- invoice send + payment status + LPO receive + quote/LPO due_date
+- `backend/app/schemas/clients.py`, `common.py`, `routers/clients.py`, `workspaces.py`
+- `backend/tests/test_credit_control.py` (+ quotation due_date default 0)
+
+---
+
+## 2026-09-01 — WP-A Credit HOLD / overdue API (implemented)
+
+**Revision:** `9f3a7c2e1d04` (`down_revision = "59084165d346"`). No UI. No git commit.
+
+### Done
+
+- Client credit fields + `credit_status_events`. NULL limit inherits workspace default; 0 = COD; >0 cap.
+- `CreditControlService`: Decimal exposure of SENT+PARTIALLY_PAID+OVERDUE (SUCCESS payments). HOLD if exposure > effective_limit OR oldest overdue days > hold_days. WARNING never blocks. Auto both directions.
+- Invoice SEND always 400 `CREDIT_HOLD` after FTA. LPO `/receive` blocked iff `block_po_on_hold`. DRAFT create, quote convert, payments allowed.
+- OVERDUE on-read (GET/list) and payment recalc. Partial past-due stays OVERDUE. PAID/CANCELLED never flipped.
+- Quote/LPO convert `due_date` = issue + `payment_terms_days` (default 0 → same day).
+- `GET /clients/{id}/credit` aging JSON. Extra keys 422. Isolation 404.
+
+### Files
+
+- `backend/app/models/client.py`, `credit_status_event.py`, `invoice.py`, `models/__init__.py`
+- `backend/alembic/versions/9f3a7c2e1d04_add_client_credit_control.py`
+- `backend/app/services/credit_control_service.py`, `invoice_service.py`, `payment_service.py`, `customer_po_service.py`, `quotation_service.py`
+- `backend/app/schemas/clients.py`, `common.py`
+- `backend/app/routers/clients.py`, `invoices.py`, `workspaces.py`
+- `backend/tests/test_credit_control.py`, `tests/test_quotations.py`
+
+### Pytest (PostgreSQL `_test`)
+
+- `tests/test_credit_control.py`: **15 passed**
+- `tests/test_invoices.py`: **25 passed**
+- `tests/test_quotations.py`: **20 passed**
+- `tests/test_customer_lpos.py`: **17 passed**
+- `tests/test_multi_tenant_isolation.py`: **5 passed**
+- Combined: **82 passed, 0 failed**
+
+`alembic check`: No new upgrade operations detected. black + ruff clean.
+
+---
+
 ## 2026-09-01 — WP-A customer LPO nit W1 (planned BEFORE code)
 
 **Source:** `.agents/reports/wp-a-customer-lpo-review.md` warning **W1**. Backend only. No UI. No Alembic rewrite. No git commit.

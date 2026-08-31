@@ -143,7 +143,35 @@ export async function authJson(
   });
 }
 
-export async function saveWorkspaceFta(page: Page): Promise<void> {
+export type WorkspaceCreditSettings = {
+  limitDefault?: string;
+  warningDays?: string;
+  holdDays?: string;
+  blockPoOnHold?: boolean;
+};
+
+async function applyCreditSettings(page: Page, credit?: WorkspaceCreditSettings): Promise<void> {
+  if (!credit) return;
+  if (credit.limitDefault !== undefined) {
+    await page.getByTestId('settings-credit-limit-default').fill(credit.limitDefault);
+  }
+  if (credit.warningDays !== undefined) {
+    await page.getByTestId('settings-credit-warning-days').fill(credit.warningDays);
+  }
+  if (credit.holdDays !== undefined) {
+    await page.getByTestId('settings-credit-hold-days').fill(credit.holdDays);
+  }
+  if (credit.blockPoOnHold === true) {
+    await page.getByTestId('settings-block-po-on-hold').check();
+  } else if (credit.blockPoOnHold === false) {
+    await page.getByTestId('settings-block-po-on-hold').uncheck();
+  }
+}
+
+export async function saveWorkspaceFta(
+  page: Page,
+  credit?: WorkspaceCreditSettings,
+): Promise<void> {
   await page.getByTestId('nav-settings').click();
   await expect(page.getByTestId('settings-trn')).toBeVisible();
   await expect(async () => {
@@ -151,13 +179,20 @@ export async function saveWorkspaceFta(page: Page): Promise<void> {
   }).toPass();
   await page.getByTestId('settings-trn').fill(FTA_TRN);
   await page.getByTestId('settings-address').fill(FTA_SELLER_ADDRESS);
+  await applyCreditSettings(page, credit);
   await page.getByTestId('settings-save').click();
   await expect(page.getByText('Settings updated successfully')).toBeVisible();
 }
 
 export async function createClientViaUi(
   page: Page,
-  input: { name: string; email: string; address?: string; taxId?: string },
+  input: {
+    name: string;
+    email: string;
+    address?: string;
+    taxId?: string;
+    creditLimit?: string;
+  },
 ): Promise<void> {
   await page.getByTestId('nav-clients').click();
   await page.getByTestId('client-add').click();
@@ -165,6 +200,9 @@ export async function createClientViaUi(
   await page.getByTestId('client-email').fill(input.email);
   if (input.address) await page.getByTestId('client-address').fill(input.address);
   if (input.taxId) await page.getByTestId('client-tax-id').fill(input.taxId);
+  if (input.creditLimit !== undefined) {
+    await page.getByTestId('client-credit-limit').fill(input.creditLimit);
+  }
   await page.getByTestId('client-form-submit').click();
   await expect(page.getByTestId('client-modal')).toHaveCount(0);
   await expect(page.getByTestId(`client-row-${input.name}`)).toBeVisible();
@@ -227,9 +265,16 @@ export async function createAdhocInvoiceViaUi(
   await page.getByTestId('invoice-item-0-description').fill(input.description);
   await page.getByTestId('invoice-item-0-quantity').fill(input.quantity);
   await page.getByTestId('invoice-item-0-price').fill(input.price);
+  await page.getByTestId('invoice-due-date').fill(issue);
   await page.getByTestId('invoice-form-submit').click();
   await expect(page.getByTestId('invoice-modal')).toHaveCount(0);
-  await expect(page.locator('[data-testid^="invoice-row-"]')).toBeVisible();
+  await expect(page.locator('[data-testid^="invoice-row-"]').first()).toBeVisible();
+}
+
+export function draftInvoiceRow(page: Page) {
+  return page.locator('[data-testid^="invoice-row-"]').filter({
+    has: page.getByTestId('invoice-send'),
+  });
 }
 
 export function isoDate(offsetDays = 0): string {

@@ -19,7 +19,11 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.models.idempotency_key import IdempotencyKey
 from app.models.invoice import Invoice
+from app.models.client import Client
 from app.models.payment import Payment, PaymentMethod, PaymentStatus, PDCStatus
+from app.models.workspace import Workspace
+from app.models.credit_status_event import CreditEventReason
+from app.services.credit_control_service import CreditControlService
 from app.services.invoice_service import InvoiceService
 from app.services.audit_service import AuditService
 
@@ -183,6 +187,12 @@ class PaymentService:
         status_changed = await InvoiceService.update_status_from_payments(
             session, invoice, user_id
         )
+        workspace = await session.get(Workspace, workspace_id)
+        client = await session.get(Client, invoice.client_id)
+        if workspace is not None and client is not None:
+            await CreditControlService.evaluate(
+                session, client, workspace, user_id, CreditEventReason.PAYMENT
+            )
 
         # Step 8: Log payment event
         await AuditService.log_payment_added(

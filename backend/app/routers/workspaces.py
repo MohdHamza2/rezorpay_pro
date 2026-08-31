@@ -10,6 +10,7 @@ from app.models.user import User
 from app.models.workspace import Workspace
 from app.schemas.workspaces import WorkspaceResponse, WorkspaceUpdate
 from app.schemas.common import SuccessResponse
+from app.services.credit_control_service import assert_warning_not_after_hold
 
 router = APIRouter(prefix="/workspaces", tags=["Workspaces"])
 
@@ -56,6 +57,10 @@ async def update_current_workspace(
         )
 
     update_data = workspace_data.model_dump(exclude_unset=True)
+
+    warning_days = update_data.get("credit_warning_days", workspace.credit_warning_days)
+    hold_days = update_data.get("credit_hold_days", workspace.credit_hold_days)
+    assert_warning_not_after_hold(warning_days, hold_days)
 
     for field, value in update_data.items():
         setattr(workspace, field, value)

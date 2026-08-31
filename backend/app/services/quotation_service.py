@@ -13,17 +13,18 @@ from sqlalchemy.orm import selectinload
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.models.invoice import Invoice
+from app.models.client import Client
 from app.models.quotation import Quotation, QuotationStatus
 from app.models.quotation_event import QuotationEventType
 from app.models.quotation_item import QuotationItem
 from app.models.customer_purchase_order import CustomerPurchaseOrder
 from app.schemas.common import ErrorCode
+from app.services.credit_control_service import due_date_from_terms
 from app.services.invoice_service import AED, InvoiceService, _workspace_tax_rate
 from app.services.quotation_number import QuotationNumberService
 from app.services.customer_po_service import CustomerPurchaseOrderService
 from app.services.quotation_support import (
     CONVERTIBLE,
-    INVOICE_DUE_DAYS,
     VALIDITY_DAYS,
     add_items,
     assert_aed,
@@ -371,6 +372,8 @@ class QuotationService:
                 "Only ACCEPTED quotations can be converted.",
             )
         today = utc_today()
+        client = await session.get(Client, quotation.client_id)
+        terms = client.payment_terms_days if client is not None else 0
         invoice = await InvoiceService.create_invoice(
             session=session,
             workspace_id=workspace_id,
@@ -378,7 +381,7 @@ class QuotationService:
             user_id=user_id,
             issue_date=today,
             supply_date=today,
-            due_date=today + timedelta(days=INVOICE_DUE_DAYS),
+            due_date=due_date_from_terms(today, terms),
             currency=AED,
             notes=converted_notes(quotation),
             items=await frozen_invoice_items(session, workspace_id, quotation.items),

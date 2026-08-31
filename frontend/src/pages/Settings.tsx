@@ -10,15 +10,27 @@ import { useEffect } from 'react';
 import styles from './Settings.module.css';
 import { Skeleton } from '../components/Skeleton';
 
-const settingsSchema = z.object({
-  name: z.string().min(1, 'Workspace name is required'),
-  trn: z.string().optional().nullable(),
-  address: z.string().optional().nullable(),
-  whatsapp_number: z.string().optional().nullable(),
-  default_tax_rate: z.number().min(0).max(100),
-  credit_limit_default: z.number().min(0),
-  credit_hold_days: z.number().min(0)
-});
+const settingsSchema = z
+  .object({
+    name: z.string().min(1, 'Workspace name is required'),
+    trn: z.string().optional().nullable(),
+    address: z.string().optional().nullable(),
+    whatsapp_number: z.string().optional().nullable(),
+    default_tax_rate: z.number().min(0).max(100),
+    credit_limit_default: z.number().min(0),
+    credit_warning_days: z.number().min(0),
+    credit_hold_days: z.number().min(0),
+    block_po_on_hold: z.boolean(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.credit_warning_days > data.credit_hold_days) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Warning days must be less than or equal to hold days',
+        path: ['credit_warning_days'],
+      });
+    }
+  });
 
 type SettingsValues = z.infer<typeof settingsSchema>;
 
@@ -29,7 +41,9 @@ const SETTINGS_FIELDS = new Set<keyof SettingsValues>([
   'whatsapp_number',
   'default_tax_rate',
   'credit_limit_default',
+  'credit_warning_days',
   'credit_hold_days',
+  'block_po_on_hold',
 ]);
 
 function formFieldFromApi(field?: string): keyof SettingsValues | undefined {
@@ -55,7 +69,9 @@ export const Settings = () => {
         whatsapp_number: workspace.whatsapp_number,
         default_tax_rate: Number(workspace.default_tax_rate ?? 5),
         credit_limit_default: Number(workspace.credit_limit_default ?? 0),
-        credit_hold_days: workspace.credit_hold_days
+        credit_warning_days: Number(workspace.credit_warning_days ?? 30),
+        credit_hold_days: Number(workspace.credit_hold_days ?? 90),
+        block_po_on_hold: workspace.block_po_on_hold ?? true,
       });
     }
   }, [workspace, reset]);
@@ -145,14 +161,52 @@ export const Settings = () => {
               {errors.default_tax_rate && <span className={styles.errorText}>{errors.default_tax_rate.message}</span>}
             </div>
             <div className={styles.formGroup}>
-              <label>Default Credit Limit (AED)</label>
-              <input type="number" step="0.01" {...register('credit_limit_default', { valueAsNumber: true })} />
+              <label htmlFor="settings-credit-limit-default">Default Credit Limit (AED)</label>
+              <input
+                id="settings-credit-limit-default"
+                type="number"
+                step="0.01"
+                data-testid="settings-credit-limit-default"
+                {...register('credit_limit_default', { valueAsNumber: true })}
+              />
               {errors.credit_limit_default && <span className={styles.errorText}>{errors.credit_limit_default.message}</span>}
             </div>
             <div className={styles.formGroup}>
-              <label>Credit Hold Days (Overdue before block)</label>
-              <input type="number" {...register('credit_hold_days', { valueAsNumber: true })} />
+              <label htmlFor="settings-credit-warning-days">Credit warning days</label>
+              <input
+                id="settings-credit-warning-days"
+                type="number"
+                min="0"
+                data-testid="settings-credit-warning-days"
+                {...register('credit_warning_days', { valueAsNumber: true })}
+              />
+              <span className={styles.hint}>Past-due days before WARNING (badge only; send still allowed).</span>
+              {errors.credit_warning_days && (
+                <span className={styles.errorText}>{errors.credit_warning_days.message}</span>
+              )}
+            </div>
+            <div className={styles.formGroup}>
+              <label htmlFor="settings-credit-hold-days">Credit Hold Days (Overdue before block)</label>
+              <input
+                id="settings-credit-hold-days"
+                type="number"
+                min="0"
+                data-testid="settings-credit-hold-days"
+                {...register('credit_hold_days', { valueAsNumber: true })}
+              />
               {errors.credit_hold_days && <span className={styles.errorText}>{errors.credit_hold_days.message}</span>}
+            </div>
+            <div className={`${styles.formGroup} ${styles.formGroupWide}`}>
+              <label className={styles.checkboxRow} htmlFor="settings-block-po-on-hold">
+                <input
+                  id="settings-block-po-on-hold"
+                  type="checkbox"
+                  data-testid="settings-block-po-on-hold"
+                  {...register('block_po_on_hold')}
+                />
+                <span>Block LPO receive when client is on HOLD</span>
+              </label>
+              <span className={styles.hint}>Delivery-note block is not enforced yet (unused until DN).</span>
             </div>
           </div>
         </div>

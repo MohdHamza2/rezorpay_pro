@@ -1,6 +1,11 @@
 from app.models.workspace import Workspace
 from app.models.user import User
 from app.models.client import Client
+from app.models.credit_status_event import (
+    CreditEventReason,
+    CreditStatus,
+    CreditStatusEvent,
+)
 from app.models.invoice import Invoice
 from app.models.invoice_item import InvoiceItem
 from app.models.payment import Payment
@@ -62,6 +67,9 @@ __all__ = [
     "Workspace",
     "User",
     "Client",
+    "CreditStatus",
+    "CreditEventReason",
+    "CreditStatusEvent",
     "Invoice",
     "InvoiceItem",
     "Payment",

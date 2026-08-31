@@ -37,6 +37,7 @@ from app.schemas.invoices import (
     InvoiceUpdate,
     InvoiceVoidRequest,
 )
+from app.services.credit_control_service import CreditControlService
 from app.services.invoice_service import InvoiceService
 
 router = APIRouter(prefix="/invoices", tags=["Invoices"])
@@ -109,6 +110,8 @@ async def list_invoices(
     """
     List invoices with filters and pagination.
     """
+    await CreditControlService.apply_overdue_workspace(session, workspace_id)
+    await session.commit()
     # Base query with eager loading for performance
     query = (
         select(Invoice)
@@ -182,6 +185,12 @@ async def get_invoice(
     if not invoice:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found"
+        )
+
+    if await CreditControlService.apply_overdue_invoice(session, invoice):
+        await session.commit()
+        invoice = await InvoiceService.get_for_response(
+            session, invoice_id, workspace_id
         )
 
     return SuccessResponse(data=InvoiceService.serialize_invoice_response(invoice))
@@ -291,6 +300,7 @@ async def send_invoice(
         .where(Invoice.id == invoice_id)
         .where(Invoice.workspace_id == workspace_id)
         .where(Invoice.deleted_at.is_(None))
+        .with_for_update()
     )
     invoice = result.scalar_one_or_none()
 

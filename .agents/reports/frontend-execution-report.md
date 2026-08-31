@@ -696,3 +696,184 @@ LPO isolation 1.1m and quotation-isolation 1.1m are register `5/minute` retry (h
 - OCR, WhatsApp, delivery notes, credit HOLD
 - Playwright not wired into GitHub Actions
 - Auth register 5/minute (retries; isolation specs can wait ~1m)
+
+---
+
+# WP-B Credit HOLD UI — Plan (before edits)
+
+**Date:** 2026-09-01
+**Owner:** frontend / coder
+**Depends on:** WP-A API (`GET /clients/{id}/credit`, Client `credit_limit` / `payment_terms_days`, SEND/receive `400 CREDIT_HOLD`). Do not touch Alembic. Do not change payment PUT.
+**Spec:** `architecture/wave-credit-control-addendum.md` WP-B; `.agents/reports/architect-credit-control-note.md`
+
+## Goal
+
+Surface credit HOLD in the existing Vite + React app: client terms + limit, WARNING/HOLD badge, exposure vs limit, invoice SEND toast/banner, LPO receive toast/banner, due date from client terms. Keep existing Settings credit flags; add warning days + `block_po_on_hold`. No Next.js, no Playwright (WP-C), no AR PDF.
+
+## FTA toast pattern (match)
+
+Interceptor skips `FTA_SEND_BLOCKED` so the send handler toasts + shows `data-testid="fta-send-blocked"`. Duplicate skip for `CREDIT_HOLD`; handlers toast + banner `data-testid="credit-hold"`. LPO receive uses the same skip so the interceptor does not double-toast.
+
+## Files
+
+| File | Change |
+|---|---|
+| `frontend/src/api/errors.ts` | Shared skip-toast codes (`FTA_SEND_BLOCKED`, `CREDIT_HOLD`) |
+| `frontend/src/api/client.ts` | Skip interceptor toast for those codes |
+| `frontend/src/api/clients.ts` | Credit fields; write payload (no extra keys); `GET /credit` |
+| `frontend/src/api/workspaces.ts` | `credit_warning_days`, `block_po_on_hold` (keep existing flags) |
+| `frontend/src/api/invoices.ts` | `OVERDUE` on status union (WP-A on-read) |
+| `frontend/src/pages/clientHelpers.ts` | Terms allow-list, inherit/COD parse, extra-key-safe body |
+| `frontend/src/pages/CreditStatusBadge.tsx` | ACTIVE / WARNING / HOLD |
+| `frontend/src/pages/Clients.tsx` | Form + list badge + exposure vs limit; optional aging from GET credit |
+| `frontend/src/pages/Clients.module.css` | Badge, select, aging |
+| `frontend/src/pages/Invoices.tsx` | Due date from terms; CREDIT_HOLD banner; collectable OVERDUE |
+| `frontend/src/pages/LpoDetail.tsx` / `Lpos.tsx` | CREDIT_HOLD on receive |
+| `frontend/src/pages/Settings.tsx` | Keep limit/hold days; add warning days + block LPO on HOLD |
+
+## Client write body (extra="forbid")
+
+Send only `name`, `email`, `phone`, `address`, `tax_id`, `credit_limit`, `payment_terms_days`. Never `credit_status`, `exposure`, `effective_credit_limit`, `id`. Empty credit limit → omit on create / `null` on update (inherit). `0` → COD.
+
+## Out of scope
+
+Playwright WP-C, Alembic, payment PUT, AR PDF, `block_do_on_hold` as a working control, git commit.
+
+## Acceptance
+
+`cd frontend && npm run build` succeeds. Extra keys never sent. `?? 0` before `toFixed`. HOLD send/receive shows `CREDIT_HOLD` without duplicate toast.
+
+---
+
+# WP-B Credit HOLD UI — Implementation (completed)
+
+**Date:** 2026-09-01
+**Build:** `cd frontend && npm run build` — `tsc -b && vite build` succeeded (Vite 8.2.1). Pre-existing chunk-size warning only.
+
+## Shipped
+
+1. **Clients** — `credit_limit` blank = inherit, `0` = COD; `payment_terms_days` 0/30/45/60. Write bodies omit `credit_status` / exposure / ids. List WARNING/HOLD badge + exposure vs effective limit. Edit modal optional GET `/clients/{id}/credit` aging panel.
+2. **Invoice send** — interceptor skips `CREDIT_HOLD` like `FTA_SEND_BLOCKED`; handler toasts + banner (`data-testid="credit-hold"`; FTA banner id unchanged). Due date defaults from client terms, not +30. OVERDUE badge; payment still allowed on SENT / PARTIALLY_PAID / OVERDUE (collections).
+3. **LPO receive** — same CREDIT_HOLD banner + toast on list and detail when blocked.
+4. **Settings** — kept `credit_limit_default` and `credit_hold_days`; added `credit_warning_days` and `block_po_on_hold`. `block_do_on_hold` not on the form.
+
+Alembic, payment PUT, Playwright WP-C, AR PDF, git commit: not touched.
+
+## Files
+
+- `frontend/src/api/errors.ts`
+- `frontend/src/api/client.ts`
+- `frontend/src/api/clients.ts`
+- `frontend/src/api/workspaces.ts`
+- `frontend/src/api/invoices.ts`
+- `frontend/src/pages/clientHelpers.ts` (new)
+- `frontend/src/pages/CreditStatusBadge.tsx` (new)
+- `frontend/src/pages/Clients.tsx`
+- `frontend/src/pages/Clients.module.css`
+- `frontend/src/pages/Invoices.tsx`
+- `frontend/src/pages/Invoices.module.css`
+- `frontend/src/pages/LpoDetail.tsx`
+- `frontend/src/pages/Lpos.tsx`
+- `frontend/src/pages/Settings.tsx`
+- `frontend/src/pages/Settings.module.css`
+- `.agents/reports/frontend-execution-report.md`
+
+---
+
+# WP-C Credit HOLD Playwright E2E — Plan (before edits)
+
+**Date:** 2026-09-01
+**Owner:** frontend / coder
+**Depends on:** WP-A API (`CREDIT_HOLD` 400 on send/receive) + WP-B UI (`data-testid="credit-hold"`, client COD 0, Settings `block_po_on_hold`)
+**Spec:** `architecture/wave-credit-control-addendum.md` WP-C
+
+## Goal
+
+Extend the existing Vite Playwright harness (`frontend/playwright.config.ts`, `frontend/e2e/helpers.ts`, product + FTA + quotation + LPO specs). Prove COD client (`credit_limit` 0) first invoice SEND with valid FTA TRN+address succeeds, unpaid SENT puts the client on HOLD, and a second SEND is blocked with banner `credit-hold` while the invoice stays DRAFT. Do not break product/FTA/quote/LPO specs. Never SQLite.
+
+## Harness (reuse)
+
+| Item | Choice |
+|---|---|
+| Config | existing `frontend/playwright.config.ts` — `testDir: e2e`, Chromium, workers 1 |
+| Helpers | `frontend/e2e/helpers.ts`, `global-setup.ts` (`GET /health/ready`) |
+| Script | `npm run test:e2e` from `frontend/` |
+| API | docker postgres **5434**, API **8000**, Vite **5173** |
+| Auth | unique emails, password `Passw0rd1` (8+); retry register on 429 (5/minute) |
+
+## Specs to add
+
+1. `frontend/e2e/credit-hold.spec.ts` — register → Settings FTA TRN+address, credit_limit_default 0, hold days, block LPO on HOLD → client COD 0 + address → invoice 1 send **SENT** → clients badge HOLD → invoice 2 send **blocked** (`credit-hold` banner, stays DRAFT, not FTA). Cheap extra: LPO receive on HOLD stays DRAFT with the same banner.
+2. `frontend/e2e/credit-isolation.spec.ts` — workspace A `GET /api/v1/clients/{id}/credit` 200; workspace B → **404** not 403 (request context).
+
+## UI `data-testid`
+
+Reuse `credit-hold`, `client-credit-limit`, `client-credit-status`, `settings-block-po-on-hold`, invoice send/status, `lpo-receive`. Add missing Settings ids: `settings-credit-limit-default`, `settings-credit-hold-days`. Helpers: optional client `creditLimit`; `createAdhocInvoiceViaUi` must tolerate more than one invoice row.
+
+## Out of scope
+
+OVERDUE backdate UI, AR PDF, DN/`block_do_on_hold`, PDC bounce, GitHub Actions, git commit.
+
+## Acceptance
+
+- `npm run test:e2e` green (product + FTA + quotations + LPO + credit HOLD)
+- `npm run build` still succeeds
+- Fix UI bugs hit in the run; API bugs → log only (pytest already covers WP-A)
+
+---
+
+# WP-C Credit HOLD Playwright E2E — Implementation (completed)
+
+**Date:** 2026-09-01
+**API:** docker postgres host **5434**, API **8000**, Vite **5173**. `/health/ready` 200 (`database: connected`). Not SQLite.
+
+## Result
+
+```
+Running 11 tests using 1 worker
+  ok  1 [chromium] › e2e\credit-hold.spec.ts:12:1 › COD client second invoice send is credit HOLD (6.3s)
+  ok  2 [chromium] › e2e\credit-isolation.spec.ts:4:1 › cross-tenant client credit GET returns 404 (32.5s)
+  ok  3 [chromium] › e2e\fta-isolation.spec.ts:4:1 › cross-tenant invoice GET returns 404 (428ms)
+  ok  4 [chromium] › e2e\fta-send-blocked.spec.ts:4:1 › send invoice without workspace TRN is blocked (1.4s)
+  ok  5 [chromium] › e2e\fta-tax-invoice.spec.ts:11:1 › simplified tax invoice send and preview (2.1s)
+  ok  6 [chromium] › e2e\lpo-isolation.spec.ts:4:1 › cross-tenant LPO GET returns 404 (1.1m)
+  ok  7 [chromium] › e2e\lpos.spec.ts:12:1 › manual LPO receive partial invoice lands draft invoice (4.7s)
+  ok  8 [chromium] › e2e\product-catalog.spec.ts:12:1 › product master catalog happy path (2.4s)
+  ok  9 [chromium] › e2e\product-isolation.spec.ts:4:1 › cross-tenant product GET returns 404 (1.1m)
+  ok 10 [chromium] › e2e\quotation-isolation.spec.ts:4:1 › cross-tenant quotation GET returns 404 (416ms)
+  ok 11 [chromium] › e2e\quotations.spec.ts:12:1 › quotation send accept convert to draft invoice (2.0s)
+  11 passed (3.1m)
+```
+
+`npm run build` — `tsc -b && vite build` succeeded (Vite 8.2.1). Pre-existing chunk-size warning only.
+
+Product + FTA + quotation + LPO specs still pass. Isolation 404 (not 403) confirmed for `GET /clients/{id}/credit`.
+
+LPO isolation 1.1m and product-isolation 1.1m are register `5/minute` retry (helpers wait 16s on 429). Credit HOLD UI spec itself was 6.3s.
+
+## Specs shipped
+
+1. **COD / HOLD** — unique register (password 8+) → Settings FTA TRN+address, credit_limit_default 0, hold days 90, block LPO on HOLD → client `credit_limit` 0 → invoice 1 send **SENT** (FTA ok) → clients badge **HOLD** → invoice 2 send shows `credit-hold` banner (not `fta-send-blocked`) and stays **DRAFT**. Cheap: LPO receive on HOLD stays DRAFT with the same banner.
+2. **Isolation** — workspace B `GET /api/v1/clients/{id}/credit` → **404** not 403.
+
+## UI / harness
+
+- Settings `data-testid`: `settings-credit-limit-default`, `settings-credit-hold-days` (existing `settings-block-po-on-hold` reused).
+- Helpers: optional `creditLimit` on `createClientViaUi`; `saveWorkspaceFta` can set credit defaults; `createAdhocInvoiceViaUi` waits on `.first()` invoice row and fills due date so COD 0 is valid.
+- **UI fix hit in the run:** `addDaysToIso` used `toISOString()` after local midnight, so terms 0 produced due_date = yesterday in IST and blocked FTA invoice create. Now uses local calendar Y-M-D.
+
+## Files
+
+- `frontend/e2e/credit-hold.spec.ts` (new)
+- `frontend/e2e/credit-isolation.spec.ts` (new)
+- `frontend/e2e/helpers.ts`
+- `frontend/src/pages/Settings.tsx`
+- `frontend/src/pages/Invoices.tsx`
+- `.agents/reports/frontend-execution-report.md`
+
+## Not covered (leftovers)
+
+- OVERDUE backdate / aging HOLD in the browser; API pytest covers it
+- AR PDF, DN / `block_do_on_hold`, PDC bounce
+- Playwright not wired into GitHub Actions
+- Auth register 5/minute (retries; isolation specs can wait ~1m)

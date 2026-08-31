@@ -2,7 +2,7 @@ import axios, { AxiosError } from 'axios';
 import type { InternalAxiosRequestConfig } from 'axios';
 import type { AuthTokens } from '../types/auth';
 import toast from 'react-hot-toast';
-import { extractApiError } from './errors';
+import { extractApiError, skipInterceptorToast } from './errors';
 
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -72,7 +72,7 @@ apiClient.interceptors.response.use(
       }
     } else if (error.response) {
       const parsed = extractApiError(error);
-      if (error.response.status !== 401 && parsed.code !== 'FTA_SEND_BLOCKED') {
+      if (error.response.status !== 401 && !skipInterceptorToast(parsed.code)) {
         toast.error(parsed.message);
       }
     } else {

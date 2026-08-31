@@ -1,24 +1,52 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getClients, createClient, updateClient, deleteClient } from '../api/clients';
+import {
+  getClients,
+  getClientCredit,
+  createClient,
+  updateClient,
+  deleteClient,
+} from '../api/clients';
 import type { Client } from '../api/clients';
 import { Edit2, Trash2, Plus } from 'lucide-react';
 import { useForm } from 'react-hook-form';
-import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import toast from 'react-hot-toast';
 import { Skeleton } from '../components/Skeleton';
+import { formatAed } from './quotationHelpers';
+import { CreditStatusBadge } from './CreditStatusBadge';
+import {
+  PAYMENT_TERMS_DAYS,
+  buildClientWritePayload,
+  clientSchema,
+  creditLimitFieldValue,
+  isPaymentTermsDays,
+  type ClientFormValues,
+} from './clientHelpers';
 import styles from './Clients.module.css';
 
-const clientSchema = z.object({
-  name: z.string().min(2, 'Name must be at least 2 characters'),
-  email: z.string().email('Invalid email address'),
-  phone: z.string().optional(),
-  address: z.string().optional(),
-  tax_id: z.string().optional(),
-});
+const BLANK_FORM: ClientFormValues = {
+  name: '',
+  email: '',
+  phone: '',
+  address: '',
+  tax_id: '',
+  credit_limit: '',
+  payment_terms_days: 0,
+};
 
-type ClientFormValues = z.infer<typeof clientSchema>;
+function formFromClient(client: Client): ClientFormValues {
+  const terms = client.payment_terms_days ?? 0;
+  return {
+    name: client.name,
+    email: client.email,
+    phone: client.phone || '',
+    address: client.address || '',
+    tax_id: client.tax_id || '',
+    credit_limit: creditLimitFieldValue(client.credit_limit),
+    payment_terms_days: isPaymentTermsDays(terms) ? terms : 0,
+  };
+}
 
 export const Clients = () => {
   const queryClient = useQueryClient();
@@ -28,6 +56,11 @@ export const Clients = () => {
   const { data: clients, isLoading } = useQuery({
     queryKey: ['clients'],
     queryFn: getClients,
+  });
+  const { data: credit } = useQuery({
+    queryKey: ['client-credit', editingClient?.id],
+    queryFn: () => getClientCredit(editingClient!.id),
+    enabled: Boolean(editingClient?.id),
   });
 
   const createMutation = useMutation({
@@ -40,9 +73,11 @@ export const Clients = () => {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<Client> }) => updateClient(id, data),
+    mutationFn: ({ id, data }: { id: string; data: ReturnType<typeof buildClientWritePayload> }) =>
+      updateClient(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['clients'] });
+      queryClient.invalidateQueries({ queryKey: ['client-credit'] });
       closeModal();
       toast.success('Client updated successfully');
     },
@@ -58,21 +93,16 @@ export const Clients = () => {
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<ClientFormValues>({
     resolver: zodResolver(clientSchema),
+    defaultValues: BLANK_FORM,
   });
 
   const openModal = (client?: Client) => {
     if (client) {
       setEditingClient(client);
-      reset({
-        name: client.name,
-        email: client.email,
-        phone: client.phone || '',
-        address: client.address || '',
-        tax_id: client.tax_id || '',
-      });
+      reset(formFromClient(client));
     } else {
       setEditingClient(null);
-      reset({ name: '', email: '', phone: '', address: '', tax_id: '' });
+      reset(BLANK_FORM);
     }
     setIsModalOpen(true);
   };
@@ -80,14 +110,15 @@ export const Clients = () => {
   const closeModal = () => {
     setIsModalOpen(false);
     setEditingClient(null);
-    reset();
+    reset(BLANK_FORM);
   };
 
   const onSubmit = (data: ClientFormValues) => {
+    const payload = buildClientWritePayload(data, editingClient ? 'update' : 'create');
     if (editingClient) {
-      updateMutation.mutate({ id: editingClient.id, data });
+      updateMutation.mutate({ id: editingClient.id, data: payload });
     } else {
-      createMutation.mutate(data);
+      createMutation.mutate(payload);
     }
   };
 
@@ -114,8 +145,8 @@ export const Clients = () => {
               <tr>
                 <th>Name</th>
                 <th>Email</th>
-                <th>Phone</th>
-                <th>Created</th>
+                <th>Credit</th>
+                <th>Exposure / limit</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -124,8 +155,10 @@ export const Clients = () => {
                 <tr key={client.id} data-testid={`client-row-${client.name}`}>
                   <td>{client.name}</td>
                   <td>{client.email}</td>
-                  <td>{client.phone || '-'}</td>
-                  <td>{new Date(client.created_at).toLocaleDateString()}</td>
+                  <td><CreditStatusBadge status={client.credit_status} /></td>
+                  <td data-testid="client-credit-exposure">
+                    {formatAed(client.exposure)} / {formatAed(client.effective_credit_limit)}
+                  </td>
                   <td>
                     <button className={styles.actionBtn} onClick={() => openModal(client)}>
                       <Edit2 size={16} />
@@ -133,7 +166,7 @@ export const Clients = () => {
                     <button
                       className={`${styles.actionBtn} ${styles.delete}`}
                       onClick={() => {
-                        if(window.confirm('Are you sure you want to delete this client?')) {
+                        if (window.confirm('Are you sure you want to delete this client?')) {
                           deleteMutation.mutate(client.id);
                         }
                       }}
@@ -190,6 +223,60 @@ export const Clients = () => {
                 <span className={styles.hint}>Required to send a standard (B2B) tax invoice.</span>
                 {errors.address && <span className={styles.errorText}>{errors.address.message}</span>}
               </div>
+              <div className={styles.formGroup}>
+                <label htmlFor="client-credit-limit">Credit limit (AED)</label>
+                <input
+                  id="client-credit-limit"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="Inherit workspace default"
+                  data-testid="client-credit-limit"
+                  {...register('credit_limit')}
+                />
+                <span className={styles.hint}>Leave blank to inherit workspace default. 0 is COD.</span>
+                {errors.credit_limit && <span className={styles.errorText}>{errors.credit_limit.message}</span>}
+              </div>
+              <div className={styles.formGroup}>
+                <label htmlFor="client-payment-terms">Payment terms</label>
+                <select
+                  id="client-payment-terms"
+                  data-testid="client-payment-terms"
+                  {...register('payment_terms_days', { valueAsNumber: true })}
+                >
+                  {PAYMENT_TERMS_DAYS.map((days) => (
+                    <option key={days} value={days}>
+                      {days === 0 ? '0 — COD (due on issue)' : `Net ${days}`}
+                    </option>
+                  ))}
+                </select>
+                {errors.payment_terms_days && (
+                  <span className={styles.errorText}>{errors.payment_terms_days.message}</span>
+                )}
+              </div>
+              {editingClient && (
+                <div className={styles.creditPanel} data-testid="client-credit-panel">
+                  <div className={styles.creditPanelHead}>
+                    <CreditStatusBadge status={credit?.credit_status ?? editingClient.credit_status} />
+                    <span>
+                      {formatAed(credit?.exposure ?? editingClient.exposure)} /{' '}
+                      {formatAed(credit?.effective_credit_limit ?? editingClient.effective_credit_limit)}
+                    </span>
+                  </div>
+                  {credit?.oldest_overdue_days != null && (
+                    <span className={styles.hint}>Oldest overdue: {credit.oldest_overdue_days} days</span>
+                  )}
+                  {credit?.buckets && (
+                    <div className={styles.agingGrid}>
+                      <span>Current {formatAed(credit.buckets.current)}</span>
+                      <span>1–30 {formatAed(credit.buckets.days_1_30)}</span>
+                      <span>31–60 {formatAed(credit.buckets.days_31_60)}</span>
+                      <span>61–90 {formatAed(credit.buckets.days_61_90)}</span>
+                      <span>90+ {formatAed(credit.buckets.days_90_plus)}</span>
+                    </div>
+                  )}
+                </div>
+              )}
               <div className={styles.modalActions}>
                 <button type="button" className={styles.secondaryBtn} onClick={closeModal}>
                   Cancel

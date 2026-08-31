@@ -11,7 +11,9 @@ export interface Workspace {
   whatsapp_number: string | null;
   default_tax_rate: number;
   credit_limit_default: number;
+  credit_warning_days: number;
   credit_hold_days: number;
+  block_po_on_hold: boolean;
   created_at: string;
   updated_at: string;
 }

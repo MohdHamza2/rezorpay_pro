@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -20,7 +20,10 @@ from app.models.customer_purchase_order import (
 from app.models.customer_purchase_order_event import CustomerPurchaseOrderEventType
 from app.models.customer_purchase_order_item import CustomerPurchaseOrderItem
 from app.models.invoice import Invoice
+from app.models.client import Client
 from app.models.quotation import Quotation
+from app.models.workspace import Workspace
+from app.models.credit_status_event import CreditEventReason
 from app.schemas.common import ErrorCode
 from app.services.customer_po_support import (
     ZERO,
@@ -42,9 +45,12 @@ from app.services.customer_po_support import (
     slice_invoice_items,
     utc_today,
 )
+from app.services.credit_control_service import (
+    CreditControlService,
+    due_date_from_terms,
+)
 from app.services.invoice_service import AED, InvoiceService, _workspace_tax_rate
 from app.services.lpo_number import LpoNumberService
-from app.services.quotation_support import INVOICE_DUE_DAYS
 
 
 class CustomerPurchaseOrderService:
@@ -317,6 +323,12 @@ class CustomerPurchaseOrderService:
                 ErrorCode.INVALID_STATE,
                 "Cannot receive an LPO with no lines",
             )
+        workspace = await session.get(Workspace, lpo.workspace_id)
+        client = await session.get(Client, lpo.client_id)
+        if workspace is not None and client is not None and workspace.block_po_on_hold:
+            await CreditControlService.assert_not_hold(
+                session, client, workspace, user_id, CreditEventReason.RECEIVE_CHECK
+            )
         previous = lpo.status.value
         lpo.status = CustomerPurchaseOrderStatus.RECEIVED
         lpo.updated_at = now()
@@ -458,6 +470,8 @@ class CustomerPurchaseOrderService:
             )
         today = utc_today()
         issue = issue_date or today
+        client = await session.get(Client, lpo.client_id)
+        terms = client.payment_terms_days if client is not None else 0
         invoice_items = await slice_invoice_items(session, workspace_id, lpo, slices)
         invoice = await InvoiceService.create_invoice(
             session=session,
@@ -466,7 +480,7 @@ class CustomerPurchaseOrderService:
             user_id=user_id,
             issue_date=issue,
             supply_date=supply_date or issue,
-            due_date=due_date or (today + timedelta(days=INVOICE_DUE_DAYS)),
+            due_date=due_date or due_date_from_terms(issue, terms),
             currency=AED,
             notes=notes or f"Invoiced from {lpo.lpo_number}.",
             items=invoice_items,
