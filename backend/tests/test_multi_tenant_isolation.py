@@ -291,14 +291,147 @@ def test_product_is_workspace_isolated():
     assert r.status_code in (200, 201), r.text
     product_id = r.json()["data"]["id"]
 
-    # Workspace B should not read product
-    token_b, ws_b = _register("owner_prod_b", "Workspace B")
+    # Child resources on workspace A's product
+    ident_r = client.post(
+        f"/api/v1/products/{product_id}/identifiers?workspace_id={ws_a}",
+        json={"type": "MPN", "value": f"MPN-{suffix}"},
+        headers=headers_a,
+    )
+    assert ident_r.status_code in (200, 201), ident_r.text
+    identifier_id = ident_r.json()["data"]["id"]
+
+    drum_r = client.post(
+        f"/api/v1/products/uom?workspace_id={ws_a}",
+        json={"name": "Drum", "code": f"DRM-{suffix}"},
+        headers=headers_a,
+    )
+    assert drum_r.status_code in (200, 201), drum_r.text
+    drum_id = drum_r.json()["data"]["id"]
+
+    conv_r = client.post(
+        f"/api/v1/products/{product_id}/conversions?workspace_id={ws_a}",
+        json={"to_uom_id": drum_id, "conversion_factor": "500"},
+        headers=headers_a,
+    )
+    assert conv_r.status_code in (200, 201), conv_r.text
+    conversion_id = conv_r.json()["data"]["id"]
+
+    price_r = client.post(
+        f"/api/v1/products/{product_id}/prices?workspace_id={ws_a}",
+        json={"price_type": "DEFAULT_SALES", "price": "10.00"},
+        headers=headers_a,
+    )
+    assert price_r.status_code in (200, 201), price_r.text
+    price_id = price_r.json()["data"]["id"]
+
+    # Workspace B + query workspace_id of A must still 404 (JWT wins)
+    token_b, _ = _register("owner_prod_b", "Workspace B")
     headers_b = {"Authorization": f"Bearer {token_b}"}
+    spoof = f"?workspace_id={ws_a}"
+
+    r = client.get(f"/api/v1/products/{product_id}{spoof}", headers=headers_b)
+    assert r.status_code == 404, f"cross-tenant read leaked: {r.status_code} {r.text}"
+
+    r = client.put(
+        f"/api/v1/products/{product_id}{spoof}",
+        json={"name": "HACKED"},
+        headers=headers_b,
+    )
+    assert r.status_code == 404, f"cross-tenant write leaked: {r.status_code} {r.text}"
+
+    r = client.delete(f"/api/v1/products/{product_id}{spoof}", headers=headers_b)
+    assert r.status_code == 404, f"cross-tenant delete leaked: {r.status_code} {r.text}"
 
     r = client.get(
-        f"/api/v1/products/{product_id}?workspace_id={ws_b}", headers=headers_b
+        f"/api/v1/products/{product_id}/identifiers{spoof}",
+        headers=headers_b,
     )
-    assert r.status_code == 404, f"cross-tenant read leaked: {r.status_code} {r.text}"
+    assert r.status_code == 404, f"cross-tenant identifiers leaked: {r.text}"
+
+    r = client.delete(
+        f"/api/v1/products/{product_id}/identifiers/{identifier_id}{spoof}",
+        headers=headers_b,
+    )
+    assert r.status_code == 404, f"cross-tenant identifier delete leaked: {r.text}"
+
+    r = client.get(
+        f"/api/v1/products/{product_id}/conversions{spoof}",
+        headers=headers_b,
+    )
+    assert r.status_code == 404, f"cross-tenant conversions leaked: {r.text}"
+
+    r = client.delete(
+        f"/api/v1/products/{product_id}/conversions/{conversion_id}{spoof}",
+        headers=headers_b,
+    )
+    assert r.status_code == 404, f"cross-tenant conversion delete leaked: {r.text}"
+
+    r = client.get(
+        f"/api/v1/products/{product_id}/prices{spoof}",
+        headers=headers_b,
+    )
+    assert r.status_code == 404, f"cross-tenant prices leaked: {r.text}"
+
+    r = client.delete(
+        f"/api/v1/products/{product_id}/prices/{price_id}{spoof}",
+        headers=headers_b,
+    )
+    assert r.status_code == 404, f"cross-tenant price delete leaked: {r.text}"
+
+    r = client.post(
+        f"/api/v1/products/{product_id}/identifiers{spoof}",
+        json={"type": "MPN", "value": "HACK-MPN"},
+        headers=headers_b,
+    )
+    assert r.status_code == 404, f"cross-tenant identifier POST leaked: {r.text}"
+
+    r = client.post(
+        f"/api/v1/products/{product_id}/conversions{spoof}",
+        json={"to_uom_id": drum_id, "conversion_factor": "2"},
+        headers=headers_b,
+    )
+    assert r.status_code == 404, f"cross-tenant conversion POST leaked: {r.text}"
+
+    r = client.post(
+        f"/api/v1/products/{product_id}/prices{spoof}",
+        json={"price_type": "DEFAULT_SALES", "price": "1.00"},
+        headers=headers_b,
+    )
+    assert r.status_code == 404, f"cross-tenant price POST leaked: {r.text}"
+
+    cat_r = client.post(
+        f"/api/v1/products/categories?workspace_id={ws_a}",
+        json={"name": f"Cat-{suffix}"},
+        headers=headers_a,
+    )
+    assert cat_r.status_code in (200, 201), cat_r.text
+    cat_id = cat_r.json()["data"]["id"]
+    brand_r = client.post(
+        f"/api/v1/products/brands?workspace_id={ws_a}",
+        json={"name": f"Brand-{suffix}"},
+        headers=headers_a,
+    )
+    assert brand_r.status_code in (200, 201), brand_r.text
+    brand_id = brand_r.json()["data"]["id"]
+
+    for path in (
+        f"/api/v1/products/categories/{cat_id}{spoof}",
+        f"/api/v1/products/brands/{brand_id}{spoof}",
+        f"/api/v1/products/uom/{uom_id}{spoof}",
+    ):
+        r = client.get(path, headers=headers_b)
+        assert r.status_code == 404, f"cross-tenant catalog GET leaked: {r.text}"
+        r = client.put(path, json={"name": "HACKED"}, headers=headers_b)
+        assert r.status_code == 404, f"cross-tenant catalog PUT leaked: {r.text}"
+        r = client.delete(path, headers=headers_b)
+        assert r.status_code == 404, f"cross-tenant catalog DELETE leaked: {r.text}"
+
+    # Owner A can still read its own product
+    r = client.get(
+        f"/api/v1/products/{product_id}?workspace_id={ws_a}", headers=headers_a
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["data"]["id"] == product_id
 
 
 # ========== SUPPLIER ISOLATION ==========

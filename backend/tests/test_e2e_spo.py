@@ -116,7 +116,7 @@ def test_e2e_spo_flow():
         json={"name": "UOM", "code": "UOM1"},
         headers=headers,
     )
-    assert r_uom.status_code == 200, f"UOM creation failed: {r_uom.text}"
+    assert r_uom.status_code in (200, 201), f"UOM creation failed: {r_uom.text}"
     uom_id = r_uom.json()["data"]["id"]
 
     r_prod = client.post(
@@ -124,12 +124,11 @@ def test_e2e_spo_flow():
         json={
             "name": "PROD",
             "internal_sku": "PROD1",
-            "type": "GOODS",
             "base_uom_id": uom_id,
         },
         headers=headers,
     )
-    assert r_prod.status_code == 200, f"Product creation failed: {r_prod.text}"
+    assert r_prod.status_code in (200, 201), f"Product creation failed: {r_prod.text}"
     product_id = r_prod.json()["data"]["id"]
 
     # 2. Award -> SPO (Create DRAFT SPO)

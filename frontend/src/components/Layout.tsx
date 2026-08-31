@@ -52,7 +52,7 @@ export const Layout = () => {
   ];
 
   return (
-    <div className={styles.layout}>
+    <div className={styles.layout} data-testid="app-layout">
       <aside className={styles.sidebar}>
         <div className={styles.logo}>
           <h2>InvoiceSaaS</h2>
@@ -68,6 +68,7 @@ export const Layout = () => {
                   <Link
                     key={item.path}
                     to={item.path}
+                    data-testid={item.path === '/' ? 'nav-dashboard' : `nav-${item.path.slice(1)}`}
                     className={`${styles.navItem} ${isActive ? styles.active : ''}`}
                   >
                     <Icon size={18} />

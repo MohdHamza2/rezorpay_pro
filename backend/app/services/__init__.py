@@ -13,6 +13,7 @@ Organization:
 - spo_number.py: Gapless SPO number generation
 - grn_service.py: Goods receipt note + 3-way match
 - supplier_invoice_service.py: Supplier invoice matching/approval
+- product_service.py: Product master (category/brand/UOM/product/children)
 """
 
 from app.services.invoice_number import InvoiceNumberService
@@ -26,6 +27,7 @@ from app.services.supplier_invoice_service import (
     SupplierInvoiceService,
     supplier_invoice_service,
 )
+from app.services.product_service import ProductService
 
 __all__ = [
     "InvoiceNumberService",
@@ -37,4 +39,5 @@ __all__ = [
     "GRNService",
     "SupplierInvoiceService",
     "supplier_invoice_service",
+    "ProductService",
 ]

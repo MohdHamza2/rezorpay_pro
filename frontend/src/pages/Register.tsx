@@ -49,7 +49,7 @@ export const Register = () => {
     <div className={styles.authContainer}>
       <div className={styles.authCard}>
         <h2 className={styles.authTitle}>Create an Account</h2>
-        
+
         {apiError && <div className={styles.apiError}>{apiError}</div>}
 
         <form onSubmit={handleSubmit(onSubmit)}>
@@ -108,6 +108,7 @@ export const Register = () => {
           <button
             type="submit"
             className={styles.submitButton}
+            data-testid="register-submit"
             disabled={isSubmitting}
           >
             {isSubmitting ? 'Registering...' : 'Register'}

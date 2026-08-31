@@ -107,7 +107,6 @@ def test_3way_match_engine():
             "name": "Widget X",
             "internal_sku": "WIDGET-X",
             "description": "A widget",
-            "base_currency": "AED",
             "base_uom_id": uom_id,
         },
     )

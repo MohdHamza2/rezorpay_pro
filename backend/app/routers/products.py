@@ -1,127 +1,511 @@
-import uuid
-from typing import List
-from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
+"""Product Master HTTP router (WP-1).
 
-from app.database import get_session
+HTTP only: parse request, call ProductService, commit, wrap response.
+Static paths (/categories, /brands, /uom) are registered before /{product_id}.
+"""
+
+from typing import List, Optional
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, Query, status
+from sqlmodel.ext.asyncio.session import AsyncSession
+
 from app.auth.dependencies import get_current_workspace_id
-from app.models.product import Category, Brand, UnitOfMeasure, Product
+from app.database import get_session
+from app.schemas.common import PaginatedResponse, SuccessResponse
 from app.schemas.products import (
-    CategoryCreate,
-    CategoryResponse,
     BrandCreate,
     BrandResponse,
+    BrandUpdate,
+    CategoryCreate,
+    CategoryResponse,
+    CategoryUpdate,
+    ProductCreate,
+    ProductDetailResponse,
+    ProductIdentifierCreate,
+    ProductIdentifierResponse,
+    ProductPriceCreate,
+    ProductPriceResponse,
+    ProductResponse,
+    ProductUOMConversionCreate,
+    ProductUOMConversionResponse,
+    ProductUpdate,
     UnitOfMeasureCreate,
     UnitOfMeasureResponse,
-    ProductCreate,
-    ProductResponse,
+    UnitOfMeasureUpdate,
 )
-from app.schemas.common import SuccessResponse
+from app.services.product_service import ProductService
 
 router = APIRouter(prefix="/products", tags=["Product Master"])
 
 
-@router.get("/categories", response_model=SuccessResponse[List[CategoryResponse]])
+def _deleted() -> SuccessResponse[None]:
+    return SuccessResponse[None](success=True, data=None)
+
+
+# ---------- Categories (static path before /{product_id}) ----------
+
+
+@router.get("/categories", response_model=PaginatedResponse)
 async def list_categories(
+    search: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
     session: AsyncSession = Depends(get_session),
-    workspace_id: uuid.UUID = Depends(get_current_workspace_id),
+    workspace_id: UUID = Depends(get_current_workspace_id),
 ):
-    result = await session.execute(
-        select(Category).where(
-            Category.workspace_id == workspace_id, Category.deleted_at.is_(None)
-        )
+    items, pagination = await ProductService.list_categories(
+        session, workspace_id, page, per_page, search
     )
-    return SuccessResponse(data=result.scalars().all())
+    return PaginatedResponse(
+        data=[CategoryResponse.model_validate(row) for row in items],
+        pagination=pagination,
+    )
 
 
-@router.post("/categories", response_model=SuccessResponse[CategoryResponse])
+@router.post(
+    "/categories",
+    response_model=SuccessResponse[CategoryResponse],
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_category(
     data: CategoryCreate,
     session: AsyncSession = Depends(get_session),
-    workspace_id: uuid.UUID = Depends(get_current_workspace_id),
+    workspace_id: UUID = Depends(get_current_workspace_id),
 ):
-    cat = Category(workspace_id=workspace_id, **data.model_dump())
-    session.add(cat)
+    category = await ProductService.create_category(session, workspace_id, data)
     await session.commit()
-    await session.refresh(cat)
-    return SuccessResponse(data=cat)
+    await session.refresh(category)
+    return SuccessResponse(data=CategoryResponse.model_validate(category))
 
 
-@router.get("/brands", response_model=SuccessResponse[List[BrandResponse]])
-async def list_brands(
+@router.get(
+    "/categories/{category_id}", response_model=SuccessResponse[CategoryResponse]
+)
+async def get_category(
+    category_id: UUID,
     session: AsyncSession = Depends(get_session),
-    workspace_id: uuid.UUID = Depends(get_current_workspace_id),
+    workspace_id: UUID = Depends(get_current_workspace_id),
 ):
-    result = await session.execute(
-        select(Brand).where(
-            Brand.workspace_id == workspace_id, Brand.deleted_at.is_(None)
-        )
+    category = await ProductService.get_category(session, workspace_id, category_id)
+    return SuccessResponse(data=CategoryResponse.model_validate(category))
+
+
+@router.put(
+    "/categories/{category_id}", response_model=SuccessResponse[CategoryResponse]
+)
+async def update_category(
+    category_id: UUID,
+    data: CategoryUpdate,
+    session: AsyncSession = Depends(get_session),
+    workspace_id: UUID = Depends(get_current_workspace_id),
+):
+    category = await ProductService.update_category(
+        session, workspace_id, category_id, data
     )
-    return SuccessResponse(data=result.scalars().all())
+    await session.commit()
+    await session.refresh(category)
+    return SuccessResponse(data=CategoryResponse.model_validate(category))
 
 
-@router.post("/brands", response_model=SuccessResponse[BrandResponse])
+@router.delete(
+    "/categories/{category_id}",
+    response_model=SuccessResponse[None],
+    status_code=status.HTTP_200_OK,
+)
+async def delete_category(
+    category_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    workspace_id: UUID = Depends(get_current_workspace_id),
+):
+    await ProductService.delete_category(session, workspace_id, category_id)
+    await session.commit()
+    return _deleted()
+
+
+# ---------- Brands ----------
+
+
+@router.get("/brands", response_model=PaginatedResponse)
+async def list_brands(
+    search: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    session: AsyncSession = Depends(get_session),
+    workspace_id: UUID = Depends(get_current_workspace_id),
+):
+    items, pagination = await ProductService.list_brands(
+        session, workspace_id, page, per_page, search
+    )
+    return PaginatedResponse(
+        data=[BrandResponse.model_validate(row) for row in items],
+        pagination=pagination,
+    )
+
+
+@router.post(
+    "/brands",
+    response_model=SuccessResponse[BrandResponse],
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_brand(
     data: BrandCreate,
     session: AsyncSession = Depends(get_session),
-    workspace_id: uuid.UUID = Depends(get_current_workspace_id),
+    workspace_id: UUID = Depends(get_current_workspace_id),
 ):
-    brand = Brand(workspace_id=workspace_id, **data.model_dump())
-    session.add(brand)
+    brand = await ProductService.create_brand(session, workspace_id, data)
     await session.commit()
     await session.refresh(brand)
-    return SuccessResponse(data=brand)
+    return SuccessResponse(data=BrandResponse.model_validate(brand))
 
 
-@router.get("/uom", response_model=SuccessResponse[List[UnitOfMeasureResponse]])
-async def list_uom(
+@router.get("/brands/{brand_id}", response_model=SuccessResponse[BrandResponse])
+async def get_brand(
+    brand_id: UUID,
     session: AsyncSession = Depends(get_session),
-    workspace_id: uuid.UUID = Depends(get_current_workspace_id),
+    workspace_id: UUID = Depends(get_current_workspace_id),
 ):
-    result = await session.execute(
-        select(UnitOfMeasure).where(
-            UnitOfMeasure.workspace_id == workspace_id,
-            UnitOfMeasure.deleted_at.is_(None),
-        )
+    brand = await ProductService.get_brand(session, workspace_id, brand_id)
+    return SuccessResponse(data=BrandResponse.model_validate(brand))
+
+
+@router.put("/brands/{brand_id}", response_model=SuccessResponse[BrandResponse])
+async def update_brand(
+    brand_id: UUID,
+    data: BrandUpdate,
+    session: AsyncSession = Depends(get_session),
+    workspace_id: UUID = Depends(get_current_workspace_id),
+):
+    brand = await ProductService.update_brand(session, workspace_id, brand_id, data)
+    await session.commit()
+    await session.refresh(brand)
+    return SuccessResponse(data=BrandResponse.model_validate(brand))
+
+
+@router.delete(
+    "/brands/{brand_id}",
+    response_model=SuccessResponse[None],
+    status_code=status.HTTP_200_OK,
+)
+async def delete_brand(
+    brand_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    workspace_id: UUID = Depends(get_current_workspace_id),
+):
+    await ProductService.delete_brand(session, workspace_id, brand_id)
+    await session.commit()
+    return _deleted()
+
+
+# ---------- Units of measure ----------
+
+
+@router.get("/uom", response_model=PaginatedResponse)
+async def list_uom(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    session: AsyncSession = Depends(get_session),
+    workspace_id: UUID = Depends(get_current_workspace_id),
+):
+    items, pagination = await ProductService.list_uoms(
+        session, workspace_id, page, per_page
     )
-    return SuccessResponse(data=result.scalars().all())
+    return PaginatedResponse(
+        data=[UnitOfMeasureResponse.model_validate(row) for row in items],
+        pagination=pagination,
+    )
 
 
-@router.post("/uom", response_model=SuccessResponse[UnitOfMeasureResponse])
+@router.post(
+    "/uom",
+    response_model=SuccessResponse[UnitOfMeasureResponse],
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_uom(
     data: UnitOfMeasureCreate,
     session: AsyncSession = Depends(get_session),
-    workspace_id: uuid.UUID = Depends(get_current_workspace_id),
+    workspace_id: UUID = Depends(get_current_workspace_id),
 ):
-    uom = UnitOfMeasure(workspace_id=workspace_id, **data.model_dump())
-    session.add(uom)
+    uom = await ProductService.create_uom(session, workspace_id, data)
     await session.commit()
     await session.refresh(uom)
-    return SuccessResponse(data=uom)
+    return SuccessResponse(data=UnitOfMeasureResponse.model_validate(uom))
 
 
-@router.get("", response_model=SuccessResponse[List[ProductResponse]])
-async def list_products(
+@router.get("/uom/{uom_id}", response_model=SuccessResponse[UnitOfMeasureResponse])
+async def get_uom(
+    uom_id: UUID,
     session: AsyncSession = Depends(get_session),
-    workspace_id: uuid.UUID = Depends(get_current_workspace_id),
+    workspace_id: UUID = Depends(get_current_workspace_id),
 ):
-    result = await session.execute(
-        select(Product).where(
-            Product.workspace_id == workspace_id, Product.deleted_at.is_(None)
-        )
+    uom = await ProductService.get_uom(session, workspace_id, uom_id)
+    return SuccessResponse(data=UnitOfMeasureResponse.model_validate(uom))
+
+
+@router.put("/uom/{uom_id}", response_model=SuccessResponse[UnitOfMeasureResponse])
+async def update_uom(
+    uom_id: UUID,
+    data: UnitOfMeasureUpdate,
+    session: AsyncSession = Depends(get_session),
+    workspace_id: UUID = Depends(get_current_workspace_id),
+):
+    uom = await ProductService.update_uom(session, workspace_id, uom_id, data)
+    await session.commit()
+    await session.refresh(uom)
+    return SuccessResponse(data=UnitOfMeasureResponse.model_validate(uom))
+
+
+@router.delete(
+    "/uom/{uom_id}",
+    response_model=SuccessResponse[None],
+    status_code=status.HTTP_200_OK,
+)
+async def delete_uom(
+    uom_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    workspace_id: UUID = Depends(get_current_workspace_id),
+):
+    await ProductService.delete_uom(session, workspace_id, uom_id)
+    await session.commit()
+    return _deleted()
+
+
+# ---------- Product collection ----------
+
+
+@router.get("", response_model=PaginatedResponse)
+async def list_products(
+    search: Optional[str] = Query(None),
+    category_id: Optional[UUID] = Query(None),
+    brand_id: Optional[UUID] = Query(None),
+    is_active: Optional[bool] = Query(None),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    session: AsyncSession = Depends(get_session),
+    workspace_id: UUID = Depends(get_current_workspace_id),
+):
+    items, pagination = await ProductService.list_products(
+        session,
+        workspace_id,
+        page,
+        per_page,
+        search,
+        category_id,
+        brand_id,
+        is_active,
     )
-    return SuccessResponse(data=result.scalars().all())
+    return PaginatedResponse(
+        data=[ProductResponse.model_validate(row) for row in items],
+        pagination=pagination,
+    )
 
 
-@router.post("", response_model=SuccessResponse[ProductResponse])
+@router.post(
+    "",
+    response_model=SuccessResponse[ProductResponse],
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_product(
     data: ProductCreate,
     session: AsyncSession = Depends(get_session),
-    workspace_id: uuid.UUID = Depends(get_current_workspace_id),
+    workspace_id: UUID = Depends(get_current_workspace_id),
 ):
-    product = Product(workspace_id=workspace_id, **data.model_dump())
-    session.add(product)
+    product = await ProductService.create_product(session, workspace_id, data)
     await session.commit()
     await session.refresh(product)
-    return SuccessResponse(data=product)
+    return SuccessResponse(data=ProductResponse.model_validate(product))
+
+
+# ---------- Nested children (before /{product_id} item verbs is fine) ----------
+
+
+@router.get(
+    "/{product_id}/identifiers",
+    response_model=SuccessResponse[List[ProductIdentifierResponse]],
+)
+async def list_identifiers(
+    product_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    workspace_id: UUID = Depends(get_current_workspace_id),
+):
+    rows = await ProductService.list_identifiers(session, workspace_id, product_id)
+    return SuccessResponse(
+        data=[ProductIdentifierResponse.model_validate(row) for row in rows]
+    )
+
+
+@router.post(
+    "/{product_id}/identifiers",
+    response_model=SuccessResponse[ProductIdentifierResponse],
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_identifier(
+    product_id: UUID,
+    data: ProductIdentifierCreate,
+    session: AsyncSession = Depends(get_session),
+    workspace_id: UUID = Depends(get_current_workspace_id),
+):
+    row = await ProductService.create_identifier(
+        session, workspace_id, product_id, data
+    )
+    await session.commit()
+    await session.refresh(row)
+    return SuccessResponse(data=ProductIdentifierResponse.model_validate(row))
+
+
+@router.delete(
+    "/{product_id}/identifiers/{identifier_id}",
+    response_model=SuccessResponse[None],
+    status_code=status.HTTP_200_OK,
+)
+async def delete_identifier(
+    product_id: UUID,
+    identifier_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    workspace_id: UUID = Depends(get_current_workspace_id),
+):
+    await ProductService.delete_identifier(
+        session, workspace_id, product_id, identifier_id
+    )
+    await session.commit()
+    return _deleted()
+
+
+@router.get(
+    "/{product_id}/conversions",
+    response_model=SuccessResponse[List[ProductUOMConversionResponse]],
+)
+async def list_conversions(
+    product_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    workspace_id: UUID = Depends(get_current_workspace_id),
+):
+    rows = await ProductService.list_conversions(session, workspace_id, product_id)
+    return SuccessResponse(data=rows)
+
+
+@router.post(
+    "/{product_id}/conversions",
+    response_model=SuccessResponse[ProductUOMConversionResponse],
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_conversion(
+    product_id: UUID,
+    data: ProductUOMConversionCreate,
+    session: AsyncSession = Depends(get_session),
+    workspace_id: UUID = Depends(get_current_workspace_id),
+):
+    payload = await ProductService.create_conversion(
+        session, workspace_id, product_id, data
+    )
+    await session.commit()
+    return SuccessResponse(data=payload)
+
+
+@router.delete(
+    "/{product_id}/conversions/{conversion_id}",
+    response_model=SuccessResponse[None],
+    status_code=status.HTTP_200_OK,
+)
+async def delete_conversion(
+    product_id: UUID,
+    conversion_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    workspace_id: UUID = Depends(get_current_workspace_id),
+):
+    await ProductService.delete_conversion(
+        session, workspace_id, product_id, conversion_id
+    )
+    await session.commit()
+    return _deleted()
+
+
+@router.get(
+    "/{product_id}/prices",
+    response_model=SuccessResponse[List[ProductPriceResponse]],
+)
+async def list_prices(
+    product_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    workspace_id: UUID = Depends(get_current_workspace_id),
+):
+    rows = await ProductService.list_prices(session, workspace_id, product_id)
+    return SuccessResponse(
+        data=[ProductPriceResponse.model_validate(row) for row in rows]
+    )
+
+
+@router.post(
+    "/{product_id}/prices",
+    response_model=SuccessResponse[ProductPriceResponse],
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_price(
+    product_id: UUID,
+    data: ProductPriceCreate,
+    session: AsyncSession = Depends(get_session),
+    workspace_id: UUID = Depends(get_current_workspace_id),
+):
+    row = await ProductService.create_price(session, workspace_id, product_id, data)
+    await session.commit()
+    await session.refresh(row)
+    return SuccessResponse(data=ProductPriceResponse.model_validate(row))
+
+
+@router.delete(
+    "/{product_id}/prices/{price_id}",
+    response_model=SuccessResponse[None],
+    status_code=status.HTTP_200_OK,
+)
+async def delete_price(
+    product_id: UUID,
+    price_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    workspace_id: UUID = Depends(get_current_workspace_id),
+):
+    await ProductService.delete_price(session, workspace_id, product_id, price_id)
+    await session.commit()
+    return _deleted()
+
+
+# ---------- Product item ----------
+
+
+@router.get("/{product_id}", response_model=SuccessResponse[ProductDetailResponse])
+async def get_product(
+    product_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    workspace_id: UUID = Depends(get_current_workspace_id),
+):
+    detail = await ProductService.get_product_detail(session, workspace_id, product_id)
+    return SuccessResponse(data=detail)
+
+
+@router.put("/{product_id}", response_model=SuccessResponse[ProductResponse])
+async def update_product(
+    product_id: UUID,
+    data: ProductUpdate,
+    session: AsyncSession = Depends(get_session),
+    workspace_id: UUID = Depends(get_current_workspace_id),
+):
+    product = await ProductService.update_product(
+        session, workspace_id, product_id, data
+    )
+    await session.commit()
+    await session.refresh(product)
+    return SuccessResponse(data=ProductResponse.model_validate(product))
+
+
+@router.delete(
+    "/{product_id}",
+    response_model=SuccessResponse[None],
+    status_code=status.HTTP_200_OK,
+)
+async def delete_product(
+    product_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    workspace_id: UUID = Depends(get_current_workspace_id),
+):
+    await ProductService.delete_product(session, workspace_id, product_id)
+    await session.commit()
+    return _deleted()

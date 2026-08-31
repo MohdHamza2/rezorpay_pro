@@ -122,7 +122,6 @@ def test_e2e_grn_complex_flow():
         json={
             "name": "PROD",
             "internal_sku": "PROD1",
-            "type": "GOODS",
             "base_uom_id": uom_id,
         },
         headers=headers,

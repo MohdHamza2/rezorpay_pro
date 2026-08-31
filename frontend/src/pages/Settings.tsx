@@ -33,8 +33,8 @@ export const Settings = () => {
         name: workspace.name,
         trn: workspace.trn,
         whatsapp_number: workspace.whatsapp_number,
-        default_tax_rate: workspace.default_tax_rate,
-        credit_limit_default: workspace.credit_limit_default,
+        default_tax_rate: Number(workspace.default_tax_rate ?? 5),
+        credit_limit_default: Number(workspace.credit_limit_default ?? 0),
         credit_hold_days: workspace.credit_hold_days
       });
     }
@@ -80,8 +80,8 @@ export const Settings = () => {
               {errors.name && <span className={styles.errorText}>{errors.name.message}</span>}
             </div>
             <div className={styles.formGroup}>
-              <label>TRN (Tax Registration Number)</label>
-              <input type="text" {...register('trn')} />
+              <label htmlFor="settings-trn">TRN (Tax Registration Number)</label>
+              <input id="settings-trn" type="text" data-testid="settings-trn" {...register('trn')} />
               {errors.trn && <span className={styles.errorText}>{errors.trn.message}</span>}
             </div>
             <div className={styles.formGroup}>
@@ -96,8 +96,14 @@ export const Settings = () => {
           <h3 className={styles.cardTitle}>Financial & Tax Defaults</h3>
           <div className={styles.grid}>
             <div className={styles.formGroup}>
-              <label>Default Tax Rate (%)</label>
-              <input type="number" step="0.01" {...register('default_tax_rate', { valueAsNumber: true })} />
+              <label htmlFor="settings-tax-rate">Default Tax Rate (%)</label>
+              <input
+                id="settings-tax-rate"
+                type="number"
+                step="0.01"
+                data-testid="settings-tax-rate"
+                {...register('default_tax_rate', { valueAsNumber: true })}
+              />
               {errors.default_tax_rate && <span className={styles.errorText}>{errors.default_tax_rate.message}</span>}
             </div>
             <div className={styles.formGroup}>
