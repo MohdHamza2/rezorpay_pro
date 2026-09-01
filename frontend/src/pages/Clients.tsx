@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getClients,
@@ -164,6 +165,13 @@ export const Clients = () => {
                     {formatAed(client.exposure)} / {formatAed(client.effective_credit_limit)}
                   </td>
                   <td>
+                    <Link
+                      to={`/clients/${client.id}/statement`}
+                      className={styles.statementLink}
+                      data-testid="client-statement"
+                    >
+                      Statement
+                    </Link>
                     <button className={styles.actionBtn} onClick={() => openModal(client)}>
                       <Edit2 size={16} />
                     </button>

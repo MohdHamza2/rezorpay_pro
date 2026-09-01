@@ -1,0 +1,120 @@
+.filters {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+  background: white;
+  padding: 1rem;
+  border-radius: 12px;
+  border: 1px solid #f3f4f6;
+}
+
+@media (min-width: 768px) {
+  .filters {
+    grid-template-columns: 1fr 1fr 1fr auto;
+    align-items: end;
+  }
+}
+
+.headerActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.sub {
+  display: block;
+  color: #64748b;
+  font-size: 0.75rem;
+  font-weight: 400;
+  font-style: normal;
+  margin-top: 0.15rem;
+}
+
+.linePaid {
+  background: #f0fdf4;
+}
+
+.lineCredit {
+  background: #f5f3ff;
+}
+
+.linePending {
+  background: #f8fafc;
+  color: #64748b;
+}
+
+.lineOpening {
+  background: #f8fafc;
+  font-weight: 600;
+}
+
+.typePaid {
+  color: #15803d;
+  font-weight: 600;
+}
+
+.typeCredit {
+  color: #6d28d9;
+  font-weight: 600;
+}
+
+.typePending {
+  color: #64748b;
+  font-style: italic;
+}
+
+.creditPaid {
+  color: #15803d;
+  font-weight: 600;
+}
+
+.creditNote {
+  color: #6d28d9;
+  font-weight: 600;
+}
+
+.copy {
+  color: #64748b;
+  font-size: 0.85rem;
+  margin: 0 0 1rem;
+}
+
+.agingTable {
+  width: 100%;
+  max-width: 420px;
+  border-collapse: collapse;
+  margin-top: 0.5rem;
+}
+
+.agingTable th,
+.agingTable td {
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.agingTable th {
+  background-color: #f8fafc;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #475569;
+}
+
+.unapplied {
+  color: #6d28d9;
+  font-weight: 600;
+}
+
+.errorText {
+  color: #ef4444;
+  font-size: 0.8rem;
+  margin-top: 0.25rem;
+  display: block;
+}

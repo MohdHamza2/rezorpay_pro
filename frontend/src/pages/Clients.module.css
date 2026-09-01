@@ -79,6 +79,20 @@
   color: #ef4444;
 }
 
+.statementLink {
+  display: inline-block;
+  margin-right: 0.75rem;
+  color: #2563eb;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-decoration: none;
+  vertical-align: middle;
+}
+
+.statementLink:hover {
+  text-decoration: underline;
+}
+
 /* Modal Styles */
 .modalOverlay {
   position: fixed;

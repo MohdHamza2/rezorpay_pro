@@ -25,6 +25,15 @@ function firstDetailMessage(details?: PydanticDetail[]): string | undefined {
 /** Handlers toast these; interceptor must not duplicate. */
 export const HANDLED_TOAST_CODES = new Set(['FTA_SEND_BLOCKED', 'CREDIT_HOLD']);
 
+const STATEMENT_TOAST_CODES = new Set(['DATE_RANGE_TOO_LONG', 'STATEMENT_TOO_LARGE']);
+
+export function formatErrorToast(info: ApiErrorInfo): string {
+  if (info.code && STATEMENT_TOAST_CODES.has(info.code)) {
+    return `${info.code}: ${info.message}`;
+  }
+  return info.message;
+}
+
 export function extractApiError(error: unknown): ApiErrorInfo {
   const body = (error as AxiosError<ErrorBody>).response?.data?.error;
   if (!body) return { message: 'An error occurred' };

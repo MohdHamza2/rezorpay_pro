@@ -1269,3 +1269,234 @@ FTA isolation 1.1m, LPO isolation 1.1m, quotation-isolation 1.1m, and CN happy p
 - Playwright not wired into GitHub Actions
 - Auth register 5/minute (retries; isolation specs can wait ~1m)
 - Next after A–C: AR statement / PDC / volume pricing (not debit notes)
+
+---
+
+# WP-B AR Account Statement UI + PDF — Plan (before edits)
+
+**Date:** 2026-09-01
+**Owner:** frontend / coder
+**Depends on:** WP-A APPROVE_WITH_NITS (`.agents/reports/wp-a-ar-statement-review.md`). Pytest green. No Alembic. No backend edits unless P0 blocks UI.
+**Spec:** `architecture/wave-ar-statement-addendum.md` WP-B + §7.1 JSON + §8 PDF; `.agents/reports/architect-ar-statement-note.md`
+
+## Goal
+
+Per-client Account Statement page + client-side `@react-pdf/renderer` PDF from `GET /api/v1/clients/{id}/ar-statement`. Not a tax invoice. Not a Tax Credit Note. Credits ≠ cash. Unapplied credit in footer, not an aging bucket. Outstanding amounts are current; aging days vs as-of.
+
+## API client (do not invent fields)
+
+`GET /api/v1/clients/{id}/ar-statement?from=&to=&as_of=`
+- `from` and `to` required. `as_of` optional on API; page always sends explicit query params.
+- Wrapper `{success, data, error}`. `data` is **one object**, not a list.
+- Isolation HTTP 404 (code may be `HTTP_ERROR` or `NOT_FOUND` — UI keys off status via `isHttpNotFound`).
+- Types match WP-A schema: `doc_type` OPENING | TAX_INVOICE | PAYMENT | PAYMENT_PENDING | TAX_CREDIT_NOTE; labels from JSON; `totals.paid` vs `totals.credited`; `credit_balance`; aging buckets `current` / `days_1_30` / `days_31_60` / `days_61_90` / `days_90_plus`.
+
+Add `getArStatement(clientId, { from, to, as_of? })` on the clients API module.
+
+## UI
+
+1. Route `/clients/:id/statement` under existing AuthGuard layout. **No** top-level Statements nav.
+2. Clients table: Statement action per row. Keep edit/delete/credit badge.
+3. Date range + as-of. Defaults: `to`/`as_of` = UTC today, `from` = first of that month. Always send `from`, `to`, `as_of`.
+4. Lines: Date | Type | Number | Debit | Credit | Balance. Use `doc_type_label`. Paid vs credited vs pending visually distinct. Never label Tax Credit Note as Payment or cash.
+5. Footer: billed, paid (SUCCESS only), credited (CN), amount due now, **Unapplied credit** (`credit_balance`) — not an aging bucket.
+6. Aging: Current / 1–30 / 31–60 / 61–90 / 90+.
+7. Copy: outstanding amounts are current; aging days vs as-of.
+8. `DATE_RANGE_TOO_LONG` / `STATEMENT_TOO_LARGE` / 422 from>to: toast from `error.code` / message. Cross-tenant 404: existing not-found pattern.
+9. MEMBER can view (same as GET client — no extra RBAC).
+
+## PDF
+
+- `frontend/src/components/pdf/StatementPDF.tsx` + preview like CN/Invoice.
+- Exact title **Account Statement**. `data-testid="statement-pdf-title"` on on-screen title and PDF title text.
+- Must NOT be Tax Invoice / Tax Credit Note / INVOICE / Arabic كشف حساب.
+- Helvetica, English, copy Invoice/CN padding/header/table chrome.
+- Header: workspace name, address, TRN if present; client name, address, TRN (`tax_id`).
+- Meta: period from–to, as of, AED.
+- Columns: Date | Type | Number | Debit | Credit | Balance. Payment method on second line. PENDING: type Payment (pending); debit/credit 0; pending not in Credit.
+- Footer totals + Unapplied credit + aging + PDC SUCCESS note from addendum §6.
+- Download/preview from the statement page. Rebuild from GET JSON. No server PDF.
+
+## Out
+
+Invoice list `amount_credited` column. Alembic. Backend. Playwright (WP-C). PDC bounce. Bilingual. Debit notes. Email. Dashboard overdue pack.
+
+## Files to change
+
+| File | Change |
+|---|---|
+| `frontend/src/api/clients.ts` | Types + `getArStatement` |
+| `frontend/src/api/errors.ts` | Toast text includes `DATE_RANGE_TOO_LONG` / `STATEMENT_TOO_LARGE` codes |
+| `frontend/src/api/client.ts` | Use that toast formatter |
+| `frontend/src/pages/statementHelpers.ts` | Date defaults, zod range, aging labels, line tone |
+| `frontend/src/pages/ArStatement.tsx` | Page |
+| `frontend/src/pages/ArStatement.module.css` | Line tones, money cols, aging |
+| `frontend/src/components/pdf/StatementPDF.tsx` | PDF + download |
+| `frontend/src/components/pdf/StatementPdfPreview.tsx` | HTML preview |
+| `frontend/src/App.tsx` | Route `/clients/:id/statement` |
+| `frontend/src/pages/Clients.tsx` | Statement action |
+| `frontend/src/pages/Clients.module.css` | Statement link |
+
+## Acceptance
+
+1. `cd frontend && npm run build` green
+2. PDF title **Account Statement**
+3. Credits not shown as cash; unapplied credit not an aging bucket
+4. No backend / Alembic / pytest / Playwright / git commit
+
+---
+
+# WP-B AR Account Statement UI + PDF — Implementation (completed)
+
+**Date:** 2026-09-01
+**Owner:** frontend / coder
+**No git commit. No backend / Alembic / pytest / Playwright.**
+
+## Result
+
+`npm run build` (`tsc -b && vite build`) **green**. Vite 8.2.1. Pre-existing chunk-size warning only.
+
+PDF title locked to **Account Statement** on:
+- On-screen page `h2` (`data-testid="statement-pdf-title"`)
+- HTML preview `h3` (`data-testid="statement-pdf-title"`)
+- `@react-pdf/renderer` title text + `Document title="Account Statement"` + `id` / `data-testid` on the PDF title `Text`
+
+Not Tax Invoice, Tax Credit Note, INVOICE, or Arabic كشف حساب.
+
+## Behaviour
+
+- Route `/clients/:id/statement` behind AuthGuard + Layout. No top-level Statements nav.
+- Clients table **Statement** link per row; edit / delete / credit badge unchanged.
+- Date defaults: `to` / `as_of` = UTC today, `from` = first of that month. Apply always sends `from`, `to`, `as_of`.
+- Lines use `doc_type_label`. SUCCESS payments green; tax credit notes purple (never labelled Payment/cash); pending muted with credit column 0.
+- Footer: billed, paid (SUCCESS), credited (CN), amount due now, Unapplied credit (`credit_balance`) — not in the aging table.
+- Aging: Current / 1–30 / 31–60 / 61–90 / 90+.
+- Copy: outstanding amounts are current; aging days vs as-of. PDC SUCCESS footnote from addendum §6.
+- `DATE_RANGE_TOO_LONG` / `STATEMENT_TOO_LARGE` toasts as `CODE: message`. from>to blocked by zod + toast. Cross-tenant 404 → `statement-not-found` (HTTP status, not error.code).
+- MEMBER: no extra RBAC (same as GET client).
+- PDF rebuilds from GET JSON. No server PDF route.
+
+## Files
+
+- `frontend/src/api/clients.ts` — types + `getArStatement`
+- `frontend/src/api/errors.ts` / `frontend/src/api/client.ts` — statement error toast formatter
+- `frontend/src/pages/statementHelpers.ts` (new)
+- `frontend/src/pages/ArStatement.tsx` (new)
+- `frontend/src/pages/ArStatement.module.css` (new)
+- `frontend/src/components/pdf/StatementPDF.tsx` (new)
+- `frontend/src/components/pdf/StatementPdfPreview.tsx` (new)
+- `frontend/src/App.tsx`
+- `frontend/src/pages/Clients.tsx`
+- `frontend/src/pages/Clients.module.css`
+- `.agents/reports/frontend-execution-report.md`
+
+## Out (unchanged)
+
+Invoice list `amount_credited` column. Backend. Alembic. Playwright (WP-C). PDC bounce. Bilingual. Debit notes. Email. Dashboard overdue pack.
+
+---
+
+# WP-C AR Account Statement Playwright E2E — Implementation (completed)
+
+**Date:** 2026-09-01
+**API:** docker postgres host **5434**, API **8000**, Vite **5173**. `/health/ready` 200 (`database: connected`). Not SQLite.
+
+## Result
+
+```
+Running 18 tests using 1 worker
+  ok  1 [chromium] › e2e\ar-statement-isolation.spec.ts:10:1 › cross-tenant AR statement GET returns 404 (501ms)
+  ok  2 [chromium] › e2e\ar-statement.spec.ts:39:1 › account statement shows invoice payment and credit note (4.6s)
+  ok  3 [chromium] › e2e\credit-hold.spec.ts:12:1 › COD client second invoice send is credit HOLD (6.4s)
+  ok  4 [chromium] › e2e\credit-isolation.spec.ts:4:1 › cross-tenant client credit GET returns 404 (32.5s)
+  ok  5 [chromium] › e2e\credit-note-isolation.spec.ts:10:1 › cross-tenant credit note GET returns 404 (513ms)
+  ok  6 [chromium] › e2e\credit-notes.spec.ts:11:1 › simplified tax invoice credit note issue posts AR (2.3s)
+  ok  7 [chromium] › e2e\delivery-note-isolation.spec.ts:11:1 › cross-tenant delivery note GET returns 404 (1.1m)
+  ok  8 [chromium] › e2e\delivery-notes.spec.ts:21:1 › catalog LPO delivery note confirm issues stock (2.4s)
+  ok  9 [chromium] › e2e\delivery-notes.spec.ts:77:1 › HOLD blocks DN confirm when block_do_on_hold (350ms)
+  ok 10 [chromium] › e2e\fta-isolation.spec.ts:4:1 › cross-tenant invoice GET returns 404 (1.1m)
+  ok 11 [chromium] › e2e\fta-send-blocked.spec.ts:4:1 › send invoice without workspace TRN is blocked (1.3s)
+  ok 12 [chromium] › e2e\fta-tax-invoice.spec.ts:11:1 › simplified tax invoice send and preview (2.0s)
+  ok 13 [chromium] › e2e\lpo-isolation.spec.ts:4:1 › cross-tenant LPO GET returns 404 (482ms)
+  ok 14 [chromium] › e2e\lpos.spec.ts:12:1 › manual LPO receive partial invoice lands draft invoice (1.3m)
+  ok 15 [chromium] › e2e\product-catalog.spec.ts:12:1 › product master catalog happy path (2.4s)
+  ok 16 [chromium] › e2e\product-isolation.spec.ts:4:1 › cross-tenant product GET returns 404 (441ms)
+  ok 17 [chromium] › e2e\quotation-isolation.spec.ts:4:1 › cross-tenant quotation GET returns 404 (1.1m)
+  ok 18 [chromium] › e2e\quotations.spec.ts:12:1 › quotation send accept convert to draft invoice (2.0s)
+  18 passed (5.5m)
+```
+
+`npm run build` — `tsc -b && vite build` succeeded (Vite 8.2.1). Pre-existing chunk-size warning only.
+
+Product + FTA + quotation + LPO + credit HOLD + DN + CN specs still pass. Isolation **404** (not 403) confirmed for `GET /api/v1/clients/{id}/ar-statement?from=&to=`. PDF title **Account Statement** asserted on page `h2` and preview; invoice `pdf-title` / CN `cn-pdf-title` absent. Credits ≠ cash: paid AED 50.00 vs credited AED 105.00.
+
+## Specs shipped
+
+1. **Happy path** — unique register (password 8+) → Settings FTA → SIMPLIFIED client → ad-hoc invoice qty 2 @ 100 send **SENT** → UI CASH payment AED 50.00 (Idempotency-Key via `recordPayment`) → CN qty 1 **ISSUED** → Clients table `client-statement` → range today → three line types Tax Invoice / Payment / Tax Credit Note; `statement-credited` ≠ `statement-paid`; aging visible; preview title **Account Statement** (not Tax Invoice / Tax Credit Note).
+2. **Isolation** — workspace A `createFtaSentInvoiceApi`; workspace B `GET /api/v1/clients/{A}/ar-statement?from=&to=` (today) → **404** not 403. Own GET 200.
+
+## Helpers / product
+
+- `authJson` **unchanged** (no Idempotency-Key); payment recorded through the Invoices UI modal so CN isolation callers stay intact.
+- No backend, Alembic, Invoices.tsx, or WP-B testid changes. Existing statement testids used.
+
+## Files
+
+- `frontend/e2e/ar-statement.spec.ts` (new)
+- `frontend/e2e/ar-statement-isolation.spec.ts` (new)
+- `.agents/reports/frontend-execution-report.md`
+
+## Not covered (leftovers)
+
+- PENDING payment line / SUCCESS PDC label in the browser
+- MEMBER-role statement GET
+- Debit notes, bilingual PDF, email statement
+- Playwright not wired into GitHub Actions
+- Next after A–C: PDC truth (gap 11), then volume pricing (not debit notes)
+
+
+---
+
+# WP-C AR Account Statement Playwright E2E — Plan (before edits)
+
+**Date:** 2026-09-01
+**Owner:** frontend / coder
+**Depends on:** WP-B UI+PDF shipped (`/clients/:id/statement`, StatementPDF title **Account Statement**). WP-A GET `/clients/{id}/ar-statement` 404 isolation.
+**Spec:** `architecture/wave-ar-statement-addendum.md` WP-C + §8 PDF title.
+
+## Goal
+
+Playwright covers the collections statement: three activity line types on one page, credits ≠ cash, aging visible, PDF title **Account Statement** (not Tax Invoice / Tax Credit Note), and cross-workspace GET **404** not 403.
+
+## Runtime
+
+Docker API **8000**, Postgres host **5434**. Never SQLite. Password **Passw0rd1**. Unique emails. Register 429 retry already in helpers.
+
+## Specs
+
+1. **Happy path** `frontend/e2e/ar-statement.spec.ts`
+   - registerViaUi → saveWorkspaceFta → createClientViaUi → SIMPLIFIED SENT tax invoice (same as fta-tax-invoice / credit-notes)
+   - SUCCESS payment CASH/BANK (UI modal; recordPayment already sends Idempotency-Key)
+   - ISSUED CN partial qty 1 (same as credit-notes.spec)
+   - Clients table `client-statement` → `/clients/:id/statement` for a range covering invoice + payment + CN
+   - Assert `statement-line-TAX_INVOICE`, `statement-line-PAYMENT`, `statement-line-TAX_CREDIT_NOTE`
+   - `statement-credited` ≠ `statement-paid`
+   - `statement-aging` visible
+   - `statement-pdf-title` **Account Statement** on page and preview; not Tax Invoice / Tax Credit Note
+
+2. **Isolation** `frontend/e2e/ar-statement-isolation.spec.ts`
+   - Workspace A: putWorkspaceFtaApi + createFtaSentInvoiceApi
+   - Workspace B: `GET /api/v1/clients/{A}/ar-statement?from=&to=` (today range) → **404** not 403
+
+## Helpers
+
+- Reuse `registerViaUi`, `registerWorkspace`, `createFtaSentInvoiceApi`, `authJson`, `uniqueEmail`, `E2E_PASSWORD`, FTA helpers.
+- Do **not** add Idempotency-Key to `authJson` unless POSTing payments via API. CN isolation callers stay unchanged.
+- No backend / Alembic / PDC bounce / debit notes. Prefer existing WP-B testids.
+
+## Acceptance
+
+- `npm run test:e2e` all existing + new green
+- `npm run build` green
+- Isolation 404 confirmed; PDF title Account Statement asserted
+- No git commit

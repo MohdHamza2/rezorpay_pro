@@ -3,6 +3,65 @@
 
 ---
 
+## 2026-09-01 — WP-A AR aging + Account Statement API (implemented)
+
+**Spec:** `architecture/wave-ar-statement-addendum.md` WP-A. No UI/PDF/Playwright. **No Alembic.** No git commit.
+
+### Done
+
+- Generated `GET /api/v1/clients/{client_id}/ar-statement?from=&to=&as_of=` over live invoices / SUCCESS payments / ISSUED CNs / `clients.credit_balance`. Read-only: no INSERT/UPDATE/DELETE on those rows.
+- Reuses `CreditControlService.open_ar_invoices` + `aging_buckets`. `amount_due_now` = exposure. `credit_balance` parked, not in buckets or `totals.paid`. `as_of=today` buckets match GET `/clients/{id}/credit`.
+- Isolation **404** `NOT_FOUND` (never 403). CREDIT_HOLD does not block. OWNER/ADMIN/MEMBER via `get_current_user`.
+- CN never in `totals.paid`. PENDING = Payment (pending), not cleared, not in paid. SUCCESS PDC is in paid with method PDC.
+- Cap helper `assert_activity_cap` (monkeypatch `ACTIVITY_LINE_CAP` in the overflow test only).
+
+### Files
+
+- `backend/app/schemas/ar_statements.py`
+- `backend/app/services/ar_statement_service.py`
+- `backend/app/routers/clients.py` — GET on clients router (file stays well under 500 lines)
+- `backend/app/schemas/common.py` — `DATE_RANGE_TOO_LONG`, `STATEMENT_TOO_LARGE`
+- `backend/app/services/__init__.py`
+- `backend/tests/test_ar_statement.py`
+
+### Pytest (PostgreSQL `_test`)
+
+- `tests/test_ar_statement.py`: **13 passed**, 0 failed
+
+`alembic heads` / `alembic current`: **`b8d5f0c3a216`**. No new revision. black + ruff clean on touched files.
+
+---
+
+## 2026-09-01 — WP-A AR aging + Account Statement API (planned BEFORE code)
+
+**Spec:** `architecture/wave-ar-statement-addendum.md` WP-A. Architect note: `.agents/reports/architect-ar-statement-note.md`. Backend + pytest only. No UI/PDF/Playwright. **No Alembic.** No git commit.
+
+### Locked
+
+- Generated GET only: live invoices + SUCCESS payments + ISSUED CNs + `clients.credit_balance`. No `ar_statements` table, no new columns. HEAD stays **`b8d5f0c3a216`**.
+- `GET /api/v1/clients/{client_id}/ar-statement?from=&to=&as_of=`. `from`/`to` required. `as_of` optional, default UTC today. `as_of` after today → 422. `from > to` → 422. `(to-from).days > 366` → 422 `DATE_RANGE_TOO_LONG`. Activity lines (excl. opening) > 2000 → 400 `STATEMENT_TOO_LARGE`.
+- Isolation: other-workspace client → **404** `NOT_FOUND`, never 403. CREDIT_HOLD does not block. Roles: OWNER/ADMIN/MEMBER via `get_current_user` (same as GET client / GET credit).
+- Reuse `CreditControlService.open_ar_invoices` + `aging_buckets`. Do not fork buckets. `as_of=today` buckets must equal GET `/clients/{id}/credit`. `amount_due_now` = exposure. `credit_balance` parked, not a bucket, not in `totals.paid`.
+- Include-set S: `deleted_at` null, status SENT/PARTIALLY_PAID/PAID/OVERDUE. Exclude DRAFT/CANCELLED invoices (+ their payments/CNs), DRAFT CNs, quotes/LPO/DN, FAILED/CANCELLED/REFUNDED payments.
+- CN amounts never in `totals.paid`. PENDING not in paid (`cleared_cash` false). SUCCESS PDC **is** in `totals.paid`; method PDC; not labelled Tax Credit Note.
+- GET is read-only: do not mutate invoices, payments, CNs, or `credit_balance`. No server PDF. No pagination. Do not change GET `/clients/{id}/credit`. Do not add PDC bounce/clear/deposit. Do not change `record_payment`.
+- `doc_type` + exact `doc_type_label` from addendum §7.1. Sort: opening first; date ASC; TAX_INVOICE, PAYMENT, PAYMENT_PENDING, TAX_CREDIT_NOTE; number ASC. All money via `money()` ROUND_HALF_UP.
+
+### Files (planned)
+
+- `backend/app/schemas/ar_statements.py`
+- `backend/app/services/ar_statement_service.py`
+- `backend/app/routers/clients.py` (GET on clients router; file stays well under 500 lines)
+- `backend/app/schemas/common.py` — `DATE_RANGE_TOO_LONG`, `STATEMENT_TOO_LARGE`
+- `backend/app/services/__init__.py`
+- `backend/tests/test_ar_statement.py` — addendum §10, PostgreSQL `_test`
+
+### Out
+
+Frontend, Playwright, Alembic, git commit, PDC truth, bilingual, debit notes, invoice-list `amount_credited`, dashboard overdue.
+
+---
+
 ## 2026-09-01 — WP-A W2 GET /invoices/{id}/balance credits-as-cash (implemented)
 
 **Nit:** W2 in `.agents/reports/wp-a-credit-notes-review.md`. Backend only. No Alembic rewrite. No git commit.

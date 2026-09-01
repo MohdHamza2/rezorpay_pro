@@ -16,6 +16,7 @@ Organization:
 - product_service.py: Product master (category/brand/UOM/product/children)
 """
 
+from app.services.ar_statement_service import ArStatementService
 from app.services.credit_control_service import CreditControlService
 from app.services.invoice_number import InvoiceNumberService
 from app.services.invoice_service import InvoiceService
@@ -35,6 +36,7 @@ from app.services.credit_note_number import CreditNoteNumberService
 from app.services.credit_note_service import CreditNoteService
 
 __all__ = [
+    "ArStatementService",
     "CreditControlService",
     "InvoiceNumberService",
     "InvoiceService",

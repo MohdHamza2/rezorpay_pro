@@ -6,11 +6,12 @@ Endpoints:
 - GET /clients - List clients (with search/pagination)
 - GET /clients/{id} - Get client
 - GET /clients/{id}/credit - Aging JSON
+- GET /clients/{id}/ar-statement - Generated Account Statement
 - PUT /clients/{id} - Update client
 - DELETE /clients/{id} - Soft delete client
 """
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Optional
 from uuid import UUID
 
@@ -25,6 +26,7 @@ from app.models.credit_status_event import CreditEventReason, CreditStatus
 from app.models.invoice import Invoice, InvoiceStatus
 from app.models.user import User
 from app.models.workspace import Workspace
+from app.schemas.ar_statements import ArStatementResponse
 from app.schemas.clients import (
     ClientCreate,
     ClientCreditResponse,
@@ -37,6 +39,7 @@ from app.schemas.common import (
     PaginatedResponse,
     SuccessResponse,
 )
+from app.services.ar_statement_service import ArStatementService
 from app.services.credit_control_service import CreditControlService
 
 router = APIRouter(prefix="/clients", tags=["Clients"])
@@ -196,6 +199,34 @@ async def get_client_credit(
     payload = await CreditControlService.aging(session, client, workspace)
     await session.commit()
     return SuccessResponse(data=ClientCreditResponse.model_validate(payload))
+
+
+@router.get(
+    "/{client_id}/ar-statement",
+    response_model=SuccessResponse[ArStatementResponse],
+    response_model_by_alias=True,
+)
+async def get_client_ar_statement(
+    client_id: UUID,
+    period_from: date = Query(..., alias="from"),
+    period_to: date = Query(..., alias="to"),
+    as_of: Optional[date] = Query(None),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+    workspace_id: UUID = Depends(get_current_workspace_id),
+):
+    """Generated Account Statement JSON. Isolation 404. Read-only."""
+    workspace = await _workspace(session, workspace_id)
+    payload = await ArStatementService.get_statement(
+        session,
+        workspace,
+        client_id,
+        period_from,
+        period_to,
+        as_of,
+        actor_id=user.id,
+    )
+    return SuccessResponse(data=ArStatementResponse.model_validate(payload))
 
 
 @router.put("/{client_id}", response_model=SuccessResponse[ClientResponse])
