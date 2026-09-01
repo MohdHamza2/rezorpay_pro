@@ -15,11 +15,17 @@ type ErrorBody = {
     field?: string;
     details?: PydanticDetail[];
   };
+  detail?: string | PydanticDetail[];
 };
 
 function firstDetailMessage(details?: PydanticDetail[]): string | undefined {
   const msg = details?.[0]?.msg;
   return typeof msg === 'string' && msg ? msg : undefined;
+}
+
+function stringDetail(detail: ErrorBody['detail']): string | undefined {
+  if (typeof detail === 'string' && detail) return detail;
+  return undefined;
 }
 
 /** Handlers toast these; interceptor must not duplicate. */
@@ -42,12 +48,14 @@ export function formatErrorToast(info: ApiErrorInfo): string {
 }
 
 export function extractApiError(error: unknown): ApiErrorInfo {
-  const body = (error as AxiosError<ErrorBody>).response?.data?.error;
-  if (!body) return { message: 'An error occurred' };
+  const data = (error as AxiosError<ErrorBody>).response?.data;
+  const body = data?.error;
+  const detail = stringDetail(data?.detail);
+  if (!body) return { message: detail || 'An error occurred' };
   return {
     code: body.code,
     field: body.field,
-    message: body.message || firstDetailMessage(body.details) || 'An error occurred',
+    message: body.message || firstDetailMessage(body.details) || detail || 'An error occurred',
   };
 }
 

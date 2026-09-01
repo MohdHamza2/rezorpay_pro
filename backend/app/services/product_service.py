@@ -551,6 +551,27 @@ class ProductService:
         await ProductService._require_optional_brand(session, brand_id, workspace_id)
 
     @staticmethod
+    def _apply_spec_filters(
+        stmt,
+        amp_rating: Optional[Decimal],
+        cable_size_mm2: Optional[Decimal],
+        cores: Optional[int],
+        poles: Optional[int],
+        voltage: Optional[str],
+    ):
+        if amp_rating is not None:
+            stmt = stmt.where(Product.amp_rating == amp_rating)
+        if cable_size_mm2 is not None:
+            stmt = stmt.where(Product.cable_size_mm2 == cable_size_mm2)
+        if cores is not None:
+            stmt = stmt.where(Product.cores == cores)
+        if poles is not None:
+            stmt = stmt.where(Product.poles == poles)
+        if voltage is not None:
+            stmt = stmt.where(Product.voltage == voltage)
+        return stmt
+
+    @staticmethod
     async def list_products(
         session: AsyncSession,
         workspace_id: uuid.UUID,
@@ -560,6 +581,11 @@ class ProductService:
         category_id: Optional[uuid.UUID] = None,
         brand_id: Optional[uuid.UUID] = None,
         is_active: Optional[bool] = None,
+        amp_rating: Optional[Decimal] = None,
+        cable_size_mm2: Optional[Decimal] = None,
+        cores: Optional[int] = None,
+        poles: Optional[int] = None,
+        voltage: Optional[str] = None,
     ) -> Tuple[Sequence[Product], PaginationMeta]:
         stmt = select(Product).where(
             Product.workspace_id == workspace_id, Product.deleted_at.is_(None)
@@ -579,6 +605,9 @@ class ProductService:
             stmt = stmt.where(Product.brand_id == brand_id)
         if is_active is not None:
             stmt = stmt.where(Product.is_active == is_active)
+        stmt = ProductService._apply_spec_filters(
+            stmt, amp_rating, cable_size_mm2, cores, poles, voltage
+        )
         stmt = stmt.order_by(Product.name)
         return await ProductService._paginated(session, stmt, page, per_page)
 

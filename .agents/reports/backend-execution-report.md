@@ -1178,3 +1178,79 @@ black + ruff clean on changed Python files.
 ### Untouched (as locked)
 
 Alembic `c8e1a4f2b6d0`, historical SENT PDF/header backfill (W2/WP-B), payment PUT, W4/W6/W7, frontend, SQLite.
+
+---
+
+## 2026-09-01 — WP-A electrical catalogue spec columns (planned BEFORE code)
+
+**Spec:** `architecture/wave-electrical-specs-addendum.md` + `.agents/reports/architect-electrical-specs-note.md`.
+**Locked:** WP-A API + Alembic + pytest only. No frontend. No git commit. Do not edit InvoiceService / quotes / LPO / CN / DN / PDFs / pricing. No JSONB `specs`. No Item table. No invoice line columns. Do not touch `_resolve_line`.
+
+### Must implement
+
+| # | Action |
+|---|---|
+| 1 | Five nullable columns on live `products`: `amp_rating` Numeric(8,2), `cable_size_mm2` Numeric(8,2), `cores` Integer, `poles` Integer, `voltage` String(32). No `Field(index=True)` on spec columns. |
+| 2 | Five partial indexes on `Product.__table_args__`: `(workspace_id, col) WHERE col IS NOT NULL`. |
+| 3 | New Alembic revision only. `down_revision = "b8d5f0c3a216"`. Never rewrite old files. Autogenerate then edit. |
+| 4 | `ProductCreate` / `ProductUpdate` / `ProductResponse`: five optional keys. `extra="forbid"` stays (`hs_code` / `specs` still 422). Voltage regex after strip `^[0-9]+(/[0-9]+)?$`; empty → null. Decimal never float. Invalid specs 422 Pydantic. |
+| 5 | GET list optional exact AND query params. `search` stays ILIKE sku/name/description only. Isolation 404. MEMBER+ unchanged. |
+| 6 | `backend/tests/test_product_electrical_specs.py` covering addendum §6 (11 bullets). PostgreSQL `_test`. Keep `test_products.py` and `test_multi_tenant_isolation.py` green. |
+
+### Files to change
+
+| File | Action |
+|---|---|
+| `backend/app/models/product.py` | Five columns + five partial Indexes |
+| `backend/app/schemas/products.py` | Optional fields + voltage validator; extra=forbid |
+| `backend/app/routers/products.py` | List query params only |
+| `backend/app/services/product_service.py` | Persist via existing dump; AND filters. No commit. |
+| `backend/alembic/versions/<new>_add_product_electrical_specs.py` | New file; parent `b8d5f0c3a216` |
+| `backend/tests/test_product_electrical_specs.py` | New §6 tests |
+
+### Out of WP-A
+
+Frontend, Playwright, debit notes, Peppol, hs_code, snapshot columns, git commit, InvoiceService, quotes, LPO, CN, DN, PDFs, pricing.
+
+---
+
+## 2026-09-01 — WP-A electrical catalogue spec columns (implemented)
+
+**Spec:** `architecture/wave-electrical-specs-addendum.md` §2–§6. **Alembic parent:** `b8d5f0c3a216`. **New HEAD:** `1a30af047312`. Never rewrote `b8d5f0c3a216_add_credit_notes.py`. No git commit. No frontend.
+
+### Done
+
+- Live `products`: nullable `amp_rating` Numeric(8,2), `cable_size_mm2` Numeric(8,2), `cores` Integer, `poles` Integer, `voltage` String(32). Partial indexes on `Product.__table_args__` `(workspace_id, col) WHERE col IS NOT NULL`. No `Field(index=True)` on spec columns.
+- Write bodies accept the five optional keys; `extra="forbid"` stays (`hs_code` / `specs` still 422). Voltage regex after strip `^[0-9]+(/[0-9]+)?$`; blank → null. Invalid specs 422 Pydantic. Decimal never float.
+- GET list exact AND filters `amp_rating`, `cable_size_mm2`, `cores`, `poles`, `voltage`. `search` still ILIKE sku/name/description only. Isolation 404. MEMBER+ unchanged.
+- Persist via existing `model_dump` / `exclude_unset`. InvoiceService / `_resolve_line` / quotes / LPO / CN / DN / PDFs / pricing untouched.
+
+### Alembic revision
+
+- **ID:** `1a30af047312`
+- **File:** `backend/alembic/versions/1a30af047312_add_product_electrical_specs.py`
+- **`down_revision`:** `"b8d5f0c3a216"`
+- `alembic heads` = `1a30af047312 (head)`
+- `alembic check` = No new upgrade operations detected
+
+### Files changed
+
+- `backend/app/models/product.py`
+- `backend/app/schemas/products.py`
+- `backend/app/routers/products.py`
+- `backend/app/services/product_service.py`
+- `backend/alembic/versions/1a30af047312_add_product_electrical_specs.py` (new)
+- `backend/tests/test_product_electrical_specs.py` (new)
+- `.agents/reports/backend-execution-report.md`
+
+### Pytest (PostgreSQL `invoicesaas_test`)
+
+- `tests/test_product_electrical_specs.py` + `tests/test_products.py`: **11 + 29 = 40 passed**, 0 failed
+- `tests/test_multi_tenant_isolation.py`: **5 passed**
+- black + ruff clean on WP-A Python files
+
+### Out of WP-A (deferred)
+
+Frontend / Playwright (WP-B/C), debit notes (next; parent = `1a30af047312`), Peppol, hs_code, snapshot columns, git commit.
+
+---

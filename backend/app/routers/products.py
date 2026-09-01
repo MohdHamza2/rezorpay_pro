@@ -8,7 +8,7 @@ from decimal import Decimal
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.auth.dependencies import get_current_workspace_id
@@ -35,6 +35,7 @@ from app.schemas.products import (
     UnitOfMeasureCreate,
     UnitOfMeasureResponse,
     UnitOfMeasureUpdate,
+    normalize_voltage,
 )
 from app.services.pricing_service import PricingService
 from app.services.product_service import ProductService
@@ -44,6 +45,17 @@ router = APIRouter(prefix="/products", tags=["Product Master"])
 
 def _deleted() -> SuccessResponse[None]:
     return SuccessResponse[None](success=True, data=None)
+
+
+def _list_voltage(
+    voltage: Optional[str] = Query(None, max_length=32),
+) -> Optional[str]:
+    try:
+        return normalize_voltage(voltage)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
 
 
 # ---------- Categories (static path before /{product_id}) ----------
@@ -282,6 +294,13 @@ async def list_products(
     category_id: Optional[UUID] = Query(None),
     brand_id: Optional[UUID] = Query(None),
     is_active: Optional[bool] = Query(None),
+    amp_rating: Optional[Decimal] = Query(None, gt=0, max_digits=8, decimal_places=2),
+    cable_size_mm2: Optional[Decimal] = Query(
+        None, gt=0, max_digits=8, decimal_places=2
+    ),
+    cores: Optional[int] = Query(None, ge=1, le=24),
+    poles: Optional[int] = Query(None, ge=1, le=4),
+    voltage: Optional[str] = Depends(_list_voltage),
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     session: AsyncSession = Depends(get_session),
@@ -296,6 +315,11 @@ async def list_products(
         category_id,
         brand_id,
         is_active,
+        amp_rating,
+        cable_size_mm2,
+        cores,
+        poles,
+        voltage,
     )
     return PaginatedResponse(
         data=[ProductResponse.model_validate(row) for row in items],

@@ -1,17 +1,37 @@
 """Product Master Pydantic schemas (WP-1).
 
 Write bodies use extra='forbid' so unknown keys (hs_code, from_uom_id,
-electrical spec fields) return 422. Money, tax, reorder, and conversion
-factor fields are Decimal — never float.
+specs, name_ar) return 422. Electrical spec keys are known optional
+fields. Money, tax, reorder, conversion factor, amp_rating, and
+cable_size_mm2 are Decimal — never float.
 """
 
+import re
+import uuid
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
 from typing import List, Literal, Optional
-import uuid
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+_VOLTAGE_RE = re.compile(r"^[0-9]+(/[0-9]+)?$")
+
+
+def normalize_voltage(value: object) -> Optional[str]:
+    """Canonical voltage: digits, optional one slash, no unit, no spaces."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError("voltage must be a string")
+    stripped = value.strip()
+    if not stripped:
+        return None
+    if not _VOLTAGE_RE.fullmatch(stripped):
+        raise ValueError(
+            "voltage must be digits with optional slash and no unit suffix"
+        )
+    return stripped
 
 
 class IdentifierType(str, Enum):
@@ -120,7 +140,24 @@ class UnitOfMeasureResponse(BaseModel):
 # ---------- Product ----------
 
 
-class ProductCreate(StrictModel):
+class ProductElectricalSpecs(StrictModel):
+    """Optional catalogue filters. Absence of a spec is accessories / unset."""
+
+    amp_rating: Optional[Decimal] = Field(None, gt=0, max_digits=8, decimal_places=2)
+    cable_size_mm2: Optional[Decimal] = Field(
+        None, gt=0, max_digits=8, decimal_places=2
+    )
+    cores: Optional[int] = Field(None, ge=1, le=24)
+    poles: Optional[int] = Field(None, ge=1, le=4)
+    voltage: Optional[str] = Field(None, max_length=32)
+
+    @field_validator("voltage", mode="before")
+    @classmethod
+    def _normalize_voltage(cls, value: object) -> Optional[str]:
+        return normalize_voltage(value)
+
+
+class ProductCreate(ProductElectricalSpecs):
     internal_sku: str = Field(..., min_length=1, max_length=100)
     name: str = Field(..., min_length=1, max_length=255)
     base_uom_id: uuid.UUID
@@ -134,7 +171,7 @@ class ProductCreate(StrictModel):
     )
 
 
-class ProductUpdate(StrictModel):
+class ProductUpdate(ProductElectricalSpecs):
     internal_sku: Optional[str] = Field(None, min_length=1, max_length=100)
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = None
@@ -162,6 +199,11 @@ class ProductResponse(BaseModel):
     is_active: bool
     tax_rate: Optional[Decimal] = None
     reorder_level: Optional[Decimal] = None
+    amp_rating: Optional[Decimal] = None
+    cable_size_mm2: Optional[Decimal] = None
+    cores: Optional[int] = None
+    poles: Optional[int] = None
+    voltage: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

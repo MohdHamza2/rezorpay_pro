@@ -2054,3 +2054,152 @@ Isolation files, Alembic, backend, PDF binary parse, switching EN `toHaveText` t
 - `frontend/e2e/delivery-notes.spec.ts`
 - `frontend/e2e/ar-statement.spec.ts`
 - `.agents/reports/frontend-execution-report.md`
+
+---
+
+# WP-B Electrical Catalogue Spec Columns — Plan (before edits)
+
+**Date:** 2026-09-01
+**Owner:** frontend / coder
+**Depends on:** WP-A **APPROVE_WITH_NITS** (`.agents/reports/wp-a-electrical-specs-review.md`). Alembic HEAD **`1a30af047312`**.
+**Spec:** `architecture/wave-electrical-specs-addendum.md` §7; `.agents/reports/architect-electrical-specs-note.md`.
+
+## Goal
+
+Staff save **4C 10mm²** and **63A 3P** on the Products tab and filter the list. Frontend only. No Playwright (WP-C). No git commit. No backend unless a testid is impossible otherwise (it is not). Do not rebuild `ProductDetailPanel` identifiers/conversions/prices. Do not add spec filters to invoice/quote/LPO pickers.
+
+## API types (`frontend/src/api/products.ts`)
+
+`Product`, `ProductWrite`, `ProductListQuery` gain optional: `amp_rating`, `cable_size_mm2`, `cores`, `poles`, `voltage`.
+
+`listParams` / `getProducts` pass them **when set**. Extra keys never POSTed (`extra="forbid"`). Empty create → omit spec keys. Empty update → JSON `null` so staff can clear. Encode `voltage` query values (slash in `230/400`).
+
+## Form (create/edit)
+
+Optional Amp, Cable mm², Cores, Poles, Voltage. Zod optional (voltage regex `^[0-9]+(/[0-9]+)?$` so `230V` fails client-side; else interceptor 422 toast — I3: key off HTTP 422, not `error.code`; list invalid voltage is string `detail` wrapped as `error.message`).
+
+Testids: `product-amp-input`, `product-mm2-input`, `product-cores-input`, `product-poles-input`, `product-voltage-input`.
+
+## List filters
+
+Toolbar on Products tab only. Same five fields + Apply + Clear. Apply writes spec params into `getProducts` query key (refetch). Clear omits spec params.
+
+Testids: `product-filter-amp`, `product-filter-mm2`, `product-filter-cores`, `product-filter-poles`, `product-filter-voltage`, `product-filter-apply`, `product-filter-clear`.
+
+## Specs column
+
+One compact cell, not five empty columns:
+
+- cores + mm² → `{cores}C {mm2}mm²` (strip trailing zeros; `mm²` in UI)
+- amp + poles → `{amp}A {poles}P`
+- voltage if set → append ` {voltage}V` **display only**
+- else `—`
+
+## Out
+
+Debit notes, Peppol, hs_code, ProductDetailPanel rebuild, Playwright, invoice/quote/LPO pickers, category/brand/UOM tabs.
+
+## Files (planned)
+
+| File | Change |
+|---|---|
+| `frontend/src/api/products.ts` | Types + `listParams` |
+| `frontend/src/pages/productUi.tsx` | Spec format, payload helpers, filter bar |
+| `frontend/src/pages/Products.tsx` | Form fields, query key, Specs column |
+| `frontend/src/pages/Products.module.css` | Filter toolbar + compact specs cell |
+
+## Acceptance
+
+`cd frontend && npm run build` green. Staff can save 4C 10mm² and 63A 3P and filter the list.
+
+---
+
+# WP-B Electrical Catalogue Spec Columns — Implemented
+
+**Date:** 2026-09-01
+**Owner:** frontend / coder
+**No git commit. No Playwright. No backend. ProductDetailPanel identifiers/conversions/prices untouched. Invoice/quote/LPO pickers unchanged.**
+
+## Done
+
+- Types: `Product` / `ProductWrite` / `ProductListQuery` optional `amp_rating`, `cable_size_mm2`, `cores`, `poles`, `voltage`.
+- `listParams` passes spec query params only when set (pickers omit them). Axios encodes `voltage` slashes (`230/400`).
+- Create omits empty spec keys. Update sends JSON `null` so staff can clear.
+- Form: optional Amp / Cable mm² / Cores / Poles / Voltage. Zod optional. `230V` fails client-side (`^[0-9]+(/[0-9]+)?$`). List filter invalid voltage toasts client-side; interceptor still toasts HTTP 422 (`error.message` or string `detail`, not a specific `error.code`).
+- Products-tab toolbar: five filters + Apply + Clear. Apply updates `['products', { page, ...specQuery }]` so `getProducts` refetches. Clear omits spec params.
+- One Specs column: `4C 10mm²`, `63A 3P`, optional ` 230/400V` display suffix; else `—`. Trailing zeros stripped.
+
+## Testids
+
+Form: `product-amp-input`, `product-mm2-input`, `product-cores-input`, `product-poles-input`, `product-voltage-input`
+
+Filters: `product-filter-amp`, `product-filter-mm2`, `product-filter-cores`, `product-filter-poles`, `product-filter-voltage`, `product-filter-apply`, `product-filter-clear`
+
+## Files
+
+- `frontend/src/api/products.ts`
+- `frontend/src/api/errors.ts` (422 string `detail` toast)
+- `frontend/src/pages/productUi.tsx`
+- `frontend/src/pages/Products.tsx`
+- `frontend/src/pages/Products.module.css`
+- `.agents/reports/frontend-execution-report.md`
+
+## Build
+
+`npm run build` in `frontend/`: **green** (`tsc -b && vite build`).
+
+---
+
+# WP-C Electrical Catalogue Spec Columns — Playwright (planned)
+
+**Date:** 2026-09-01
+**Owner:** frontend / coder
+**No git commit. No Alembic. No backend. Do not rewrite `product-catalog.spec.ts` or `product-isolation.spec.ts`.**
+
+## Spec (architecture/wave-electrical-specs-addendum.md WP-C §8)
+
+New `frontend/e2e/electrical-specs.spec.ts`:
+
+1. Register via UI (`registerViaUi`, password `Passw0rd1`) → UOM PCS → Products tab.
+2. Create cable SKU `CBL-4C10-{suffix}`: cores `4`, mm² `10`.
+3. Create breaker SKU `MCB-63-3P-{suffix}`: amp `63`, poles `3`. Voltage optional (omit).
+4. Filter mm² `10` + cores `4` → Apply → cable row visible; breaker **not**.
+5. Clear; filter amp `63` + poles `3` → breaker visible; cable **not**.
+6. Optional: second workspace GET A’s product id → **404** (not 403). Isolation spec file left unchanged.
+
+Reuse helpers: `registerViaUi`, `createUom`, `uniqueSuffix` (via register), `selectOptionContaining`, `waitForModalClosed`, `pageAccessToken`, `registerWorkspace`, `authJson`.
+
+Testids: `product-amp-input`, `product-mm2-input`, `product-cores-input`, `product-poles-input`, `product-voltage-input`, `product-filter-amp`, `product-filter-mm2`, `product-filter-cores`, `product-filter-poles`, `product-filter-apply`, `product-filter-clear`, `product-row-{sku}`.
+
+Runtime: Docker API **8000**, Postgres **5434**, Vite **5173**. Never SQLite.
+
+Acceptance: `npm run test:e2e` **all** green; `npm run build` green; catalog + isolation specs still green (no spec fields required; isolation still 404).
+
+---
+
+# WP-C Electrical Catalogue Spec Columns — Implemented
+
+**Date:** 2026-09-01
+**Owner:** frontend / coder
+**No git commit. No Alembic. No backend. `product-catalog.spec.ts` and `product-isolation.spec.ts` unchanged.**
+
+## File
+
+`frontend/e2e/electrical-specs.spec.ts`
+
+Flow:
+
+1. `registerViaUi` (`Passw0rd1`) → UOM PCS → Products tab.
+2. Cable `CBL-4C10-{suffix}`: cores `4`, mm² `10`.
+3. Breaker `MCB-63-3P-{suffix}`: amp `63`, poles `3` (voltage omitted).
+4. Filter mm² `10` + cores `4` → Apply → cable row visible; breaker **not**.
+5. Clear; filter amp `63` + poles `3` → breaker visible; cable **not**.
+6. Optional: workspace B GET A’s cable id → **404** (not 403). Isolation spec file not rewritten.
+
+## Results
+
+- `npm run test:e2e` (all): **25 passed** (8.1m)
+- `electrical-specs.spec.ts`: pass (cable vs breaker filters confirmed)
+- `product-catalog.spec.ts`: pass (no spec fields required)
+- `product-isolation.spec.ts`: pass (cross-tenant GET still **404**, not 403)
+- `npm run build`: **green** (`tsc -b && vite build`)

@@ -1,9 +1,20 @@
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
 from decimal import Decimal
+from typing import Optional
 
-from sqlalchemy import Column, DateTime, Text, Numeric, Boolean, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlmodel import Field, SQLModel
 
 
@@ -90,6 +101,36 @@ class Product(SQLModel, table=True):
         UniqueConstraint(
             "workspace_id", "internal_sku", name="uq_workspace_internal_sku"
         ),
+        Index(
+            "ix_products_workspace_amp_rating",
+            "workspace_id",
+            "amp_rating",
+            postgresql_where=text("amp_rating IS NOT NULL"),
+        ),
+        Index(
+            "ix_products_workspace_cable_size_mm2",
+            "workspace_id",
+            "cable_size_mm2",
+            postgresql_where=text("cable_size_mm2 IS NOT NULL"),
+        ),
+        Index(
+            "ix_products_workspace_cores",
+            "workspace_id",
+            "cores",
+            postgresql_where=text("cores IS NOT NULL"),
+        ),
+        Index(
+            "ix_products_workspace_poles",
+            "workspace_id",
+            "poles",
+            postgresql_where=text("poles IS NOT NULL"),
+        ),
+        Index(
+            "ix_products_workspace_voltage",
+            "workspace_id",
+            "voltage",
+            postgresql_where=text("voltage IS NOT NULL"),
+        ),
     )
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
@@ -119,6 +160,17 @@ class Product(SQLModel, table=True):
     )
     reorder_level: Optional[Decimal] = Field(
         default=None, sa_column=Column(Numeric(12, 2), nullable=True)
+    )
+    amp_rating: Optional[Decimal] = Field(
+        default=None, sa_column=Column(Numeric(8, 2), nullable=True)
+    )
+    cable_size_mm2: Optional[Decimal] = Field(
+        default=None, sa_column=Column(Numeric(8, 2), nullable=True)
+    )
+    cores: Optional[int] = Field(default=None, sa_column=Column(Integer, nullable=True))
+    poles: Optional[int] = Field(default=None, sa_column=Column(Integer, nullable=True))
+    voltage: Optional[str] = Field(
+        default=None, sa_column=Column(String(32), nullable=True)
     )
 
     created_at: datetime = Field(

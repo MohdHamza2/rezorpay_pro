@@ -23,6 +23,11 @@ export interface ProductListQuery extends ListQuery {
   category_id?: string;
   brand_id?: string;
   is_active?: boolean;
+  amp_rating?: string | number;
+  cable_size_mm2?: string | number;
+  cores?: number;
+  poles?: number;
+  voltage?: string;
 }
 
 export interface ListResult<T> {
@@ -70,6 +75,11 @@ export interface Product {
   is_active: boolean;
   tax_rate: string | number | null;
   reorder_level: string | number | null;
+  amp_rating?: string | number | null;
+  cable_size_mm2?: string | number | null;
+  cores?: number | null;
+  poles?: number | null;
+  voltage?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -134,6 +144,11 @@ export interface ProductWrite {
   is_active?: boolean;
   tax_rate?: string | number | null;
   reorder_level?: string | number | null;
+  amp_rating?: string | number | null;
+  cable_size_mm2?: string | number | null;
+  cores?: number | null;
+  poles?: number | null;
+  voltage?: string | null;
 }
 
 export interface IdentifierWrite {
@@ -173,6 +188,15 @@ function unwrapList<T>(payload: PaginatedResponse<T>): ListResult<T> {
   };
 }
 
+function assignIfPresent(
+  params: Record<string, string | number | boolean>,
+  key: string,
+  value: string | number | undefined,
+): void {
+  if (value === undefined || value === '') return;
+  params[key] = value;
+}
+
 function listParams(query: ProductListQuery): Record<string, string | number | boolean> {
   const params: Record<string, string | number | boolean> = {
     page: query.page ?? 1,
@@ -182,6 +206,12 @@ function listParams(query: ProductListQuery): Record<string, string | number | b
   if (query.category_id) params.category_id = query.category_id;
   if (query.brand_id) params.brand_id = query.brand_id;
   if (query.is_active !== undefined) params.is_active = query.is_active;
+  assignIfPresent(params, 'amp_rating', query.amp_rating);
+  assignIfPresent(params, 'cable_size_mm2', query.cable_size_mm2);
+  assignIfPresent(params, 'cores', query.cores);
+  assignIfPresent(params, 'poles', query.poles);
+  // Axios encodes `/` in 230/400; omit when unset so pickers stay unconstrained.
+  assignIfPresent(params, 'voltage', query.voltage);
   return params;
 }
 

@@ -21,10 +21,20 @@ import { ProductDetailPanel } from './ProductDetailPanel';
 import {
   PaginationBar,
   ProductModal,
+  ProductSpecFilterBar,
+  ProductSpecFormFields,
   TableSkeleton,
   confirmSoftDelete,
+  EMPTY_PRODUCT_SPEC_FILTERS,
+  formatProductSpecs,
+  isValidFilterVoltage,
   optionalAmount,
   optionalId,
+  pickSpecCreate,
+  pickSpecUpdate,
+  specFieldValue,
+  specFiltersToQuery,
+  VOLTAGE_PATTERN,
 } from './productUi';
 import styles from './Products.module.css';
 
@@ -36,6 +46,23 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'brands', label: 'Brands' },
   { id: 'uoms', label: 'UOMs' },
 ];
+
+const optionalPositive = (message: string) =>
+  z
+    .string()
+    .optional()
+    .refine((value) => !value || value.trim() === '' || Number(value) > 0, message);
+
+const optionalIntInRange = (min: number, max: number, message: string) =>
+  z
+    .string()
+    .optional()
+    .refine((value) => {
+      if (!value?.trim()) return true;
+      if (!/^\d+$/.test(value.trim())) return false;
+      const n = Number(value.trim());
+      return n >= min && n <= max;
+    }, message);
 
 const productSchema = z.object({
   internal_sku: z.string().min(1, 'SKU is required').max(100),
@@ -54,6 +81,17 @@ const productSchema = z.object({
     .string()
     .optional()
     .refine((value) => !value || value.trim() === '' || Number(value) >= 0, 'Reorder level must be 0 or more'),
+  amp_rating: optionalPositive('Amp must be greater than 0'),
+  cable_size_mm2: optionalPositive('Cable size must be greater than 0'),
+  cores: optionalIntInRange(1, 24, 'Cores must be 1–24'),
+  poles: optionalIntInRange(1, 4, 'Poles must be 1–4'),
+  voltage: z
+    .string()
+    .optional()
+    .refine(
+      (value) => !value || value.trim() === '' || VOLTAGE_PATTERN.test(value.trim()),
+      'Voltage must be digits with optional slash (e.g. 230 or 230/400)',
+    ),
 });
 
 type ProductFormValues = z.infer<typeof productSchema>;
@@ -74,6 +112,7 @@ function buildProductCreate(values: ProductFormValues): ProductWrite {
     name: values.name.trim(),
     base_uom_id: values.base_uom_id,
     is_active: values.is_active,
+    ...pickSpecCreate(values),
   };
   if (values.description?.trim()) payload.description = values.description.trim();
   if (values.category_id) payload.category_id = values.category_id;
@@ -96,6 +135,7 @@ function buildProductUpdate(values: ProductFormValues): ProductWrite {
     brand_id: optionalId(values.brand_id),
     tax_rate: optionalAmount(values.tax_rate),
     reorder_level: optionalAmount(values.reorder_level),
+    ...pickSpecUpdate(values),
   };
 }
 
@@ -128,6 +168,11 @@ function ProductFormModal({
         editing?.reorder_level === null || editing?.reorder_level === undefined
           ? ''
           : String(editing.reorder_level),
+      amp_rating: specFieldValue(editing?.amp_rating),
+      cable_size_mm2: specFieldValue(editing?.cable_size_mm2),
+      cores: editing?.cores == null ? '' : String(editing.cores),
+      poles: editing?.poles == null ? '' : String(editing.poles),
+      voltage: editing?.voltage ?? '',
     },
   });
 
@@ -249,6 +294,20 @@ function ProductFormModal({
             </label>
           </div>
         </div>
+        <ProductSpecFormFields
+          amp={register('amp_rating')}
+          mm2={register('cable_size_mm2')}
+          cores={register('cores')}
+          poles={register('poles')}
+          voltage={register('voltage')}
+          errors={{
+            amp: errors.amp_rating?.message,
+            mm2: errors.cable_size_mm2?.message,
+            cores: errors.cores?.message,
+            poles: errors.poles?.message,
+            voltage: errors.voltage?.message,
+          }}
+        />
         <div className={styles.modalActions}>
           <button type="button" className={styles.secondaryBtn} onClick={onClose}>
             Cancel
@@ -270,13 +329,16 @@ function ProductFormModal({
 function ProductsTab() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
+  const [draftFilters, setDraftFilters] = useState(EMPTY_PRODUCT_SPEC_FILTERS);
+  const [appliedFilters, setAppliedFilters] = useState(EMPTY_PRODUCT_SPEC_FILTERS);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const specQuery = specFiltersToQuery(appliedFilters);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['products', { page }],
-    queryFn: () => getProducts({ page, per_page: PRODUCT_PAGE_SIZE }),
+    queryKey: ['products', { page, ...specQuery }],
+    queryFn: () => getProducts({ page, per_page: PRODUCT_PAGE_SIZE, ...specQuery }),
   });
   const { data: categoryResult } = useQuery({
     queryKey: ['categories', 'lookup'],
@@ -311,9 +373,30 @@ function ProductsTab() {
     setIsModalOpen(true);
   };
 
+  const applySpecFilters = () => {
+    if (!isValidFilterVoltage(draftFilters.voltage)) {
+      toast.error('Voltage must be digits with optional slash (e.g. 230 or 230/400)');
+      return;
+    }
+    setPage(1);
+    setAppliedFilters({ ...draftFilters });
+  };
+
+  const clearSpecFilters = () => {
+    setDraftFilters(EMPTY_PRODUCT_SPEC_FILTERS);
+    setAppliedFilters(EMPTY_PRODUCT_SPEC_FILTERS);
+    setPage(1);
+  };
+
   return (
     <div>
       <div className={styles.toolbar}>
+        <ProductSpecFilterBar
+          values={draftFilters}
+          onChange={setDraftFilters}
+          onApply={applySpecFilters}
+          onClear={clearSpecFilters}
+        />
         <button
           className={styles.primaryBtn}
           onClick={() => openModal()}
@@ -333,6 +416,7 @@ function ProductsTab() {
               <tr>
                 <th>SKU</th>
                 <th>Name</th>
+                <th>Specs</th>
                 <th>Category</th>
                 <th>Brand</th>
                 <th>Base UOM</th>
@@ -353,6 +437,7 @@ function ProductsTab() {
                     <strong>{product.internal_sku}</strong>
                   </td>
                   <td>{product.name}</td>
+                  <td className={styles.specsCell}>{formatProductSpecs(product)}</td>
                   <td>{lookupName(categories, product.category_id)}</td>
                   <td>{lookupName(brands, product.brand_id)}</td>
                   <td>{lookupCode(uoms, product.base_uom_id)}</td>
@@ -387,7 +472,7 @@ function ProductsTab() {
               ))}
               {products.length === 0 && (
                 <tr>
-                  <td colSpan={7} className={styles.emptyCell}>
+                  <td colSpan={8} className={styles.emptyCell}>
                     No products found. Add a category, brand, and UOM, then create your first product.
                   </td>
                 </tr>
