@@ -22,7 +22,8 @@ import type {
 } from '../api/invoices';
 import { extractApiError } from '../api/errors';
 import { getClients } from '../api/clients';
-import { getProductPrices, getProducts, PRODUCT_PAGE_SIZE } from '../api/products';
+import { getProducts, PRODUCT_PAGE_SIZE } from '../api/products';
+import { LinePriceSource, useCatalogLinePricing } from './catalogLinePricing';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -306,7 +307,7 @@ export const Invoices = () => {
     },
   });
 
-  const { register, control, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm<InvoiceFormValues>({
+  const { register, control, handleSubmit, reset, setValue, getValues, watch, formState: { errors } } = useForm<InvoiceFormValues>({
     resolver: zodResolver(invoiceSchema),
     defaultValues: blankInvoiceForm(),
   });
@@ -320,6 +321,18 @@ export const Invoices = () => {
   }, [isModalOpen, editingInvoice, selectedClientId, issueDate, clients, setValue]);
 
   const { fields, append, remove } = useFieldArray({ control, name: 'items' });
+  const pricing = useCatalogLinePricing({
+    fieldIds: fields.map((field) => field.id),
+    getClientId: () => getValues('client_id'),
+    getLine: (index) => {
+      const line = getValues('items')[index];
+      return { product_id: line?.product_id, quantity: line?.quantity ?? '' };
+    },
+    setUnitPrice: (index, value) => setValue(`items.${index}.unit_price`, value),
+    setDescription: (index, value) => setValue(`items.${index}.description`, value),
+    productName: (productId) =>
+      productPage?.items.find((product) => product.id === productId)?.name,
+  });
 
   const openModal = async (row?: InvoiceListItem) => {
     if (!row) {
@@ -352,20 +365,6 @@ export const Invoices = () => {
       updateMutation.mutate({ id: editingInvoice.id, data: buildUpdatePayload(data) });
     } else {
       createMutation.mutate(buildCreatePayload(data));
-    }
-  };
-
-  const handleProductPick = async (index: number, productId: string) => {
-    setValue(`items.${index}.product_id`, productId);
-    if (!productId) return;
-    const match = productPage?.items.find((product) => product.id === productId);
-    if (match?.name) setValue(`items.${index}.description`, match.name);
-    try {
-      const prices = await getProductPrices(productId);
-      const list = prices.find((price) => price.price_type === 'DEFAULT_SALES');
-      if (list) setValue(`items.${index}.unit_price`, String(list.price));
-    } catch {
-      return;
     }
   };
 
@@ -410,6 +409,8 @@ export const Invoices = () => {
     };
     return <span className={`${styles.badge} ${map[status]}`}>{status.replace('_', ' ')}</span>;
   };
+
+  const clientField = register('client_id');
 
   return (
     <div className={styles.container}>
@@ -586,8 +587,12 @@ export const Invoices = () => {
                   <label>Client</label>
                   <select
                     data-testid="invoice-client-select"
-                    {...register('client_id')}
+                    {...clientField}
                     disabled={Boolean(editingInvoice)}
+                    onChange={(event) => {
+                      void clientField.onChange(event);
+                      pricing.onHeaderClientChange(event.target.value);
+                    }}
                   >
                     <option value="">Select a client...</option>
                     {clients?.map((client) => (
@@ -632,6 +637,8 @@ export const Invoices = () => {
                 </div>
                 {fields.map((field, index) => {
                   const productField = register(`items.${index}.product_id` as const);
+                  const qtyField = register(`items.${index}.quantity` as const);
+                  const priceField = register(`items.${index}.unit_price` as const);
                   return (
                   <div key={field.id} className={styles.itemRow}>
                     <div className={styles.itemRowMain}>
@@ -642,7 +649,7 @@ export const Invoices = () => {
                           {...productField}
                           onChange={(event) => {
                             void productField.onChange(event);
-                            void handleProductPick(index, event.target.value);
+                            pricing.onProductPick(index, event.target.value);
                           }}
                         >
                           <option value="">Ad-hoc (name / qty / price)</option>
@@ -671,7 +678,11 @@ export const Invoices = () => {
                           type="number"
                           step="0.01"
                           data-testid={`invoice-item-${index}-quantity`}
-                          {...register(`items.${index}.quantity` as const)}
+                          {...qtyField}
+                          onChange={(event) => {
+                            void qtyField.onChange(event);
+                            pricing.onQuantityChange(index, event.target.value);
+                          }}
                         />
                         {errors.items?.[index]?.quantity && (
                           <span className={styles.errorText}>{errors.items[index].quantity.message}</span>
@@ -683,7 +694,16 @@ export const Invoices = () => {
                           type="number"
                           step="0.01"
                           data-testid={`invoice-item-${index}-price`}
-                          {...register(`items.${index}.unit_price` as const)}
+                          {...priceField}
+                          onChange={(event) => {
+                            void priceField.onChange(event);
+                            pricing.onPriceInput(index);
+                          }}
+                        />
+                        <LinePriceSource
+                          testId={`invoice-item-${index}-price-source`}
+                          source={pricing.sourceFor(index)}
+                          className={styles.priceSource}
                         />
                         {errors.items?.[index]?.unit_price && (
                           <span className={styles.errorText}>{errors.items[index].unit_price.message}</span>

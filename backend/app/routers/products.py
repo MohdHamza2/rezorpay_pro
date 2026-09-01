@@ -4,6 +4,7 @@ HTTP only: parse request, call ProductService, commit, wrap response.
 Static paths (/categories, /brands, /uom) are registered before /{product_id}.
 """
 
+from decimal import Decimal
 from typing import List, Optional
 from uuid import UUID
 
@@ -30,10 +31,12 @@ from app.schemas.products import (
     ProductUOMConversionCreate,
     ProductUOMConversionResponse,
     ProductUpdate,
+    ResolvedPriceResponse,
     UnitOfMeasureCreate,
     UnitOfMeasureResponse,
     UnitOfMeasureUpdate,
 )
+from app.services.pricing_service import PricingService
 from app.services.product_service import ProductService
 
 router = APIRouter(prefix="/products", tags=["Product Master"])
@@ -418,6 +421,23 @@ async def delete_conversion(
     )
     await session.commit()
     return _deleted()
+
+
+@router.get(
+    "/{product_id}/resolved-price",
+    response_model=SuccessResponse[ResolvedPriceResponse],
+)
+async def get_resolved_price(
+    product_id: UUID,
+    quantity: Decimal = Query(...),
+    client_id: Optional[UUID] = Query(None),
+    session: AsyncSession = Depends(get_session),
+    workspace_id: UUID = Depends(get_current_workspace_id),
+):
+    payload = await PricingService.preview(
+        session, workspace_id, product_id, client_id, quantity
+    )
+    return SuccessResponse(data=payload)
 
 
 @router.get(

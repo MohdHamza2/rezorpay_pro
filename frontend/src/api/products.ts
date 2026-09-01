@@ -303,6 +303,41 @@ export const deleteProductConversion = async (
   await apiClient.delete(`/api/v1/products/${productId}/conversions/${conversionId}`);
 };
 
+export interface ResolvedPrice {
+  product_id: string;
+  client_id: string | null;
+  quantity: string | number;
+  unit_price: string | number;
+  currency: string;
+  price_type: PriceType | string;
+  min_quantity: string | number | null;
+  price_id: string;
+}
+
+export type ResolvedPriceQuery = {
+  quantity: string | number;
+  client_id?: string;
+};
+
+function resolvedPriceParams(query: ResolvedPriceQuery): Record<string, string> {
+  const params: Record<string, string> = { quantity: String(query.quantity) };
+  const clientId = query.client_id?.trim();
+  if (clientId) params.client_id = clientId;
+  return params;
+}
+
+/** Staff preview. GET only — never POST extra keys. Isolation is HTTP 404. */
+export async function getResolvedPrice(
+  productId: string,
+  query: ResolvedPriceQuery,
+): Promise<ResolvedPrice> {
+  const response = await apiClient.get<SuccessResponse<ResolvedPrice>>(
+    `/api/v1/products/${productId}/resolved-price`,
+    { params: resolvedPriceParams(query) },
+  );
+  return response.data.data;
+}
+
 export const getProductPrices = (productId: string): Promise<ProductPrice[]> =>
   getOne<ProductPrice[]>(`/api/v1/products/${productId}/prices`);
 

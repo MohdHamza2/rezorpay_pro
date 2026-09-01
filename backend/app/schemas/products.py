@@ -256,6 +256,19 @@ class ProductPriceResponse(BaseModel):
     min_quantity: Optional[Decimal] = None
 
 
+class ResolvedPriceResponse(BaseModel):
+    """One winning sales price for staff invoice/quote/LPO forms."""
+
+    product_id: uuid.UUID
+    client_id: Optional[uuid.UUID] = None
+    quantity: Decimal
+    unit_price: Decimal
+    currency: str = "AED"
+    price_type: str
+    min_quantity: Optional[Decimal] = None
+    price_id: uuid.UUID
+
+
 class ProductDetailResponse(ProductResponse):
     """GET /products/{id} only — children embedded, no stock."""
 

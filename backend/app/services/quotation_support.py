@@ -215,6 +215,7 @@ async def add_items(
             default_tax_rate,
             item_data,
             line_owner="quotation",
+            client_id=quotation.client_id,
         )
         item = QuotationItem(
             quotation_id=quotation.id,

@@ -166,6 +166,7 @@ async def add_items(
             default_tax_rate,
             item_data,
             line_owner="lpo",
+            client_id=lpo.client_id,
         )
         item = CustomerPurchaseOrderItem(
             customer_purchase_order_id=lpo.id,

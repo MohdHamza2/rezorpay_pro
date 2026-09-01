@@ -25,10 +25,17 @@ function firstDetailMessage(details?: PydanticDetail[]): string | undefined {
 /** Handlers toast these; interceptor must not duplicate. */
 export const HANDLED_TOAST_CODES = new Set(['FTA_SEND_BLOCKED', 'CREDIT_HOLD']);
 
-const STATEMENT_TOAST_CODES = new Set(['DATE_RANGE_TOO_LONG', 'STATEMENT_TOO_LARGE']);
+const CODE_PREFIX_TOASTS = new Set([
+  'DATE_RANGE_TOO_LONG',
+  'STATEMENT_TOO_LARGE',
+  'NO_LIST_PRICE',
+]);
 
 export function formatErrorToast(info: ApiErrorInfo): string {
-  if (info.code && STATEMENT_TOAST_CODES.has(info.code)) {
+  if (info.code && CODE_PREFIX_TOASTS.has(info.code)) {
+    return `${info.code}: ${info.message}`;
+  }
+  if (info.code === 'VALIDATION_ERROR' && info.field === 'product_id') {
     return `${info.code}: ${info.message}`;
   }
   return info.message;

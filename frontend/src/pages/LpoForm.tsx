@@ -8,7 +8,8 @@ import toast from 'react-hot-toast';
 import { getClients } from '../api/clients';
 import { createLpo, getLpo, updateLpo } from '../api/lpos';
 import type { LpoUpdatePayload } from '../api/lpos';
-import { getProductPrices, getProducts, PRODUCT_PAGE_SIZE } from '../api/products';
+import { getProducts, PRODUCT_PAGE_SIZE } from '../api/products';
+import { LinePriceSource, useCatalogLinePricing } from './catalogLinePricing';
 import { Skeleton } from '../components/Skeleton';
 import {
   blankLpoForm,
@@ -39,12 +40,24 @@ export const LpoForm = () => {
     enabled: Boolean(id),
   });
 
-  const { register, control, handleSubmit, reset, setValue, formState: { errors } } =
+  const { register, control, handleSubmit, reset, setValue, getValues, formState: { errors } } =
     useForm<LpoFormValues>({
       resolver: zodResolver(lpoSchema),
       defaultValues: blankLpoForm(),
     });
   const { fields, append, remove } = useFieldArray({ control, name: 'items' });
+  const pricing = useCatalogLinePricing({
+    fieldIds: fields.map((field) => field.id),
+    getClientId: () => getValues('client_id'),
+    getLine: (index) => {
+      const line = getValues('items')[index];
+      return { product_id: line?.product_id, quantity: line?.quantity ?? '' };
+    },
+    setUnitPrice: (index, value) => setValue(`items.${index}.unit_price`, value),
+    setDescription: (index, value) => setValue(`items.${index}.description`, value),
+    productName: (productId) =>
+      productPage?.items.find((product) => product.id === productId)?.name,
+  });
 
   useEffect(() => {
     if (!existing) return;
@@ -76,20 +89,6 @@ export const LpoForm = () => {
     },
   });
 
-  const handleProductPick = async (index: number, productId: string) => {
-    setValue(`items.${index}.product_id`, productId);
-    if (!productId) return;
-    const match = productPage?.items.find((product) => product.id === productId);
-    if (match?.name) setValue(`items.${index}.description`, match.name);
-    try {
-      const prices = await getProductPrices(productId);
-      const list = prices.find((price) => price.price_type === 'DEFAULT_SALES');
-      if (list) setValue(`items.${index}.unit_price`, String(list.price));
-    } catch {
-      return;
-    }
-  };
-
   const onSubmit = (data: LpoFormValues) => {
     if (isEdit && id) {
       updateMutation.mutate({ lpoId: id, data: buildLpoUpdatePayload(data) });
@@ -107,6 +106,7 @@ export const LpoForm = () => {
   }
 
   const busy = createMutation.isPending || updateMutation.isPending;
+  const clientField = register('client_id');
 
   return (
     <div className={quoteStyles.container}>
@@ -125,8 +125,12 @@ export const LpoForm = () => {
               <select
                 id="lpo-client"
                 data-testid="lpo-client-select"
-                {...register('client_id')}
+                {...clientField}
                 disabled={isEdit}
+                onChange={(event) => {
+                  void clientField.onChange(event);
+                  pricing.onHeaderClientChange(event.target.value);
+                }}
               >
                 <option value="">Select a client...</option>
                 {clients?.map((client) => (
@@ -189,6 +193,8 @@ export const LpoForm = () => {
             </div>
             {fields.map((field, index) => {
               const productField = register(`items.${index}.product_id` as const);
+              const qtyField = register(`items.${index}.quantity` as const);
+              const priceField = register(`items.${index}.unit_price` as const);
               return (
                 <div key={field.id} className={inv.itemRow}>
                   <div className={inv.itemRowMain}>
@@ -199,7 +205,7 @@ export const LpoForm = () => {
                         {...productField}
                         onChange={(event) => {
                           void productField.onChange(event);
-                          void handleProductPick(index, event.target.value);
+                          pricing.onProductPick(index, event.target.value);
                         }}
                       >
                         <option value="">Ad-hoc (name / qty / price)</option>
@@ -228,7 +234,11 @@ export const LpoForm = () => {
                         type="number"
                         step="0.01"
                         data-testid={`lpo-item-${index}-quantity`}
-                        {...register(`items.${index}.quantity` as const)}
+                        {...qtyField}
+                        onChange={(event) => {
+                          void qtyField.onChange(event);
+                          pricing.onQuantityChange(index, event.target.value);
+                        }}
                       />
                       {errors.items?.[index]?.quantity && (
                         <span className={inv.errorText}>{errors.items[index].quantity.message}</span>
@@ -240,7 +250,16 @@ export const LpoForm = () => {
                         type="number"
                         step="0.01"
                         data-testid={`lpo-item-${index}-price`}
-                        {...register(`items.${index}.unit_price` as const)}
+                        {...priceField}
+                        onChange={(event) => {
+                          void priceField.onChange(event);
+                          pricing.onPriceInput(index);
+                        }}
+                      />
+                      <LinePriceSource
+                        testId={`lpo-item-${index}-price-source`}
+                        source={pricing.sourceFor(index)}
+                        className={inv.priceSource}
                       />
                       {errors.items?.[index]?.unit_price && (
                         <span className={inv.errorText}>{errors.items[index].unit_price.message}</span>

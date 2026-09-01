@@ -3,6 +3,74 @@
 
 ---
 
+## 2026-09-01 — WP-A Volume / customer pricing (implemented)
+
+**Spec:** `architecture/wave-volume-pricing-addendum.md` WP-A. Architect note: `.agents/reports/architect-volume-pricing-note.md`. Backend + pytest only. No UI/Playwright. **No Alembic.** No git commit. No database report.
+
+### Done
+
+- `PricingService.resolve` loads live product/client (404 cross-tenant), rejects qty ≤ 0 (422 `field=quantity`), ignores non-AED rows, then CUSTOMER_SPECIFIC for **this** client (highest qualifying min) → TIER_1 `client_id IS NULL` → DEFAULT_SALES → 422 `NO_LIST_PRICE`. `resolve` does not 400 inactive SKUs.
+- `_line_unit_price` / `_resolve_line` take document `client_id`. Explicit `unit_price` still wins. Omit-price catalog lines call `PricingService.resolve`. Quote convert / LPO→invoice keep passing frozen `unit_price` (no re-resolve).
+- Preview `GET /api/v1/products/{id}/resolved-price?client_id=&quantity=` returns one winning price + `price_type`. Inactive product → 400 `field=product_id`. Isolation → 404. `list_prices` unchanged.
+- Tests: `backend/tests/test_pricing.py` (§9) + workspace B `resolved-price` 404 in `test_multi_tenant_isolation.py`.
+
+### Files
+
+- `backend/app/services/pricing_service.py` — new
+- `backend/app/schemas/products.py` — `ResolvedPriceResponse`
+- `backend/app/routers/products.py` — preview GET next to `/prices`
+- `backend/app/services/invoice_service.py` — hook
+- `backend/app/services/quotation_support.py` — pass `quotation.client_id`
+- `backend/app/services/customer_po_support.py` — pass `lpo.client_id`
+- `backend/app/services/__init__.py` — export
+- `backend/tests/test_pricing.py` — addendum §9
+- `backend/tests/test_multi_tenant_isolation.py` — resolved-price 404
+
+### Endpoint
+
+| Method | Path | Result |
+|---|---|---|
+| GET | `/api/v1/products/{product_id}/resolved-price` | one `{unit_price, price_type, min_quantity, price_id}`; quantity required; client_id optional |
+
+### Pytest (PostgreSQL `_test`)
+
+- `tests/test_pricing.py`: **13 passed**
+- Sanity (catalog copy, inactive 400, convert freeze, LPO invoice, product isolation): **7 passed**
+- Combined this slice: **20 passed**, 0 failed
+
+`alembic heads`: **`b8d5f0c3a216`**. `alembic check`: No new upgrade operations detected. black + ruff clean on touched files.
+
+---
+
+## 2026-09-01 — WP-A Volume / customer pricing (planned BEFORE code)
+
+**Spec:** `architecture/wave-volume-pricing-addendum.md` WP-A. Architect note: `.agents/reports/architect-volume-pricing-note.md`. Backend + pytest only. No UI/Playwright. **No Alembic.** No git commit. No database report.
+
+### Locked
+
+- Alembic **NO**. HEAD stays **`b8d5f0c3a216`**. No new columns. No `price_source` on lines. No `TIER_2`. Do not edit `models/product.py`.
+- New `backend/app/services/pricing_service.py`: `resolve(session, workspace_id, product_id, client_id, quantity) -> ResolvedPrice` with `unit_price=money()`, `price_type`, `min_quantity`, `price_id`.
+- Precedence: CUSTOMER_SPECIFIC for **this** client (qty ≥ min, null min=0, highest min) → TIER_1 `client_id IS NULL` (same) → DEFAULT_SALES → 422 `NO_LIST_PRICE` `field=product_id`.
+- Never apply another client’s CUSTOMER_SPECIFIC. Skip customer bucket if `client_id` is None. Cross-tenant product/client → **404** not 403.
+- Inactive: `resolve` itself does not 400; document add still 400 via `_load_invoice_product`; **preview GET does 400**.
+- quantity ≤ 0 → 422 `field=quantity`. AED only (ignore non-AED debris). Explicit `unit_price` always wins. Ad-hoc without `product_id` still requires `unit_price`.
+- Hook: pass document `client_id` into `_resolve_line` / `_line_unit_price` from invoice/quotation/LPO. Replace omit-price `_default_sales_price` with `PricingService.resolve`. Convert / LPO→invoice / CN / send / DN: do not call resolve.
+- Preview **WP-A required:** `GET /api/v1/products/{id}/resolved-price?client_id=&quantity=`. Quantity required; client_id optional. One price + `price_type`. No other client ids in data. Isolation 404. Inactive 400.
+- `ProductService.list_prices` **unchanged** (staff dealer book). Price CRUD uniqueness stays in ProductService.
+
+### Files (planned)
+
+- `backend/app/services/pricing_service.py` — new resolve/preview
+- `backend/app/schemas/products.py` — `ResolvedPriceResponse`
+- `backend/app/routers/products.py` — preview GET next to `/prices`
+- `backend/app/services/invoice_service.py` — hook `_line_unit_price` / `_resolve_line`
+- `backend/app/services/quotation_support.py` — pass `quotation.client_id`
+- `backend/app/services/customer_po_support.py` — pass `lpo.client_id`
+- `backend/tests/test_pricing.py` — addendum §9
+- `backend/tests/test_multi_tenant_isolation.py` — workspace B resolved-price 404
+
+---
+
 ## 2026-09-01 — WP-A Payment / PDC truth + bounce (implemented)
 
 **Spec:** `architecture/wave-pdc-addendum.md` WP-A. Architect note: `.agents/reports/architect-pdc-note.md`. Backend + pytest only. No UI/Playwright. **No Alembic.** No git commit. No database report.

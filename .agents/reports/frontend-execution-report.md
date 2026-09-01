@@ -1646,3 +1646,159 @@ Docker API **8000**, Postgres host **5434**. Never SQLite. Password **Passw0rd1*
 ## Out (unchanged)
 
 Volume pricing, bilingual, debit notes, WhatsApp, Peppol, refunds, Alembic, git commit.
+
+---
+
+# WP-B Volume / customer pricing UI — Plan (before edits)
+
+**Date:** 2026-09-01
+**Owner:** frontend / coder
+**Depends on:** WP-A APPROVE_WITH_NITS (`.agents/reports/wp-a-volume-pricing-review.md`). Preview GET is live. **WP-B may start.**
+**Spec:** `architecture/wave-volume-pricing-addendum.md` WP-B + §3.4 + §7; `.agents/reports/architect-volume-pricing-note.md`
+**No backend. No Alembic. No git commit. No Playwright (WP-C).**
+
+## Goal
+
+Invoice / quotation / LPO catalog lines fill `unit_price` from **preview GET** (`client_id` + qty), not `getProductPrices` → `DEFAULT_SALES`. Dirty override stays until product re-pick. Show List / Volume / Customer / Override. Do not rebuild `ProductDetailPanel` price CRUD.
+
+## API client
+
+`getResolvedPrice(productId, { client_id?, quantity })` in `frontend/src/api/products.ts`
+- `GET /api/v1/products/{id}/resolved-price?quantity=&client_id=`
+- Unwrap `{success, data}`
+- Isolation **404** keyed off HTTP status (`isHttpNotFound`)
+- Extra keys never POSTed (GET query only: `quantity` required, `client_id` omitted when empty)
+
+Do **not** scan `getProductPrices` / `prices[]` for list or dealer rows on sales lines.
+
+## Shared helper (one place)
+
+Dirty/preview logic lives in one hook used by `Invoices.tsx`, `QuotationForm.tsx`, `LpoForm.tsx`:
+
+1. Product pick → preview GET (header client + line qty) → fill price, reset dirty, show matched rule.
+2. Qty or header client change → re-preview and fill **until** that line is dirty.
+3. Typing `unit_price` → **Override**. Qty must not overwrite a dirty price (12.50 stays).
+4. Product pick resets dirty and re-resolves.
+5. Ad-hoc (no product): no preview; price required as today.
+6. `NO_LIST_PRICE` / 400 inactive: toast from `error.code`; clear price (do not keep stale list).
+
+Labels: `DEFAULT_SALES` → List, `TIER_1` → Volume, `CUSTOMER_SPECIFIC` → Customer, dirty → Override.
+
+## Testids (reuse existing prefixes)
+
+- Client: `invoice-client-select` / `quotation-client-select` / `lpo-client-select`
+- Product / qty / price: `invoice-item-0-product`, `invoice-item-0-quantity`, `invoice-item-0-price` (same pattern for quotation/lpo)
+- New: `invoice-item-0-price-source` (text `List` | `Volume` | `Customer` | `Override`)
+
+## Out
+
+ProductDetailPanel prices. Electrical specs. Bilingual. Debit notes. Playwright. SPO/purchase prices.
+
+## Acceptance
+
+`cd frontend && npm run build` green.
+
+---
+
+# WP-B Volume / customer pricing UI — Implementation (completed)
+
+**Date:** 2026-09-01
+**Owner:** frontend / coder
+**No git commit. No backend / Alembic / Playwright.**
+
+## Result
+
+`npm run build` (`tsc -b && vite build`) **green**. Vite 8.2.1. Pre-existing chunk-size warning only.
+
+## Dirty vs resolve
+
+Shared hook `useCatalogLinePricing` (`frontend/src/pages/catalogLinePricing.tsx`) is the only dirty/preview owner. Invoice, quotation, and LPO forms call it.
+
+- **Clean catalog line:** product pick, qty change, and header client change call `GET /api/v1/products/{id}/resolved-price?quantity=&client_id=` and fill `unit_price`. Source badge: List (`DEFAULT_SALES`) / Volume (`TIER_1`) / Customer (`CUSTOMER_SPECIFIC`).
+- **Dirty line:** typing in `unit_price` sets Override and bumps a per-line seq so an in-flight preview cannot overwrite. Qty / client changes skip preview. Typed 12.50 stays.
+- **Product pick** clears dirty for that line (keyed by field-array id) and re-resolves.
+- **Ad-hoc** (empty product): no GET; price still required by existing zod.
+- **Preview error** (`NO_LIST_PRICE`, inactive 400, isolation HTTP 404): toast from `error.code` (`NO_LIST_PRICE: …` / `VALIDATION_ERROR: …` when `field=product_id`); `unit_price` is cleared so a stale list price is not kept.
+- **§3.4:** client A qty 10 → 80 Customer; switch client to B without dirty → 90 Volume.
+
+`getProductPrices` is not used on sales lines. `ProductDetailPanel` price CRUD unchanged.
+
+## Files
+
+- `frontend/src/api/products.ts` — `getResolvedPrice` (GET query only)
+- `frontend/src/api/errors.ts` — code-prefixed toasts for `NO_LIST_PRICE` and inactive `VALIDATION_ERROR`
+- `frontend/src/pages/catalogLinePricing.tsx` — shared dirty/preview hook + `LinePriceSource`
+- `frontend/src/pages/Invoices.tsx` / `QuotationForm.tsx` / `LpoForm.tsx`
+- `frontend/src/pages/Invoices.module.css` — `.priceSource`
+- `.agents/reports/frontend-execution-report.md`
+
+Testids reused: `invoice-item-0-product|quantity|price`, `invoice-client-select` (same prefixes for quotation/lpo). New: `*-item-0-price-source`.
+
+## Out (unchanged)
+
+ProductDetailPanel rebuild, electrical specs, bilingual, debit notes, Playwright WP-C, SPO/purchase prices, backend, Alembic, git commit.
+
+---
+
+# WP-C Volume / customer pricing Playwright E2E — Plan (before edits)
+
+**Date:** 2026-09-01
+**Owner:** frontend / coder
+**Depends on:** WP-B UI (preview GET + dirty/override + `invoice-item-0-price-source`).
+**Spec:** `architecture/wave-volume-pricing-addendum.md` WP-C + §3.4 fixture.
+**No git commit. No Alembic. No backend** unless a missing product-price testid is required (prefer API seed).
+
+## Goal
+
+Playwright covers §3.4 on a new invoice line: client A qty 1 → **80 Customer**; qty 10 still **80 Customer**; switch header to client B (not dirty) → **90 Volume**; type **12.50** → **Override** and qty change keeps 12.50. Second workspace GET resolved-price → **404** not 403.
+
+Ad-hoc invoice helpers still fill explicit `unit_price`. Do not change product/FTA/quote/LPO/credit-hold/DN/CN/AR/PDC specs.
+
+## Files
+
+| File | Change |
+|---|---|
+| `frontend/e2e/volume-pricing.spec.ts` | **New.** Register → clients A/B → catalog product (UOM/category/brand like product-catalog) → DEFAULT_SALES 100 via UI → TIER_1 / CUSTOMER_SPECIFIC via `POST /api/v1/products/{id}/prices` + `pageAccessToken` → invoice form assertions |
+| `frontend/e2e/volume-pricing-isolation.spec.ts` | **New.** Workspace A API catalog+prices; workspace B `GET /api/v1/products/{A}/resolved-price?quantity=1` → 404 not 403 |
+
+## Helpers (reuse, do not break)
+
+`registerViaUi`, `createClientViaUi`, `createUom` / `createCategory` / `createBrand`, `uniqueEmail`, `pageAccessToken`, `authJson`, `registerWorkspace`, `expectApiData`, `selectOptionContaining`. Password `Passw0rd1`. Unique emails. 429 retry already in register helpers.
+
+UI testids: `invoice-client-select`, `invoice-item-0-product`, `invoice-item-0-quantity`, `invoice-item-0-price`, `invoice-item-0-price-source` (List \| Volume \| Customer \| Override). Product prices: `price-type`, `price-amount`, `price-add`, `price-row-DEFAULT_SALES`. Min qty / client `<select>` may lack testids — seed TIER_1 / CUSTOMER_SPECIFIC via API.
+
+## Runtime
+
+`API_URL` `http://localhost:8000`. Postgres **5434**. Never SQLite.
+
+## Acceptance
+
+- `npm run test:e2e` **all** green (existing + new)
+- `npm run build` green
+- A→80 / B→90 / override 12.50; isolation 404
+- No git commit
+
+---
+
+# WP-C Volume / customer pricing Playwright E2E — Implementation (completed)
+
+**Date:** 2026-09-01
+**Owner:** frontend / coder
+**No git commit. No backend / Alembic.**
+
+## Result
+
+- `npm run test:e2e` — **24 passed** (7.8m), chromium, workers 1. Product/FTA/quote/LPO/credit-hold/DN/CN/AR/PDC specs unchanged. Ad-hoc invoice helpers still fill explicit `unit_price`.
+- `npm run build` — **green** (`tsc -b && vite build`, Vite 8.2.1).
+- Happy path §3.4: client A qty 1 → **80.00 Customer**; qty 10 still **80.00 Customer**; switch header to B (not dirty) → **90.00 Volume**; type **12.50** → **Override**; qty change keeps 12.50.
+- Isolation: workspace B `GET /api/v1/products/{A}/resolved-price?quantity=1` → **404** not 403.
+
+## Files
+
+- `frontend/e2e/volume-pricing.spec.ts` — UI catalog + DEFAULT_SALES via UI; TIER_1 / CUSTOMER_SPECIFIC via `POST /prices` + `pageAccessToken`
+- `frontend/e2e/volume-pricing-isolation.spec.ts` — API catalog+prices; cross-tenant resolved-price 404
+- `.agents/reports/frontend-execution-report.md`
+
+## Out (unchanged)
+
+Helpers (`createAdhocInvoiceViaUi` still explicit price), electrical specs, bilingual, debit notes, WhatsApp, Peppol, PDC, SENT re-price, backend, Alembic, git commit.

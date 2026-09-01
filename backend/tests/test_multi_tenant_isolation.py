@@ -386,6 +386,13 @@ def test_product_is_workspace_isolated():
     )
     assert r.status_code == 404, f"cross-tenant prices leaked: {r.text}"
 
+    r = client.get(
+        f"/api/v1/products/{product_id}/resolved-price"
+        f"?quantity=1&workspace_id={ws_a}",
+        headers=headers_b,
+    )
+    assert r.status_code == 404, f"cross-tenant resolved-price leaked: {r.text}"
+
     r = client.delete(
         f"/api/v1/products/{product_id}/prices/{price_id}{spoof}",
         headers=headers_b,

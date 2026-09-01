@@ -26,7 +26,7 @@ from app.models.client import Client
 from app.models.credit_status_event import CreditEventReason
 from app.models.invoice import Invoice, InvoiceStatus
 from app.models.invoice_item import InvoiceItem
-from app.models.product import Product, ProductPrice
+from app.models.product import Product
 from app.models.workspace import Workspace
 from app.schemas.common import ErrorCode, ErrorDetail
 from app.services.audit_service import AuditService
@@ -37,6 +37,7 @@ from app.services.credit_control_service import (
 from app.services.invoice_number import InvoiceNumberService
 from app.services.line_money import apply_line_money as _apply_line_money
 from app.services.line_money import money, xor_discounts
+from app.services.pricing_service import PricingService
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,6 @@ TRN_RE = re.compile(r"^100[0-9]{12}$")
 KIND_STANDARD = "STANDARD"
 KIND_SIMPLIFIED = "SIMPLIFIED"
 AED = "AED"
-DEFAULT_SALES = "DEFAULT_SALES"
 
 
 def _now() -> datetime:
@@ -541,7 +541,11 @@ async def _add_items(
 ) -> None:
     for item_data in items:
         resolved = await _resolve_line(
-            session, workspace_id, default_tax_rate, item_data
+            session,
+            workspace_id,
+            default_tax_rate,
+            item_data,
+            client_id=invoice.client_id,
         )
         item = InvoiceItem(
             invoice_id=invoice.id,
@@ -567,6 +571,7 @@ async def _resolve_line(
     item_data: dict,
     *,
     line_owner: str = "invoice",
+    client_id: Optional[uuid.UUID] = None,
 ) -> dict:
     product_id = item_data.get("product_id")
     product: Optional[Product] = None
@@ -579,7 +584,9 @@ async def _resolve_line(
         sku_snapshot = product.internal_sku
         uom_id = product.base_uom_id
     description = _line_description(item_data, product)
-    unit_price = await _line_unit_price(session, workspace_id, item_data, product)
+    unit_price = await _line_unit_price(
+        session, workspace_id, item_data, product, client_id
+    )
     tax_rate = _line_tax_rate(item_data, product, default_tax_rate)
     discount_percent = _dec(item_data.get("discount_percent") or 0)
     discount_amount = _dec(item_data.get("discount_amount") or 0)
@@ -616,6 +623,7 @@ async def _line_unit_price(
     workspace_id: uuid.UUID,
     item_data: dict,
     product: Optional[Product],
+    client_id: Optional[uuid.UUID],
 ) -> Decimal:
     if item_data.get("unit_price") is not None:
         return _dec(item_data["unit_price"])
@@ -626,15 +634,14 @@ async def _line_unit_price(
             "unit_price is required when product_id is omitted",
             "unit_price",
         )
-    price = await _default_sales_price(session, workspace_id, product.id)
-    if price is None:
-        _raise(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
-            ErrorCode.NO_LIST_PRICE,
-            "Product has no DEFAULT_SALES list price",
-            "product_id",
-        )
-    return price
+    resolved = await PricingService.resolve(
+        session,
+        workspace_id,
+        product.id,
+        client_id,
+        _dec(item_data["quantity"]),
+    )
+    return resolved.unit_price
 
 
 def _line_tax_rate(
@@ -678,20 +685,6 @@ async def _load_invoice_product(
             "product_id",
         )
     return product
-
-
-async def _default_sales_price(
-    session: AsyncSession, workspace_id: uuid.UUID, product_id: uuid.UUID
-) -> Optional[Decimal]:
-    result = await session.execute(
-        select(ProductPrice).where(
-            ProductPrice.product_id == product_id,
-            ProductPrice.workspace_id == workspace_id,
-            ProductPrice.price_type == DEFAULT_SALES,
-        )
-    )
-    row = result.scalars().first()
-    return _dec(row.price) if row is not None else None
 
 
 async def _recalc_linked_lpo(

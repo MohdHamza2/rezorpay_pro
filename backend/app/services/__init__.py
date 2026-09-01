@@ -31,6 +31,7 @@ from app.services.supplier_invoice_service import (
     supplier_invoice_service,
 )
 from app.services.product_service import ProductService
+from app.services.pricing_service import PricingService
 from app.services.dn_number import DnNumberService
 from app.services.delivery_note_service import DeliveryNoteService
 from app.services.credit_note_number import CreditNoteNumberService
@@ -50,6 +51,7 @@ __all__ = [
     "SupplierInvoiceService",
     "supplier_invoice_service",
     "ProductService",
+    "PricingService",
     "DnNumberService",
     "DeliveryNoteService",
     "CreditNoteNumberService",

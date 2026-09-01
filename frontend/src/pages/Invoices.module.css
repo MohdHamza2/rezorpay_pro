@@ -203,6 +203,14 @@
   display: block;
 }
 
+.priceSource {
+  color: #334155;
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin-top: 0.25rem;
+  display: block;
+}
+
 .currencyLabel {
   display: inline-block;
   background: #f1f5f9;
