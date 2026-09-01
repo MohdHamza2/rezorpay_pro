@@ -2,7 +2,10 @@ import type { Client } from '../../api/clients';
 import type { Invoice } from '../../api/invoices';
 import type { Workspace } from '../../api/workspaces';
 import styles from '../../pages/Invoices.module.css';
+import { HtmlDualTitle, HtmlStackedLine } from './HtmlDualTitle';
 import { snapOrLive } from './invoicePdfFields';
+import { PDF_LABELS } from './pdfLabels';
+import { PDF_TITLES } from './pdfTitles';
 
 type PreviewProps = {
   invoice: Invoice;
@@ -23,7 +26,13 @@ export function InvoicePdfPreview({ invoice, client, workspace, onClose }: Previ
     <div className={styles.modalOverlay} data-testid="pdf-preview">
       <div className={styles.pdfPreview}>
         <div className={styles.modalHeader}>
-          <h3 data-testid="pdf-title">Tax Invoice</h3>
+          <HtmlDualTitle
+            en={PDF_TITLES.taxInvoice.en}
+            ar={PDF_TITLES.taxInvoice.ar}
+            enTestId="pdf-title"
+            arTestId="pdf-title-ar"
+            enAs="h3"
+          />
           <button
             type="button"
             className={styles.closeBtn}
@@ -33,11 +42,21 @@ export function InvoicePdfPreview({ invoice, client, workspace, onClose }: Previ
             &times;
           </button>
         </div>
-        <p data-testid="pdf-seller-trn">TRN: {sellerTrn || '—'}</p>
+        <HtmlStackedLine
+          testId="pdf-seller-trn"
+          en={`TRN: ${sellerTrn || '—'}`}
+          ar={PDF_LABELS.trn.ar}
+        />
         {sellerAddress ? <p data-testid="pdf-seller-address">{sellerAddress}</p> : null}
-        <p>Bill to: {buyerName || '—'}</p>
-        <p>Invoice No: {invoice.invoice_number}</p>
-        <p>Supply Date: {invoice.supply_date || invoice.issue_date}</p>
+        <HtmlStackedLine en={`Bill to: ${buyerName || '—'}`} ar={PDF_LABELS.billTo.ar} />
+        <HtmlStackedLine
+          en={`Invoice No: ${invoice.invoice_number}`}
+          ar={PDF_LABELS.invoiceNo.ar}
+        />
+        <HtmlStackedLine
+          en={`Supply Date: ${invoice.supply_date || invoice.issue_date}`}
+          ar={PDF_LABELS.supplyDate.ar}
+        />
       </div>
     </div>
   );

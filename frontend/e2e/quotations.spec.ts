@@ -33,6 +33,7 @@ test('quotation send accept convert to draft invoice', async ({ page }) => {
   await page.getByTestId('quotation-preview-pdf').click();
   await expect(page.getByTestId('quotation-pdf-preview')).toBeVisible();
   await expect(page.getByTestId('quotation-pdf-title')).toHaveText('Quotation');
+  await expect(page.getByTestId('quotation-pdf-title-ar')).toHaveText('عرض سعر');
   await expect(page.getByTestId('quotation-pdf-title')).not.toHaveText('Tax Invoice');
   await expect(page.getByTestId('pdf-title')).toHaveCount(0);
   await page.getByTestId('quotation-pdf-preview-close').click();

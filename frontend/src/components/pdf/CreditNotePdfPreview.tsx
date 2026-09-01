@@ -3,15 +3,15 @@ import type { CreditNote } from '../../api/creditNotes';
 import type { Invoice } from '../../api/invoices';
 import type { Workspace } from '../../api/workspaces';
 import styles from '../../pages/Quotations.module.css';
+import { HtmlDualTitle, HtmlStackedLine } from './HtmlDualTitle';
+import { PDF_LABELS } from './pdfLabels';
+import { PDF_TITLES } from './pdfTitles';
 
 function money(value: string | number | null | undefined): string {
   return Number(value ?? 0).toFixed(2);
 }
 
-function snapFirst(
-  snapshot: string | null | undefined,
-  live: string | null | undefined,
-): string {
+function snapFirst(snapshot: string | null | undefined, live: string | null | undefined): string {
   const frozen = (snapshot ?? '').trim();
   if (frozen) return frozen;
   return (live ?? '').trim();
@@ -41,7 +41,13 @@ export function CreditNotePdfPreview({
     <div className={styles.modalOverlay} data-testid="cn-pdf-preview">
       <div className={styles.pdfPreview}>
         <div className={styles.modalHeader}>
-          <h3 data-testid="cn-pdf-title">Tax Credit Note</h3>
+          <HtmlDualTitle
+            en={PDF_TITLES.taxCreditNote.en}
+            ar={PDF_TITLES.taxCreditNote.ar}
+            enTestId="cn-pdf-title"
+            arTestId="cn-pdf-title-ar"
+            enAs="h3"
+          />
           <button
             type="button"
             className={styles.closeBtn}
@@ -51,15 +57,39 @@ export function CreditNotePdfPreview({
             &times;
           </button>
         </div>
-        <p>Credit Note No: {cn.credit_note_number}</p>
-        <p>Issue Date: {cn.issue_date}</p>
-        <p data-testid="cn-pdf-original-invoice">Original Invoice: {originalNumber}</p>
-        <p>Original Issue Date: {originalDate}</p>
-        <p data-testid="cn-pdf-seller-trn">Seller TRN: {sellerTrn || '—'}</p>
+        <HtmlStackedLine
+          en={`Credit Note No: ${cn.credit_note_number}`}
+          ar={PDF_LABELS.creditNoteNo.ar}
+        />
+        <HtmlStackedLine en={`Issue Date: ${cn.issue_date}`} ar={PDF_LABELS.issueDate.ar} />
+        <HtmlStackedLine
+          testId="cn-pdf-original-invoice"
+          en={`Original Invoice: ${originalNumber}`}
+          ar={PDF_LABELS.originalInvoice.ar}
+        />
+        <HtmlStackedLine
+          en={`Original Issue Date: ${originalDate}`}
+          ar={PDF_LABELS.originalIssueDate.ar}
+        />
+        <HtmlStackedLine
+          testId="cn-pdf-seller-trn"
+          en={`Seller TRN: ${sellerTrn || '—'}`}
+          ar={PDF_LABELS.trn.ar}
+        />
         {sellerAddress ? <p>{sellerAddress}</p> : null}
-        <p data-testid="cn-pdf-buyer-trn">Buyer TRN: {buyerTrn || '—'}</p>
-        <p>Credit to: {snapFirst(cn.buyer_name_snapshot, client?.name) || '—'}</p>
-        <p>Credit total: AED {money(cn.total_amount)}</p>
+        <HtmlStackedLine
+          testId="cn-pdf-buyer-trn"
+          en={`Buyer TRN: ${buyerTrn || '—'}`}
+          ar={PDF_LABELS.trn.ar}
+        />
+        <HtmlStackedLine
+          en={`Credit to: ${snapFirst(cn.buyer_name_snapshot, client?.name) || '—'}`}
+          ar={PDF_LABELS.creditTo.ar}
+        />
+        <HtmlStackedLine
+          en={`Credit total: AED ${money(cn.total_amount)}`}
+          ar={PDF_LABELS.creditTotalAed.ar}
+        />
       </div>
     </div>
   );

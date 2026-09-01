@@ -64,6 +64,7 @@ test('catalog LPO delivery note confirm issues stock', async ({ page }) => {
   await page.getByTestId('dn-preview-pdf').click();
   await expect(page.getByTestId('dn-pdf-preview')).toBeVisible();
   await expect(page.getByTestId('dn-pdf-title')).toHaveText('Delivery Note');
+  await expect(page.getByTestId('dn-pdf-title-ar')).toHaveText('إذن تسليم');
   await expect(page.getByTestId('dn-pdf-title')).not.toHaveText('Tax Invoice');
   await expect(page.getByTestId('pdf-title')).toHaveCount(0);
   await page.getByTestId('dn-pdf-preview-close').click();

@@ -7,18 +7,30 @@ import {
   formatMoney,
   isPendingLine,
 } from '../../pages/statementHelpers';
+import { PdfDualTitle } from './PdfDualTitle';
+import {
+  agingBucketAr,
+  PdfArText,
+  PdfBilingualFooter,
+  PdfHeadCell,
+  PdfStackedLabel,
+  PdfTrnLine,
+  statementTypeAr,
+} from './pdfChrome';
+import { registerPdfFonts } from './pdfFonts';
+import { PDF_LABELS } from './pdfLabels';
+import { PDF_TITLES } from './pdfTitles';
+
+registerPdfFonts();
 
 const styles = StyleSheet.create({
   page: { padding: 28, fontSize: 9, fontFamily: 'Helvetica' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
   headerLeft: { flexDirection: 'column', maxWidth: '58%' },
-  headerRight: { flexDirection: 'column', alignItems: 'flex-end' },
-  title: { fontSize: 20, fontWeight: 'bold', color: '#111827' },
   companyName: { fontSize: 14, fontWeight: 'bold' },
   companyDetails: { color: '#4b5563', marginTop: 3, lineHeight: 1.35 },
   metaInfo: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 18 },
   clientSection: { flexDirection: 'column', width: '52%' },
-  clientTitle: { fontSize: 9, fontWeight: 'bold', color: '#6b7280', marginBottom: 4 },
   clientName: { fontSize: 12, fontWeight: 'bold', color: '#111827' },
   details: { width: '44%' },
   detailRow: {
@@ -27,7 +39,6 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderBottom: '1px solid #f3f4f6',
   },
-  detailLabel: { color: '#6b7280' },
   detailValue: { fontWeight: 'bold' },
   table: { width: '100%', marginTop: 12 },
   tableHeader: {
@@ -65,7 +76,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
   },
   aging: { marginTop: 16, width: '52%' },
-  agingTitle: { fontSize: 9, fontWeight: 'bold', marginBottom: 6, color: '#111827' },
   agingRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -73,15 +83,6 @@ const styles = StyleSheet.create({
     borderBottom: '1px solid #f3f4f6',
   },
   notes: { marginTop: 16, color: '#6b7280', fontSize: 8, lineHeight: 1.4 },
-  footer: {
-    marginTop: 18,
-    borderTop: '1px solid #e5e7eb',
-    paddingTop: 8,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    color: '#6b7280',
-    fontSize: 8,
-  },
 });
 
 function SellerBlock({ workspace }: { workspace: ArStatementParty }) {
@@ -89,7 +90,11 @@ function SellerBlock({ workspace }: { workspace: ArStatementParty }) {
     <View style={styles.headerLeft}>
       <Text style={styles.companyName}>{workspace.name || 'Your Company LLC'}</Text>
       {workspace.address ? <Text style={styles.companyDetails}>{workspace.address}</Text> : null}
-      {workspace.trn ? <Text style={styles.companyDetails}>TRN: {workspace.trn}</Text> : null}
+      {workspace.trn ? (
+        <View style={styles.companyDetails}>
+          <PdfTrnLine digits={workspace.trn} />
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -97,10 +102,14 @@ function SellerBlock({ workspace }: { workspace: ArStatementParty }) {
 function BuyerBlock({ client }: { client: ArStatementParty }) {
   return (
     <View style={styles.clientSection}>
-      <Text style={styles.clientTitle}>CLIENT:</Text>
+      <PdfStackedLabel en={PDF_LABELS.client.en} ar={PDF_LABELS.client.ar} boldEn />
       <Text style={styles.clientName}>{client.name || 'Valued Customer'}</Text>
       {client.address ? <Text style={styles.companyDetails}>{client.address}</Text> : null}
-      {client.tax_id ? <Text style={styles.companyDetails}>TRN: {client.tax_id}</Text> : null}
+      {client.tax_id ? (
+        <View style={styles.companyDetails}>
+          <PdfTrnLine digits={client.tax_id} />
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -123,6 +132,7 @@ function LineRow({ line }: { line: ArStatementLine }) {
       <Text style={styles.colDate}>{line.date}</Text>
       <View style={styles.colType}>
         <Text>{line.doc_type_label}</Text>
+        <PdfArText>{statementTypeAr(line.doc_type)}</PdfArText>
         {extra ? <Text style={styles.sku}>{extra}</Text> : null}
       </View>
       <View style={styles.colNumber}>
@@ -140,23 +150,26 @@ function TotalsBlock({ data }: { data: ArStatement }) {
   return (
     <View style={styles.summary}>
       <View style={styles.summaryRow}>
-        <Text style={styles.detailLabel}>Billed:</Text>
+        <PdfStackedLabel en={PDF_LABELS.billed.en} ar={PDF_LABELS.billed.ar} />
         <Text>AED {formatMoney(data.totals.billed)}</Text>
       </View>
       <View style={styles.summaryRow}>
-        <Text style={styles.detailLabel}>Paid (SUCCESS):</Text>
+        <PdfStackedLabel en={PDF_LABELS.paidSuccess.en} ar={PDF_LABELS.paidSuccess.ar} />
         <Text>AED {formatMoney(data.totals.paid)}</Text>
       </View>
       <View style={styles.summaryRow}>
-        <Text style={styles.detailLabel}>Credited (tax credit notes):</Text>
+        <PdfStackedLabel
+          en={PDF_LABELS.creditedTaxCreditNotes.en}
+          ar={PDF_LABELS.creditedTaxCreditNotes.ar}
+        />
         <Text>AED {formatMoney(data.totals.credited)}</Text>
       </View>
       <View style={styles.summaryTotal}>
-        <Text>Amount due now:</Text>
+        <PdfStackedLabel en={PDF_LABELS.amountDueNow.en} ar={PDF_LABELS.amountDueNow.ar} boldEn />
         <Text>AED {formatMoney(data.amount_due_now)}</Text>
       </View>
       <View style={styles.summaryRow}>
-        <Text style={styles.detailLabel}>Unapplied credit:</Text>
+        <PdfStackedLabel en={PDF_LABELS.unappliedCredit.en} ar={PDF_LABELS.unappliedCredit.ar} />
         <Text>AED {formatMoney(data.credit_balance)}</Text>
       </View>
     </View>
@@ -166,10 +179,10 @@ function TotalsBlock({ data }: { data: ArStatement }) {
 function AgingBlock({ data }: { data: ArStatement }) {
   return (
     <View style={styles.aging}>
-      <Text style={styles.agingTitle}>Aging</Text>
+      <PdfStackedLabel en={PDF_LABELS.aging.en} ar={PDF_LABELS.aging.ar} boldEn />
       {AGING_ROWS.map((row) => (
         <View key={row.key} style={styles.agingRow}>
-          <Text style={styles.detailLabel}>{row.label}</Text>
+          <PdfStackedLabel en={row.label} ar={agingBucketAr(row.key)} />
           <Text>AED {formatMoney(data.aging.buckets[row.key])}</Text>
         </View>
       ))}
@@ -182,32 +195,24 @@ export const StatementPDF = ({ data }: { data: ArStatement }) => (
     <Page size="A4" style={styles.page} wrap>
       <View style={styles.header}>
         <SellerBlock workspace={data.workspace} />
-        <View style={styles.headerRight}>
-          <Text
-            style={styles.title}
-            id="statement-pdf-title"
-            {...({ 'data-testid': 'statement-pdf-title' } as { id?: string })}
-          >
-            Account Statement
-          </Text>
-        </View>
       </View>
+      <PdfDualTitle en={PDF_TITLES.accountStatement.en} ar={PDF_TITLES.accountStatement.ar} />
 
       <View style={styles.metaInfo}>
         <BuyerBlock client={data.client} />
         <View style={styles.details}>
           <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Period:</Text>
+            <PdfStackedLabel en={PDF_LABELS.period.en} ar={PDF_LABELS.period.ar} />
             <Text style={styles.detailValue}>
               {data.from}–{data.to}
             </Text>
           </View>
           <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>As of:</Text>
+            <PdfStackedLabel en={PDF_LABELS.asOf.en} ar={PDF_LABELS.asOf.ar} />
             <Text style={styles.detailValue}>{data.as_of}</Text>
           </View>
           <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Currency:</Text>
+            <PdfStackedLabel en={PDF_LABELS.currency.en} ar={PDF_LABELS.currency.ar} />
             <Text style={styles.detailValue}>{data.currency || 'AED'}</Text>
           </View>
         </View>
@@ -215,12 +220,12 @@ export const StatementPDF = ({ data }: { data: ArStatement }) => (
 
       <View style={styles.table}>
         <View style={styles.tableHeader} wrap={false} fixed>
-          <Text style={styles.colDate}>Date</Text>
-          <Text style={styles.colType}>Type</Text>
-          <Text style={styles.colNumber}>Number</Text>
-          <Text style={styles.colDebit}>Debit</Text>
-          <Text style={styles.colCredit}>Credit</Text>
-          <Text style={styles.colBalance}>Balance</Text>
+          <PdfHeadCell style={styles.colDate} en={PDF_LABELS.date.en} ar={PDF_LABELS.date.ar} />
+          <PdfHeadCell style={styles.colType} en={PDF_LABELS.type.en} ar={PDF_LABELS.type.ar} />
+          <PdfHeadCell style={styles.colNumber} en={PDF_LABELS.number.en} ar={PDF_LABELS.number.ar} />
+          <PdfHeadCell style={styles.colDebit} en={PDF_LABELS.debit.en} ar={PDF_LABELS.debit.ar} />
+          <PdfHeadCell style={styles.colCredit} en={PDF_LABELS.credit.en} ar={PDF_LABELS.credit.ar} />
+          <PdfHeadCell style={styles.colBalance} en={PDF_LABELS.balance.en} ar={PDF_LABELS.balance.ar} />
         </View>
         {data.lines.map((line, index) => (
           <LineRow key={`${line.doc_type}-${line.number ?? index}`} line={line} />
@@ -235,10 +240,7 @@ export const StatementPDF = ({ data }: { data: ArStatement }) => (
         <Text>{PDC_SUCCESS_NOTE}</Text>
       </View>
 
-      <View style={styles.footer}>
-        <Text>Account Statement — amounts in AED. English only.</Text>
-        <Text>Generated by InvoiceSaaS</Text>
-      </View>
+      <PdfBilingualFooter flow />
     </Page>
   </Document>
 );
@@ -248,6 +250,7 @@ function fileSlug(name: string): string {
 }
 
 export async function downloadStatementPdf(data: ArStatement): Promise<void> {
+  registerPdfFonts();
   const blob = await pdf(<StatementPDF data={data} />).toBlob();
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');

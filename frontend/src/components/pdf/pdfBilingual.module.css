@@ -1,0 +1,57 @@
+@font-face {
+  font-family: 'NotoNaskhArabic';
+  src: url('../../assets/fonts/NotoNaskhArabic-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+.dualTitle {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+
+.enTitle {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #1e293b;
+  font-family: Helvetica, Arial, sans-serif;
+}
+
+.arTitle {
+  margin: 0;
+  font-family: 'NotoNaskhArabic', serif;
+  font-weight: 400;
+  font-size: 1.25rem;
+  color: #1e293b;
+  direction: rtl;
+  text-align: right;
+}
+
+.chromeBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.arLabel {
+  font-family: 'NotoNaskhArabic', serif;
+  font-weight: 400;
+  font-size: 0.75rem;
+  color: #6b7280;
+  direction: rtl;
+  text-align: inherit;
+}
+
+.stackHead {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+}

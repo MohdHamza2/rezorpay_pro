@@ -33,6 +33,7 @@ test('manual LPO receive partial invoice lands draft invoice', async ({ page }) 
   await page.getByTestId('lpo-preview-pdf').click();
   await expect(page.getByTestId('lpo-pdf-preview')).toBeVisible();
   await expect(page.getByTestId('lpo-pdf-title')).toHaveText('LPO');
+  await expect(page.getByTestId('lpo-pdf-title-ar')).toHaveText('أمر شراء محلي');
   await expect(page.getByTestId('lpo-pdf-title')).not.toHaveText('Tax Invoice');
   await expect(page.getByTestId('pdf-title')).toHaveCount(0);
   await page.getByTestId('lpo-pdf-preview-close').click();

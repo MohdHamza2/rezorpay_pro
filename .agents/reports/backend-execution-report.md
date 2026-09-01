@@ -3,6 +3,34 @@
 
 ---
 
+## 2026-09-01 — WP-A Bilingual PDF assets pytest (planned BEFORE code)
+
+**Spec:** `architecture/wave-bilingual-pdf-addendum.md` §7. Filesystem only; no DB; never SQLite. **No Alembic.** No git commit. No routers/schemas/models.
+
+### Locked
+
+- New `backend/tests/test_bilingual_pdf_assets.py` covering font size/magic, OFL text, `pdfTitles.ts` six EN+AR, `pdfFonts.ts` local register (no CDN/`http://`), models have no `name_ar`/`address_ar`, alembic versions still contain `b8d5f0c3a216_add_credit_notes.py` and no `*_bilingual*` / `*_name_ar*` revision.
+- Repo root = parent of `backend/`. No PostgreSQL fixtures.
+
+---
+
+## 2026-09-01 — WP-A Bilingual PDF assets pytest (implemented)
+
+**Spec:** `architecture/wave-bilingual-pdf-addendum.md` §7. Filesystem only; no DB; never SQLite. **No Alembic.** No git commit.
+
+### Files
+
+- `backend/tests/test_bilingual_pdf_assets.py` — addendum §7
+
+### Pytest (filesystem; no PostgreSQL)
+
+- `tests/test_bilingual_pdf_assets.py`: **6 passed**, 0 failed (0.02s)
+- `alembic heads`: **`b8d5f0c3a216`**
+
+Font file: `NotoNaskhArabic-Regular.ttf` **247336** bytes (TTF magic `\x00\x01\x00\x00`). No models/Alembic edits.
+
+---
+
 ## 2026-09-01 — WP-A Volume / customer pricing (implemented)
 
 **Spec:** `architecture/wave-volume-pricing-addendum.md` WP-A. Architect note: `.agents/reports/architect-volume-pricing-note.md`. Backend + pytest only. No UI/Playwright. **No Alembic.** No git commit. No database report.

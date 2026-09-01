@@ -2,6 +2,9 @@ import type { Client } from '../../api/clients';
 import type { DeliveryNote } from '../../api/deliveryNotes';
 import type { Workspace } from '../../api/workspaces';
 import styles from '../../pages/Quotations.module.css';
+import { HtmlDualTitle, HtmlStackedLine } from './HtmlDualTitle';
+import { PDF_LABELS } from './pdfLabels';
+import { PDF_TITLES } from './pdfTitles';
 
 function formatQty(value: string | number | null | undefined): string {
   return Number(value ?? 0).toFixed(2);
@@ -30,7 +33,13 @@ export function DeliveryNotePdfPreview({
     <div className={styles.modalOverlay} data-testid="dn-pdf-preview">
       <div className={styles.pdfPreview}>
         <div className={styles.modalHeader}>
-          <h3 data-testid="dn-pdf-title">Delivery Note</h3>
+          <HtmlDualTitle
+            en={PDF_TITLES.deliveryNote.en}
+            ar={PDF_TITLES.deliveryNote.ar}
+            enTestId="dn-pdf-title"
+            arTestId="dn-pdf-title-ar"
+            enAs="h3"
+          />
           <button
             type="button"
             className={styles.closeBtn}
@@ -40,12 +49,19 @@ export function DeliveryNotePdfPreview({
             &times;
           </button>
         </div>
-        <p>DN No: {dn.dn_number}</p>
-        {lpoNumber ? <p>LPO No: {lpoNumber}</p> : null}
-        {invoiceNumber ? <p>Invoice No: {invoiceNumber}</p> : null}
-        <p>Delivery Date: {dn.delivery_date}</p>
-        <p>Customer: {client?.name || '—'}</p>
-        {sellerTrn ? <p>TRN: {sellerTrn}</p> : null}
+        <HtmlStackedLine en={`DN No: ${dn.dn_number}`} ar={PDF_LABELS.dnNo.ar} />
+        {lpoNumber ? (
+          <HtmlStackedLine en={`LPO No: ${lpoNumber}`} ar={PDF_LABELS.lpoNo.ar} />
+        ) : null}
+        {invoiceNumber ? (
+          <HtmlStackedLine en={`Invoice No: ${invoiceNumber}`} ar={PDF_LABELS.invoiceNo.ar} />
+        ) : null}
+        <HtmlStackedLine
+          en={`Delivery Date: ${dn.delivery_date}`}
+          ar={PDF_LABELS.deliveryDate.ar}
+        />
+        <HtmlStackedLine en={`Customer: ${client?.name || '—'}`} ar={PDF_LABELS.customer.ar} />
+        {sellerTrn ? <HtmlStackedLine en={`TRN: ${sellerTrn}`} ar={PDF_LABELS.trn.ar} /> : null}
         {sellerAddress ? <p>{sellerAddress}</p> : null}
         {(dn.items ?? []).map((item) => (
           <p key={item.id}>

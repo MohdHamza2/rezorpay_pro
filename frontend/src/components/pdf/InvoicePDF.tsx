@@ -3,18 +3,29 @@ import type { Client } from '../../api/clients';
 import type { Invoice, InvoiceItem } from '../../api/invoices';
 import type { Workspace } from '../../api/workspaces';
 import { snapOrLive } from './invoicePdfFields';
+import { PdfDualTitle } from './PdfDualTitle';
+import {
+  PdfBilingualFooter,
+  PdfHeadCell,
+  PdfStackedLabel,
+  PdfTrnLine,
+  PdfWatermark,
+} from './pdfChrome';
+import { registerPdfFonts } from './pdfFonts';
+import { PDF_LABELS } from './pdfLabels';
+import { PDF_TITLES } from './pdfTitles';
+
+registerPdfFonts();
 
 const styles = StyleSheet.create({
   page: { padding: 28, fontSize: 9, fontFamily: 'Helvetica' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
   headerLeft: { flexDirection: 'column', maxWidth: '58%' },
   headerRight: { flexDirection: 'column', alignItems: 'flex-end' },
-  title: { fontSize: 20, fontWeight: 'bold', color: '#111827' },
   companyName: { fontSize: 14, fontWeight: 'bold' },
   companyDetails: { color: '#4b5563', marginTop: 3, lineHeight: 1.35 },
   metaInfo: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 18 },
   clientSection: { flexDirection: 'column', width: '52%' },
-  clientTitle: { fontSize: 9, fontWeight: 'bold', color: '#6b7280', marginBottom: 4 },
   clientName: { fontSize: 12, fontWeight: 'bold', color: '#111827' },
   invoiceDetails: { width: '44%' },
   detailRow: {
@@ -23,7 +34,6 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderBottom: '1px solid #f3f4f6',
   },
-  detailLabel: { color: '#6b7280' },
   detailValue: { fontWeight: 'bold' },
   table: { width: '100%', marginTop: 12 },
   tableHeader: {
@@ -62,37 +72,13 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 11,
   },
-  footer: {
-    position: 'absolute',
-    bottom: 24,
-    left: 28,
-    right: 28,
-    borderTop: '1px solid #e5e7eb',
-    paddingTop: 8,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    color: '#6b7280',
-    fontSize: 8,
-  },
   statusBadge: {
     padding: '4 8',
     borderRadius: 4,
     color: 'white',
     backgroundColor: '#2563eb',
     alignSelf: 'flex-end',
-    marginTop: 8,
     fontSize: 9,
-  },
-  watermark: {
-    position: 'absolute',
-    top: '42%',
-    left: 0,
-    right: 0,
-    textAlign: 'center',
-    fontSize: 48,
-    color: '#fca5a5',
-    opacity: 0.35,
-    letterSpacing: 6,
   },
 });
 
@@ -116,7 +102,11 @@ function SellerBlock({ invoice, workspace }: { invoice: Invoice; workspace?: Wor
     <View style={styles.headerLeft}>
       <Text style={styles.companyName}>{name || 'Your Company LLC'}</Text>
       {address ? <Text style={styles.companyDetails}>{address}</Text> : null}
-      {trn ? <Text style={styles.companyDetails}>TRN: {trn}</Text> : null}
+      {trn ? (
+        <View style={styles.companyDetails}>
+          <PdfTrnLine digits={trn} />
+        </View>
+      ) : null}
       {workspace?.whatsapp_number ? (
         <Text style={styles.companyDetails}>WA: {workspace.whatsapp_number}</Text>
       ) : null}
@@ -130,10 +120,14 @@ function BuyerBlock({ invoice, client }: { invoice: Invoice; client?: Client }) 
   const trn = snapOrLive(invoice.status, invoice.buyer_trn_snapshot, client?.tax_id);
   return (
     <View style={styles.clientSection}>
-      <Text style={styles.clientTitle}>BILL TO:</Text>
+      <PdfStackedLabel en={PDF_LABELS.billTo.en} ar={PDF_LABELS.billTo.ar} boldEn />
       <Text style={styles.clientName}>{name || 'Valued Customer'}</Text>
       {address ? <Text style={styles.companyDetails}>{address}</Text> : null}
-      {trn ? <Text style={styles.companyDetails}>TRN: {trn}</Text> : null}
+      {trn ? (
+        <View style={styles.companyDetails}>
+          <PdfTrnLine digits={trn} />
+        </View>
+      ) : null}
       {client?.email ? <Text style={styles.companyDetails}>{client.email}</Text> : null}
     </View>
   );
@@ -168,38 +162,44 @@ export const InvoicePDF = ({
 }) => (
   <Document>
     <Page size="A4" style={styles.page}>
-      {invoice.status === 'CANCELLED' ? <Text style={styles.watermark}>CANCELLED</Text> : null}
+      {invoice.status === 'CANCELLED' ? (
+        <PdfWatermark
+          en={PDF_LABELS.watermarkCancelled.en}
+          ar={PDF_LABELS.watermarkCancelled.ar}
+          color="#fca5a5"
+        />
+      ) : null}
       <View style={styles.header}>
         <SellerBlock invoice={invoice} workspace={workspace} />
         <View style={styles.headerRight}>
-          <Text style={styles.title}>Tax Invoice</Text>
           <View style={styles.statusBadge}>
             <Text>{invoice.status}</Text>
           </View>
         </View>
       </View>
+      <PdfDualTitle en={PDF_TITLES.taxInvoice.en} ar={PDF_TITLES.taxInvoice.ar} />
 
       <View style={styles.metaInfo}>
         <BuyerBlock invoice={invoice} client={client} />
         <View style={styles.invoiceDetails}>
           <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Invoice No:</Text>
+            <PdfStackedLabel en={PDF_LABELS.invoiceNo.en} ar={PDF_LABELS.invoiceNo.ar} />
             <Text style={styles.detailValue}>{invoice.invoice_number}</Text>
           </View>
           <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Issue Date:</Text>
+            <PdfStackedLabel en={PDF_LABELS.issueDate.en} ar={PDF_LABELS.issueDate.ar} />
             <Text style={styles.detailValue}>{invoice.issue_date}</Text>
           </View>
           <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Supply Date:</Text>
+            <PdfStackedLabel en={PDF_LABELS.supplyDate.en} ar={PDF_LABELS.supplyDate.ar} />
             <Text style={styles.detailValue}>{invoice.supply_date || invoice.issue_date}</Text>
           </View>
           <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Due Date:</Text>
+            <PdfStackedLabel en={PDF_LABELS.dueDate.en} ar={PDF_LABELS.dueDate.ar} />
             <Text style={styles.detailValue}>{invoice.due_date}</Text>
           </View>
           <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Currency:</Text>
+            <PdfStackedLabel en={PDF_LABELS.currency.en} ar={PDF_LABELS.currency.ar} />
             <Text style={styles.detailValue}>AED</Text>
           </View>
         </View>
@@ -207,14 +207,14 @@ export const InvoicePDF = ({
 
       <View style={styles.table}>
         <View style={styles.tableHeader}>
-          <Text style={styles.colDesc}>Description</Text>
-          <Text style={styles.colQty}>Qty</Text>
-          <Text style={styles.colUnit}>Unit</Text>
-          <Text style={styles.colDisc}>Disc</Text>
-          <Text style={styles.colNet}>Net</Text>
-          <Text style={styles.colRate}>VAT%</Text>
-          <Text style={styles.colVat}>VAT AED</Text>
-          <Text style={styles.colGross}>Gross</Text>
+          <PdfHeadCell style={styles.colDesc} en={PDF_LABELS.description.en} ar={PDF_LABELS.description.ar} />
+          <PdfHeadCell style={styles.colQty} en={PDF_LABELS.qty.en} ar={PDF_LABELS.qty.ar} />
+          <PdfHeadCell style={styles.colUnit} en={PDF_LABELS.unit.en} ar={PDF_LABELS.unit.ar} />
+          <PdfHeadCell style={styles.colDisc} en={PDF_LABELS.disc.en} ar={PDF_LABELS.disc.ar} />
+          <PdfHeadCell style={styles.colNet} en={PDF_LABELS.net.en} ar={PDF_LABELS.net.ar} />
+          <PdfHeadCell style={styles.colRate} en={PDF_LABELS.vatPercent.en} ar={PDF_LABELS.vatPercent.ar} />
+          <PdfHeadCell style={styles.colVat} en={PDF_LABELS.vatAed.en} ar={PDF_LABELS.vatAed.ar} />
+          <PdfHeadCell style={styles.colGross} en={PDF_LABELS.gross.en} ar={PDF_LABELS.gross.ar} />
         </View>
         {(invoice.items ?? []).map((item, index) => (
           <LineRow key={item.id || index} item={item} />
@@ -223,31 +223,28 @@ export const InvoicePDF = ({
 
       <View style={styles.summary}>
         <View style={styles.summaryRow}>
-          <Text style={styles.detailLabel}>Subtotal (excl. VAT):</Text>
+          <PdfStackedLabel en={PDF_LABELS.subtotalExclVat.en} ar={PDF_LABELS.subtotalExclVat.ar} />
           <Text>AED {money(invoice.subtotal)}</Text>
         </View>
         <View style={styles.summaryRow}>
-          <Text style={styles.detailLabel}>VAT:</Text>
+          <PdfStackedLabel en={PDF_LABELS.vat.en} ar={PDF_LABELS.vat.ar} />
           <Text>AED {money(invoice.tax_amount)}</Text>
         </View>
         <View style={styles.summaryTotal}>
-          <Text>Total (AED):</Text>
+          <PdfStackedLabel en={PDF_LABELS.totalAed.en} ar={PDF_LABELS.totalAed.ar} boldEn />
           <Text>{money(invoice.total_amount)}</Text>
         </View>
         <View style={styles.summaryRow}>
-          <Text style={styles.detailLabel}>Amount Paid:</Text>
+          <PdfStackedLabel en={PDF_LABELS.amountPaid.en} ar={PDF_LABELS.amountPaid.ar} />
           <Text>AED {money(invoice.amount_paid)}</Text>
         </View>
         <View style={styles.summaryRow}>
-          <Text style={{ fontWeight: 'bold' }}>Balance Due:</Text>
+          <PdfStackedLabel en={PDF_LABELS.balanceDue.en} ar={PDF_LABELS.balanceDue.ar} boldEn />
           <Text style={{ fontWeight: 'bold' }}>AED {money(invoice.balance_due)}</Text>
         </View>
       </View>
 
-      <View style={styles.footer}>
-        <Text>Tax Invoice — amounts in AED.</Text>
-        <Text>Generated by InvoiceSaaS</Text>
-      </View>
+      <PdfBilingualFooter />
     </Page>
   </Document>
 );

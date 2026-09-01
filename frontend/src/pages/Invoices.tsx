@@ -30,6 +30,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { Edit2, Plus, Trash2, Send, XCircle, DollarSign, Download, Eye, FileMinus } from 'lucide-react';
 import { pdf } from '@react-pdf/renderer';
 import { InvoicePDF } from '../components/pdf/InvoicePDF';
+import { registerPdfFonts } from '../components/pdf/pdfFonts';
 import { InvoicePdfPreview } from '../components/pdf/InvoicePdfPreview';
 import { getCurrentWorkspace } from '../api/workspaces';
 import toast from 'react-hot-toast';
@@ -381,6 +382,7 @@ export const Invoices = () => {
     try {
       const invoice = await getInvoice(row.id);
       const client = clients?.find((entry) => entry.id === invoice.client_id);
+      registerPdfFonts();
       const blob = await pdf(
         <InvoicePDF invoice={invoice} client={client} workspace={workspace} />,
       ).toBlob();

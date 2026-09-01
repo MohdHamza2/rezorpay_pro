@@ -36,6 +36,10 @@ async function expectAccountStatementTitle(locator: Locator): Promise<void> {
   await expect(locator).not.toHaveText(/Tax Invoice|Tax Credit Note|^INVOICE$/);
 }
 
+async function expectAccountStatementArTitle(locator: Locator): Promise<void> {
+  await expect(locator).toHaveText('كشف حساب');
+}
+
 test('account statement shows invoice payment and credit note', async ({ page }) => {
   test.setTimeout(120_000);
   const { suffix } = await registerViaUi(page, 'ar-stmt');
@@ -78,7 +82,11 @@ test('account statement shows invoice payment and credit note', async ({ page })
   await expect(page.getByTestId('statement-lines')).toBeVisible();
 
   const pageTitle = page.locator('h2[data-testid="statement-pdf-title"]');
+  const pageTitleAr = page.locator(
+    'h2[data-testid="statement-pdf-title"] + [data-testid="statement-pdf-title-ar"]',
+  );
   await expectAccountStatementTitle(pageTitle);
+  await expectAccountStatementArTitle(pageTitleAr);
   await expect(page.getByTestId('pdf-title')).toHaveCount(0);
   await expect(page.getByTestId('cn-pdf-title')).toHaveCount(0);
 
@@ -102,4 +110,7 @@ test('account statement shows invoice payment and credit note', async ({ page })
   const preview = page.getByTestId('statement-pdf-preview');
   await expect(preview).toBeVisible();
   await expectAccountStatementTitle(preview.getByTestId('statement-pdf-title'));
+  await expectAccountStatementArTitle(preview.getByTestId('statement-pdf-title-ar'));
+  await expectAccountStatementTitle(pageTitle);
+  await expectAccountStatementArTitle(pageTitleAr);
 });

@@ -7,6 +7,11 @@ import toast from 'react-hot-toast';
 import { getArStatement } from '../api/clients';
 import type { ArStatement as StatementDoc, ArStatementLine, StatementDocType } from '../api/clients';
 import { isHttpNotFound } from '../api/errors';
+import { HtmlDualTitle, HtmlStackHead } from '../components/pdf/HtmlDualTitle';
+import { agingBucketAr, statementTypeAr } from '../components/pdf/pdfChrome';
+import bilingual from '../components/pdf/pdfBilingual.module.css';
+import { PDF_LABELS } from '../components/pdf/pdfLabels';
+import { PDF_TITLES } from '../components/pdf/pdfTitles';
 import { downloadStatementPdf } from '../components/pdf/StatementPDF';
 import { StatementPdfPreview } from '../components/pdf/StatementPdfPreview';
 import { Skeleton } from '../components/Skeleton';
@@ -65,12 +70,24 @@ function LinesTable({ lines }: { lines: ArStatementLine[] }) {
       <table className={quote.table} data-testid="statement-lines">
         <thead>
           <tr>
-            <th>Date</th>
-            <th>Type</th>
-            <th>Number</th>
-            <th className={styles.num}>Debit</th>
-            <th className={styles.num}>Credit</th>
-            <th className={styles.num}>Balance</th>
+            <th>
+              <HtmlStackHead en={PDF_LABELS.date.en} ar={PDF_LABELS.date.ar} />
+            </th>
+            <th>
+              <HtmlStackHead en={PDF_LABELS.type.en} ar={PDF_LABELS.type.ar} />
+            </th>
+            <th>
+              <HtmlStackHead en={PDF_LABELS.number.en} ar={PDF_LABELS.number.ar} />
+            </th>
+            <th className={styles.num}>
+              <HtmlStackHead en={PDF_LABELS.debit.en} ar={PDF_LABELS.debit.ar} />
+            </th>
+            <th className={styles.num}>
+              <HtmlStackHead en={PDF_LABELS.credit.en} ar={PDF_LABELS.credit.ar} />
+            </th>
+            <th className={styles.num}>
+              <HtmlStackHead en={PDF_LABELS.balance.en} ar={PDF_LABELS.balance.ar} />
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -83,7 +100,12 @@ function LinesTable({ lines }: { lines: ArStatementLine[] }) {
             >
               <td>{line.date}</td>
               <td className={typeTone(line.doc_type)}>
-                {line.doc_type_label}
+                <span className={bilingual.stackHead}>
+                  <span>{line.doc_type_label}</span>
+                  <span className={bilingual.arLabel} lang="ar" dir="rtl">
+                    {statementTypeAr(line.doc_type)}
+                  </span>
+                </span>
                 {typeExtra(line) ? <span className={styles.sub}>{typeExtra(line)}</span> : null}
               </td>
               <td>
@@ -105,23 +127,26 @@ function TotalsFooter({ data }: { data: StatementDoc }) {
   return (
     <div className={quote.totals}>
       <div className={quote.totalRow}>
-        <span>Billed</span>
+        <HtmlStackHead en="Billed" ar={PDF_LABELS.billed.ar} />
         <span data-testid="statement-billed">{formatAed(data.totals.billed)}</span>
       </div>
       <div className={quote.totalRow}>
-        <span>Paid (SUCCESS payments)</span>
+        <HtmlStackHead en="Paid (SUCCESS payments)" ar={PDF_LABELS.paidSuccess.ar} />
         <span data-testid="statement-paid">{formatAed(data.totals.paid)}</span>
       </div>
       <div className={quote.totalRow}>
-        <span>Credited (tax credit notes)</span>
+        <HtmlStackHead
+          en="Credited (tax credit notes)"
+          ar={PDF_LABELS.creditedTaxCreditNotes.ar}
+        />
         <span data-testid="statement-credited">{formatAed(data.totals.credited)}</span>
       </div>
       <div className={quote.totalStrong}>
-        <span>Amount due now</span>
+        <HtmlStackHead en="Amount due now" ar={PDF_LABELS.amountDueNow.ar} />
         <span data-testid="statement-amount-due">{formatAed(data.amount_due_now)}</span>
       </div>
       <div className={quote.totalRow}>
-        <span>Unapplied credit</span>
+        <HtmlStackHead en="Unapplied credit" ar={PDF_LABELS.unappliedCredit.ar} />
         <span className={styles.unapplied} data-testid="statement-unapplied">
           {formatAed(data.credit_balance)}
         </span>
@@ -133,7 +158,9 @@ function TotalsFooter({ data }: { data: StatementDoc }) {
 function AgingTable({ data }: { data: StatementDoc }) {
   return (
     <div>
-      <h3>Aging</h3>
+      <h3>
+        <HtmlStackHead en={PDF_LABELS.aging.en} ar={PDF_LABELS.aging.ar} />
+      </h3>
       <table className={styles.agingTable} data-testid="statement-aging">
         <thead>
           <tr>
@@ -144,7 +171,9 @@ function AgingTable({ data }: { data: StatementDoc }) {
         <tbody>
           {AGING_ROWS.map((row) => (
             <tr key={row.key} data-testid={`statement-aging-${row.key}`}>
-              <td>{row.label}</td>
+              <td>
+                <HtmlStackHead en={row.label} ar={agingBucketAr(row.key)} />
+              </td>
               <td className={styles.num}>{formatAed(data.aging.buckets[row.key])}</td>
             </tr>
           ))}
@@ -206,7 +235,13 @@ export const ArStatement = () => {
   return (
     <div className={quote.container} data-testid="ar-statement">
       <div className={quote.header}>
-        <h2 data-testid="statement-pdf-title">Account Statement</h2>
+        <HtmlDualTitle
+          en={PDF_TITLES.accountStatement.en}
+          ar={PDF_TITLES.accountStatement.ar}
+          enTestId="statement-pdf-title"
+          arTestId="statement-pdf-title-ar"
+          enAs="h2"
+        />
         <div className={styles.headerActions}>
           <button type="button" className={quote.secondaryBtn} onClick={() => navigate('/clients')}>
             Back to clients

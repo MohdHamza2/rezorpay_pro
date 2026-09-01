@@ -62,6 +62,7 @@ test('simplified tax invoice credit note issue posts AR', async ({ page }) => {
   await page.getByTestId('cn-preview-pdf').click();
   await expect(page.getByTestId('cn-pdf-preview')).toBeVisible();
   await expect(page.getByTestId('cn-pdf-title')).toHaveText('Tax Credit Note');
+  await expect(page.getByTestId('cn-pdf-title-ar')).toHaveText('إشعار دائن ضريبي');
   await expect(page.getByTestId('cn-pdf-title')).not.toHaveText('Tax Invoice');
   await expect(page.getByTestId('pdf-title')).toHaveCount(0);
   await expect(page.getByTestId('cn-pdf-seller-trn')).toContainText(FTA_TRN);
