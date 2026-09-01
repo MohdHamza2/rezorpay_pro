@@ -13,6 +13,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Optional
 
+from fastapi import status
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -23,9 +24,29 @@ from app.models.client import Client
 from app.models.payment import Payment, PaymentMethod, PaymentStatus, PDCStatus
 from app.models.workspace import Workspace
 from app.models.credit_status_event import CreditEventReason
-from app.services.credit_control_service import CreditControlService
+from app.schemas.common import ErrorCode
+from app.services.credit_control_service import CreditControlService, utc_today
+from app.services.customer_po_support import raise_error
 from app.services.invoice_service import InvoiceService
 from app.services.audit_service import AuditService
+
+
+def _insert_status(
+    method: PaymentMethod, pdc_date: Optional[date]
+) -> tuple[PaymentStatus, Optional[date], Optional[PDCStatus]]:
+    """PDC is always PENDING+RECEIVED. CHEQUE ignores pdc_date. Others SUCCESS."""
+    if method == PaymentMethod.CHEQUE:
+        return PaymentStatus.SUCCESS, None, None
+    if method != PaymentMethod.PDC:
+        return PaymentStatus.SUCCESS, pdc_date, None
+    if pdc_date is None:
+        raise_error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            ErrorCode.VALIDATION_ERROR,
+            "pdc_date is required for PDC payments",
+            "pdc_date",
+        )
+    return PaymentStatus.PENDING, pdc_date, PDCStatus.RECEIVED
 
 
 class PaymentService:
@@ -90,7 +111,7 @@ class PaymentService:
             ValueError: If payment exceeds balance due or idempotency conflict
         """
         if payment_date is None:
-            payment_date = date.today()
+            payment_date = utc_today()
 
         # Step 1: Lock invoice row (FOR UPDATE)
         # This prevents race conditions on concurrent payments
@@ -103,7 +124,11 @@ class PaymentService:
         invoice = result.scalar_one_or_none()
 
         if not invoice:
-            raise ValueError("Invoice not found or not in workspace")
+            raise_error(
+                status.HTTP_404_NOT_FOUND,
+                ErrorCode.NOT_FOUND,
+                "Invoice not found or not in workspace",
+            )
 
         # Step 2: Check workspace-scoped idempotency key (inside transaction!)
         # This prevents double-spend window race conditions
@@ -146,12 +171,16 @@ class PaymentService:
 
         balance_due = InvoiceService.calculate_balance_due(invoice_with_payments)
 
-        # Step 4: Validate no overpayment
+        # Step 4: Validate no overpayment (PENDING PDC does not consume this cap)
         if amount > balance_due:
-            raise ValueError(
+            raise_error(
+                status.HTTP_400_BAD_REQUEST,
+                ErrorCode.PAYMENT_EXCEEDS_BALANCE,
                 f"Payment amount ({amount}) exceeds balance due ({balance_due}). "
-                "Overpayments are not allowed for MVP."
+                "Overpayments are not allowed for MVP.",
             )
+
+        pay_status, pdc_date, pdc_status = _insert_status(payment_method, pdc_date)
 
         # Step 5: Create payment
         payment = Payment(
@@ -163,7 +192,7 @@ class PaymentService:
             pdc_date=pdc_date,
             pdc_status=pdc_status,
             gateway_transaction_id=gateway_transaction_id,
-            status=PaymentStatus.SUCCESS,
+            status=pay_status,
             payment_date=datetime.combine(payment_date, datetime.min.time()).replace(
                 tzinfo=timezone.utc
             ),

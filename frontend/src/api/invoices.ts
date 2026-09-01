@@ -119,22 +119,81 @@ export const voidInvoice = async (id: string, reason: string): Promise<Invoice> 
   return response.data.data;
 };
 
+export type PaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'CREDIT_CARD' | 'CHEQUE' | 'PDC';
+export type PaymentStatus = 'PENDING' | 'SUCCESS' | 'FAILED' | 'CANCELLED' | 'REFUNDED';
+export type PdcStatus = 'RECEIVED' | 'DEPOSITED' | 'CLEARED' | 'BOUNCED' | 'RETURNED';
+export type PdcAction = 'deposit' | 'clear' | 'bounce' | 'return';
+
+export interface Payment {
+  id: string;
+  invoice_id: string;
+  amount: number | string;
+  payment_method: PaymentMethod | string;
+  payment_date?: string;
+  status: PaymentStatus | string;
+  reference_number?: string | null;
+  bank_name?: string | null;
+  pdc_date?: string | null;
+  pdc_status?: PdcStatus | string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** Write body: only keys WP-A allows. Never send pdc_status. */
 export interface PaymentData {
   amount: number;
-  payment_method: string;
+  payment_method: PaymentMethod | string;
   payment_date?: string;
   reference_number?: string;
   bank_name?: string;
   pdc_date?: string;
-  pdc_status?: string;
 }
 
-export const recordPayment = async (id: string, data: PaymentData): Promise<unknown> => {
+function optionalText(value?: string | null): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed || undefined;
+}
+
+export function paymentCreateBody(data: PaymentData): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    amount: data.amount,
+    payment_method: data.payment_method,
+  };
+  if (data.payment_date) body.payment_date = data.payment_date;
+  const reference = optionalText(data.reference_number);
+  if (reference) body.reference_number = reference;
+  const bank = optionalText(data.bank_name);
+  if (bank) body.bank_name = bank;
+  if (data.payment_method === 'PDC' && data.pdc_date) body.pdc_date = data.pdc_date;
+  return body;
+}
+
+export const recordPayment = async (id: string, data: PaymentData): Promise<Payment> => {
   const idempotencyKey = crypto.randomUUID();
-  const response = await apiClient.post<SuccessResponse<unknown>>(
+  const response = await apiClient.post<SuccessResponse<Payment>>(
     '/api/v1/invoices/' + id + '/payments',
-    data,
-    { headers: { 'Idempotency-Key': idempotencyKey } }
+    paymentCreateBody(data),
+    { headers: { 'Idempotency-Key': idempotencyKey } },
+  );
+  return response.data.data;
+};
+
+export const listPayments = async (invoiceId: string): Promise<Payment[]> => {
+  const response = await apiClient.get<PaginatedResponse<Payment>>(
+    `/api/v1/invoices/${invoiceId}/payments`,
+    { params: { page: 1, per_page: 100 } },
+  );
+  return Array.isArray(response.data.data) ? response.data.data : [];
+};
+
+export const postPdcAction = async (
+  invoiceId: string,
+  paymentId: string,
+  action: PdcAction,
+): Promise<Payment> => {
+  const response = await apiClient.post<SuccessResponse<Payment>>(
+    `/api/v1/invoices/${invoiceId}/payments/${paymentId}/pdc/${action}`,
+    {},
   );
   return response.data.data;
 };

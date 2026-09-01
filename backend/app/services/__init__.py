@@ -21,6 +21,7 @@ from app.services.credit_control_service import CreditControlService
 from app.services.invoice_number import InvoiceNumberService
 from app.services.invoice_service import InvoiceService
 from app.services.payment_service import PaymentService
+from app.services.pdc_service import PdcService
 from app.services.audit_service import AuditService
 from app.services.spo_service import SPOService
 from app.services.spo_number import SPONumberService
@@ -41,6 +42,7 @@ __all__ = [
     "InvoiceNumberService",
     "InvoiceService",
     "PaymentService",
+    "PdcService",
     "AuditService",
     "SPOService",
     "SPONumberService",

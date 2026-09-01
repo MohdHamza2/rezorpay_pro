@@ -1,8 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { getCreditNotes } from '../api/creditNotes';
+import { isHttpNotFound } from '../api/errors';
 import { getInvoice } from '../api/invoices';
 import { isCreditableStatus } from './creditNoteHelpers';
+import { InvoicePayments } from './InvoicePayments';
 import { formatAed } from './quotationHelpers';
 import inv from './Invoices.module.css';
 import quoteStyles from './Quotations.module.css';
@@ -18,6 +20,7 @@ export function InvoiceArPanel({ invoiceId, onClose }: Props) {
   const { data: invoice, isLoading } = useQuery({
     queryKey: ['invoice', invoiceId],
     queryFn: () => getInvoice(invoiceId),
+    retry: (count, err) => !isHttpNotFound(err) && count < 2,
   });
   const { data: notes } = useQuery({
     queryKey: ['credit-notes', { invoiceId }],
@@ -30,7 +33,7 @@ export function InvoiceArPanel({ invoiceId, onClose }: Props) {
 
   return (
     <div className={inv.modalOverlay} data-testid="invoice-ar-panel">
-      <div className={inv.modal} style={{ maxWidth: '560px' }}>
+      <div className={inv.modal} style={{ maxWidth: '720px' }}>
         <div className={inv.modalHeader}>
           <h3>{invoice?.invoice_number || 'Invoice'} — amounts</h3>
           <button type="button" className={inv.closeBtn} onClick={onClose}>&times;</button>
@@ -68,6 +71,7 @@ export function InvoiceArPanel({ invoiceId, onClose }: Props) {
             <p className={inv.hint}>
               Credit notes reduce balance due. They are not cash payments.
             </p>
+            <InvoicePayments invoiceId={invoice.id} />
             {(notes?.items ?? []).length > 0 ? (
               <ul>
                 {(notes?.items ?? []).map((row) => (

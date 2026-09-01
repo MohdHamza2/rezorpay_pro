@@ -3,6 +3,96 @@
 
 ---
 
+## 2026-09-01 — WP-A Payment / PDC truth + bounce (implemented)
+
+**Spec:** `architecture/wave-pdc-addendum.md` WP-A. Architect note: `.agents/reports/architect-pdc-note.md`. Backend + pytest only. No UI/Playwright. **No Alembic.** No git commit. No database report.
+
+### Done
+
+- `PaymentService.record_payment`: `method=PDC` always inserts `PENDING` + `RECEIVED` (today/past included), ignores body `pdc_status`, requires `pdc_date` (422 `field=pdc_date`). Does not reduce `balance_due` or flip PAID. CASH/BANK/CARD/CHEQUE stay SUCCESS. CHEQUE ignores `pdc_date`. HOLD never blocks POST. Overpay still 400 `PAYMENT_EXCEEDS_BALANCE` via `raise_error`. Date default `utc_today()`.
+- PUT `/invoices/{id}/payments/{id}` → 405 `METHOD_NOT_ALLOWED` after workspace invoice 404.
+- Four POSTs: `.../pdc/deposit|clear|bounce|return`. OWNER/ADMIN; MEMBER 403 `INSUFFICIENT_PERMISSIONS`. Isolation 404. SELECT FOR UPDATE invoice then payment. Amount/method/dates never rewritten. Bounce → FAILED + `evaluate(..., PAYMENT)`. Clear reuses `InvoiceService.calculate_balance_due` / `update_status_from_payments`. Over-clear 400, no `credit_balance` park. Historical SUCCESS PDC: clear 200 no-op, bounce 403.
+- AR statement math unchanged. `test_success_pdc_in_paid` now deposit+clear so SUCCESS PDC still lists as Payment.
+
+### Files
+
+- `backend/app/schemas/common.py` — `METHOD_NOT_ALLOWED`
+- `backend/app/schemas/payments.py` — `PdcActionRequest`
+- `backend/app/services/payment_service.py` — PDC insert path
+- `backend/app/services/pdc_service.py` — four transitions
+- `backend/app/routers/payments.py` — PUT 405 + four POSTs
+- `backend/app/services/__init__.py` — export `PdcService`
+- `backend/tests/test_pdc.py` — addendum §12 (17 tests)
+- `backend/tests/test_ar_statement.py` — `test_success_pdc_in_paid`
+
+### Endpoints
+
+| Method | Path | Result |
+|---|---|---|
+| POST | `/api/v1/invoices/{id}/payments` | PDC→PENDING+RECEIVED; still Idempotency-Key |
+| PUT | `/api/v1/invoices/{id}/payments/{id}` | 405 (404 if invoice not in workspace) |
+| POST | `/api/v1/invoices/{id}/payments/{id}/pdc/deposit` | RECEIVED→DEPOSITED |
+| POST | `/api/v1/invoices/{id}/payments/{id}/pdc/clear` | DEPOSITED→CLEARED/SUCCESS |
+| POST | `/api/v1/invoices/{id}/payments/{id}/pdc/bounce` | DEPOSITED→BOUNCED/FAILED |
+| POST | `/api/v1/invoices/{id}/payments/{id}/pdc/return` | RECEIVED→RETURNED/CANCELLED |
+
+### ErrorCodes added
+
+- `METHOD_NOT_ALLOWED` (405)
+
+Existing reused: `VALIDATION_ERROR`, `PAYMENT_EXCEEDS_BALANCE`, `INVALID_STATE`, `INSUFFICIENT_PERMISSIONS`, `NOT_FOUND`.
+
+### Pytest (PostgreSQL `_test`)
+
+- `tests/test_pdc.py`: **17 passed**
+- `tests/test_ar_statement.py`: **13 passed**
+- Combined: **30 passed**, 0 failed
+- Related overpay/HOLD/isolation: 4 passed
+
+`alembic heads`: **`b8d5f0c3a216`**. `alembic check`: No new upgrade operations detected. black + ruff clean on touched files.
+
+---
+
+## 2026-09-01 — WP-A Payment / PDC truth + bounce (planned BEFORE code)
+
+**Spec:** `architecture/wave-pdc-addendum.md` WP-A. Architect note: `.agents/reports/architect-pdc-note.md`. Backend + pytest only. No UI/Playwright. **No Alembic.** No git commit. No database report.
+
+### Locked
+
+- Alembic **NO**. HEAD stays **`b8d5f0c3a216`**. No new columns/tables. Later WPs `down_revision = "b8d5f0c3a216"` until HEAD moves.
+- `method=PDC`: require `pdc_date` (422 `VALIDATION_ERROR` `field=pdc_date`). Insert **always** `PENDING` + `RECEIVED` (today/past included). Ignore body `pdc_status`. Does **not** reduce `balance_due`. Must **not** flip invoice PAID.
+- CASH / BANK_TRANSFER / CREDIT_CARD / **CHEQUE** still immediate SUCCESS. CHEQUE is not on the PDC machine (bounce → 403 `INVALID_STATE`).
+- HOLD never blocks POST payment. Bounce calls `CreditControlService.evaluate(..., PAYMENT)`. Date gates use `CreditControlService.utc_today()`, not naive `date.today()`.
+- Overpay at insert: amount > `InvoiceService.calculate_balance_due` → 400 `PAYMENT_EXCEEDS_BALANCE`. PENDING does not consume the cap. `/pdc/clear` same 400; do **not** park `credit_balance`.
+- Four POSTs (OWNER/ADMIN; MEMBER 403 `INSUFFICIENT_PERMISSIONS`): `POST /api/v1/invoices/{invoice_id}/payments/{payment_id}/pdc/deposit|clear|bounce|return`. Empty body. No Idempotency-Key. Idempotent 200 if already in target. Rate-limit 10/minute.
+- RECEIVED→DEPOSITED if `pdc_date <= utc_today()` else 400 `field=pdc_date`. Stays PENDING.
+- DEPOSITED→CLEARED: status SUCCESS, FOR UPDATE invoice, `update_status_from_payments`. If amount > live `balance_due` → 400. Reuse existing balance formula.
+- DEPOSITED→BOUNCED: status FAILED; amount unchanged; evaluate PAYMENT. Not PENDING.
+- RECEIVED→RETURNED: CANCELLED. Return from DEPOSITED → 403 `INVALID_STATE`.
+- Illegal (RECEIVED→clear, CHEQUE→bounce, CLEARED→bounce, etc.) → **403 INVALID_STATE** (not 409).
+- Historical SUCCESS PDC: leave rows; `/pdc/clear` 200 no-op; bounce 403.
+- PUT `/invoices/{id}/payments/{id}` → **405 METHOD_NOT_ALLOWED** (add ErrorCode). Other-workspace invoice → **404** first, never 405.
+- Isolation: missing invoice/payment or other workspace → **404 NOT_FOUND**, never 403. Load invoice by id+workspace then payment by id+invoice_id.
+- SELECT FOR UPDATE invoice **and** payment on transitions. Amount/method/payment_date/pdc_date never UPDATE. No DELETE route. POST create still requires Idempotency-Key.
+- Errors via `raise_error` / `ErrorCode` (wrapper `{success,false,error}`). AR statement math **not** forked; patch `test_success_pdc_in_paid`.
+
+### Files (planned)
+
+- `backend/app/schemas/common.py` — `METHOD_NOT_ALLOWED`
+- `backend/app/schemas/payments.py` — empty `PdcActionRequest` (`extra=forbid`)
+- `backend/app/services/payment_service.py` — PDC insert PENDING+RECEIVED
+- `backend/app/services/pdc_service.py` — four transitions
+- `backend/app/routers/payments.py` — PUT 405 + four POSTs
+- `backend/app/services/__init__.py` — export `PdcService`
+- `backend/tests/test_pdc.py` — addendum §12 (17 bullets)
+- `backend/tests/test_ar_statement.py` — `test_success_pdc_in_paid`
+
+### Out
+
+Frontend, Playwright, Alembic, git commit, volume pricing, bilingual, debit notes, CLEARED→BOUNCED, rewriting historical SUCCESS PDC, parking over-clear into `credit_balance`.
+
+---
+
 ## 2026-09-01 — WP-A AR aging + Account Statement API (implemented)
 
 **Spec:** `architecture/wave-ar-statement-addendum.md` WP-A. No UI/PDF/Playwright. **No Alembic.** No git commit.

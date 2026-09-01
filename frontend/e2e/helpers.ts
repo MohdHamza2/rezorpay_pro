@@ -135,10 +135,11 @@ export async function authJson(
   path: string,
   token: string,
   data?: unknown,
+  extraHeaders?: Record<string, string>,
 ) {
   return request.fetch(`${API_URL}${path}`, {
     method,
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, ...(extraHeaders ?? {}) },
     ...(data !== undefined ? { data } : {}),
   });
 }

@@ -284,3 +284,47 @@
   margin: 0.35rem 0;
   color: #334155;
 }
+
+.paymentHeading {
+  margin: 1.25rem 0 0.35rem;
+  color: #1e293b;
+  font-size: 0.95rem;
+}
+
+.paymentPending {
+  background: #f8fafc;
+  color: #64748b;
+}
+
+.pdcActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.pdcBtn,
+.pdcDanger {
+  border-radius: 4px;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pdcBtn {
+  background: white;
+  border: 1px solid #cbd5e1;
+  color: #334155;
+}
+
+.pdcDanger {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+}
+
+.pdcBtn:disabled,
+.pdcDanger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

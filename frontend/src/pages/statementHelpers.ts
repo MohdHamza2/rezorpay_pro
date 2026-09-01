@@ -17,7 +17,7 @@ export const AGING_ROWS: { key: keyof CreditBuckets; label: string }[] = [
 ];
 
 export const PDC_SUCCESS_NOTE =
-  'PDC recorded as SUCCESS reduces outstanding until bounce/clear (later wave).';
+  'Uncleared PDC is Payment (pending) and is not cash. Cleared PDC is Payment.';
 
 export const OUTSTANDING_COPY =
   'Outstanding amounts are current; aging days vs as-of.';

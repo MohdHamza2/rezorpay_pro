@@ -10,7 +10,16 @@ Endpoints:
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
+from fastapi import (
+    APIRouter,
+    Body,
+    Depends,
+    Header,
+    HTTPException,
+    Query,
+    Request,
+    status,
+)
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -21,6 +30,7 @@ from app.models.invoice import Invoice
 from app.models.payment import Payment
 from app.models.user import User
 from app.schemas.common import (
+    ErrorCode,
     ErrorDetail,
     PaginatedResponse,
     PaginationMeta,
@@ -31,9 +41,12 @@ from app.schemas.payments import (
     PaymentCreate,
     PaymentUpdate,
     PaymentResponse,
+    PdcActionRequest,
 )
+from app.services.customer_po_support import raise_error
 from app.services.invoice_service import InvoiceService
 from app.services.payment_service import PaymentService
+from app.services.pdc_service import PdcService
 from app.auth.dependencies import get_current_user, get_current_workspace_id
 from app.limiter import limiter
 
@@ -228,6 +241,13 @@ async def get_balance_due(
     return SuccessResponse(data=_balance_payload(invoice))
 
 
+async def _pdc_response(
+    session: AsyncSession, payment: Payment
+) -> SuccessResponse[PaymentResponse]:
+    await session.commit()
+    return SuccessResponse(data=PaymentResponse.model_validate(payment))
+
+
 @router.put(
     "/invoices/{invoice_id}/payments/{payment_id}",
     response_model=SuccessResponse[PaymentResponse],
@@ -235,39 +255,105 @@ async def get_balance_due(
 async def update_payment(
     invoice_id: UUID,
     payment_id: UUID,
-    payment_data: PaymentUpdate,
+    payment_data: PaymentUpdate = Body(default_factory=PaymentUpdate),
     session: AsyncSession = Depends(get_session),
     workspace_id: UUID = Depends(get_current_workspace_id),
 ):
-    """Update payment status (e.g. for PDC lifecycle)."""
-    # Verify invoice exists and belongs to workspace
+    """Payments are immutable. PDC lifecycle uses dedicated POST actions."""
+    del payment_id, payment_data
     invoice_result = await session.execute(
         select(Invoice)
         .where(Invoice.id == invoice_id)
         .where(Invoice.workspace_id == workspace_id)
     )
-    if not invoice_result.scalar_one_or_none():
-        raise HTTPException(status_code=404, detail="Invoice not found")
-
-    payment_result = await session.execute(
-        select(Payment).where(
-            Payment.id == payment_id, Payment.invoice_id == invoice_id
-        )
+    if invoice_result.scalar_one_or_none() is None:
+        raise_error(status.HTTP_404_NOT_FOUND, ErrorCode.NOT_FOUND, "Invoice not found")
+    raise_error(
+        status.HTTP_405_METHOD_NOT_ALLOWED,
+        ErrorCode.METHOD_NOT_ALLOWED,
+        "Payment records cannot be updated; use PDC deposit, clear, bounce, or return",
     )
-    payment = payment_result.scalar_one_or_none()
-    if not payment:
-        raise HTTPException(status_code=404, detail="Payment not found")
 
-    if payment_data.status is not None:
-        payment.status = payment_data.status
-    if payment_data.pdc_status is not None:
-        payment.pdc_status = payment_data.pdc_status
-        if payment_data.pdc_status == "CLEARED":
-            payment.status = "SUCCESS"
-        elif payment_data.pdc_status in ["BOUNCED", "RETURNED"]:
-            payment.status = "FAILED"
 
-    await session.commit()
-    await session.refresh(payment)
+@router.post(
+    "/invoices/{invoice_id}/payments/{payment_id}/pdc/deposit",
+    response_model=SuccessResponse[PaymentResponse],
+)
+@limiter.limit("10/minute")
+async def deposit_pdc(
+    request: Request,
+    invoice_id: UUID,
+    payment_id: UUID,
+    _body: PdcActionRequest = Body(default_factory=PdcActionRequest),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+    workspace_id: UUID = Depends(get_current_workspace_id),
+):
+    """RECEIVED → DEPOSITED on or after pdc_date. Stays PENDING."""
+    payment = await PdcService.deposit(
+        session, workspace_id, invoice_id, payment_id, user
+    )
+    return await _pdc_response(session, payment)
 
-    return SuccessResponse(data=PaymentResponse.model_validate(payment))
+
+@router.post(
+    "/invoices/{invoice_id}/payments/{payment_id}/pdc/clear",
+    response_model=SuccessResponse[PaymentResponse],
+)
+@limiter.limit("10/minute")
+async def clear_pdc(
+    request: Request,
+    invoice_id: UUID,
+    payment_id: UUID,
+    _body: PdcActionRequest = Body(default_factory=PdcActionRequest),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+    workspace_id: UUID = Depends(get_current_workspace_id),
+):
+    """DEPOSITED → CLEARED (SUCCESS). Historical SUCCESS PDC is a 200 no-op."""
+    payment = await PdcService.clear(
+        session, workspace_id, invoice_id, payment_id, user
+    )
+    return await _pdc_response(session, payment)
+
+
+@router.post(
+    "/invoices/{invoice_id}/payments/{payment_id}/pdc/bounce",
+    response_model=SuccessResponse[PaymentResponse],
+)
+@limiter.limit("10/minute")
+async def bounce_pdc(
+    request: Request,
+    invoice_id: UUID,
+    payment_id: UUID,
+    _body: PdcActionRequest = Body(default_factory=PdcActionRequest),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+    workspace_id: UUID = Depends(get_current_workspace_id),
+):
+    """DEPOSITED → BOUNCED (FAILED). Re-evaluates credit HOLD."""
+    payment = await PdcService.bounce(
+        session, workspace_id, invoice_id, payment_id, user
+    )
+    return await _pdc_response(session, payment)
+
+
+@router.post(
+    "/invoices/{invoice_id}/payments/{payment_id}/pdc/return",
+    response_model=SuccessResponse[PaymentResponse],
+)
+@limiter.limit("10/minute")
+async def return_pdc(
+    request: Request,
+    invoice_id: UUID,
+    payment_id: UUID,
+    _body: PdcActionRequest = Body(default_factory=PdcActionRequest),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+    workspace_id: UUID = Depends(get_current_workspace_id),
+):
+    """RECEIVED → RETURNED (CANCELLED). Illegal from DEPOSITED."""
+    payment = await PdcService.return_cheque(
+        session, workspace_id, invoice_id, payment_id, user
+    )
+    return await _pdc_response(session, payment)

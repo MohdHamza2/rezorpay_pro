@@ -15,6 +15,15 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+function toUser(raw: User): User {
+  return {
+    id: raw.id,
+    email: raw.email,
+    name: raw.name,
+    role: raw.role,
+  };
+}
+
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -24,7 +33,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (tokens) {
       try {
         const response = await apiClient.get<SuccessResponse<User>>('/auth/me');
-        setUser(response.data.data);
+        setUser(toUser(response.data.data));
       } catch (error) {
         localStorage.removeItem('auth_tokens');
         setUser(null);
@@ -50,19 +59,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const login = async (data: LoginRequest) => {
     const response = await apiClient.post<SuccessResponse<AuthResponse>>('/auth/login', data);
     const { user: userData, access_token, refresh_token } = response.data.data;
-    
+
     const tokens: AuthTokens = { access_token, refresh_token };
     localStorage.setItem('auth_tokens', JSON.stringify(tokens));
-    setUser(userData);
+    setUser(toUser(userData));
   };
 
   const register = async (data: RegisterRequest) => {
     const response = await apiClient.post<SuccessResponse<AuthResponse>>('/auth/register', data);
     const { user: userData, access_token, refresh_token } = response.data.data;
-    
+
     const tokens: AuthTokens = { access_token, refresh_token };
     localStorage.setItem('auth_tokens', JSON.stringify(tokens));
-    setUser(userData);
+    setUser(toUser(userData));
   };
 
   const logout = () => {

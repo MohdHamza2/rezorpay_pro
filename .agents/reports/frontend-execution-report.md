@@ -1500,3 +1500,149 @@ Docker API **8000**, Postgres host **5434**. Never SQLite. Password **Passw0rd1*
 - `npm run build` green
 - Isolation 404 confirmed; PDF title Account Statement asserted
 - No git commit
+
+---
+
+# WP-B PDC truth UI — Plan (before edits)
+
+**Date:** 2026-09-01
+**Owner:** frontend / coder
+**Depends on:** WP-A APPROVE_WITH_NITS (`.agents/reports/wp-a-pdc-review.md`). Historical SUCCESS PDC is cash. No Alembic. No Playwright (WP-C). No git commit.
+**Spec:** `architecture/wave-pdc-addendum.md` WP-B + §3 transitions + §6 historical SUCCESS + §7 statement note; `.agents/reports/architect-pdc-note.md`
+
+## Goal
+
+Record-payment modal + AR payment list treat **PDC as pending until CLEARED**. CHEQUE stays one-step SUCCESS. OWNER/ADMIN get Deposit / Clear / Bounce / Return for legal transitions only. MEMBER hides those buttons. Statement footer uses addendum §7 copy. Existing Vite + React app only.
+
+## API client
+
+- Keep `recordPayment` + `Idempotency-Key`. PDC body: `pdc_date` required; **never send `pdc_status`**. No extra keys.
+- `GET /api/v1/invoices/{id}/payments` — unwrap paginated `data` array (`listPayments`).
+- Four POSTs, empty `{}`, **no** Idempotency-Key:
+  `POST /api/v1/invoices/{invoiceId}/payments/{paymentId}/pdc/deposit|clear|bounce|return`
+- Isolation: key off HTTP **404** (`isHttpNotFound`), not `error.code`.
+
+## UI
+
+1. Payment modal: PDC requires cheque date; after submit toast **pending**, not PAID. CHEQUE = SUCCESS cash.
+2. AR panel payment list: method, amount, `status`, `pdc_status`. SUCCESS-only `amount_paid` (existing GET). PENDING must not look like paid.
+3. OWNER/ADMIN actions (hide illegal): RECEIVED+PENDING → Deposit, Return; DEPOSITED+PENDING → Clear, Bounce; CLEARED or `status=SUCCESS` (historical) → none (cash); BOUNCED/RETURNED → none. Deposit before `pdc_date` still calls API (400 toast).
+4. MEMBER: hide action buttons. Type `role` on `User` from `/auth/me` + login/register. API 403 if called.
+5. Testids: `payment-method`, `payment-pdc-date`, `payment-submit`, `payment-row-*`, `pdc-deposit`, `pdc-clear`, `pdc-bounce`, `pdc-return`; reuse `invoice-status`, `invoice-amount-paid`.
+6. `PDC_SUCCESS_NOTE` exact: `Uncleared PDC is Payment (pending) and is not cash. Cleared PDC is Payment.` (ArStatement + StatementPDF + preview).
+
+## Out
+
+Dashboard `pdc_outstanding`, Statements nav, volume pricing, bilingual, debit notes, Playwright, backend/Alembic, git commit.
+
+## Acceptance
+
+`cd frontend && npm run build` green.
+
+---
+
+# WP-B PDC truth UI — Implementation (completed)
+
+**Date:** 2026-09-01
+**Owner:** frontend / coder
+**No git commit. No backend / Alembic / Playwright.**
+
+## Result
+
+`npm run build` (`tsc -b && vite build`) **green**. Vite 8.2.1. Pre-existing chunk-size warning only.
+
+## SUCCESS vs PENDING
+
+- New PDC: modal requires cheque date; body sends `pdc_date` only (no `pdc_status`). Toast: **pending, not cash**. Invoice `amount_paid` / status stay SUCCESS-only from GET.
+- PENDING PDC rows: muted, status shown as `PENDING (not cash)`. Deposit/Return (RECEIVED) or Clear/Bounce (DEPOSITED) for OWNER/ADMIN.
+- Historical `status=SUCCESS` PDC (or CLEARED): treated as cash. No Deposit / Bounce / Return / Clear buttons.
+- CHEQUE / CASH / BANK / CARD: one-step SUCCESS. Toast “Payment recorded”, not “invoice PAID”.
+- MEMBER: action buttons hidden. `User.role` from `/auth/me` + login/register. API still 403 if called.
+
+## Files
+
+- `frontend/src/api/invoices.ts` — `listPayments`, `postPdcAction` (`{}`, no Idempotency-Key), `paymentCreateBody` omits `pdc_status`
+- `frontend/src/types/auth.ts` — `User.role` (`OWNER` | `ADMIN` | `MEMBER`)
+- `frontend/src/contexts/AuthContext.tsx` — persist `role` from me/login/register
+- `frontend/src/pages/paymentHelpers.ts` (new) — legal transitions, toasts, RBAC hide
+- `frontend/src/pages/InvoicePayments.tsx` (new) — AR payment list + PDC actions
+- `frontend/src/pages/InvoiceArPanel.tsx` — embed payment list; isolation retry on HTTP 404
+- `frontend/src/pages/Invoices.tsx` — PDC date required; pending toast; testids
+- `frontend/src/pages/Invoices.module.css` — pending row + PDC buttons
+- `frontend/src/pages/statementHelpers.ts` — §7 `PDC_SUCCESS_NOTE` (ArStatement + StatementPDF + preview)
+
+## Out (unchanged)
+
+Dashboard `pdc_outstanding`, Statements nav, volume pricing, bilingual, debit notes, Playwright WP-C, backend, Alembic, git commit.
+
+---
+
+# WP-C PDC truth Playwright E2E — Plan (before edits)
+
+**Date:** 2026-09-01
+**Owner:** frontend / coder
+**Depends on:** WP-B UI shipped (`invoice-record-payment`, `payment-pdc-date`, `pdc-deposit`/`clear`/`bounce`/`return`, AR `payment-list`). WP-A four POSTs + PUT 405.
+**Spec:** `architecture/wave-pdc-addendum.md` WP-C.
+
+## Goal
+
+Playwright covers PDC as a promise until CLEARED: future cheque does not PAID, same-day deposit+clear posts cash, bounce leaves AR open and re-evaluates credit (no forced HOLD). Cross-workspace PDC actions and PUT are **404**; own-workspace PUT is **405**.
+
+## Runtime
+
+Docker API **8000**, Postgres host **5434**. Never SQLite. Password **Passw0rd1**. Unique emails. Register 429 retry already in helpers.
+
+## Specs
+
+1. **Happy** `frontend/e2e/pdc.spec.ts`
+   - registerViaUi → saveWorkspaceFta → createClientViaUi → SIMPLIFIED SENT tax invoice (same as fta-tax-invoice / credit-notes)
+   - Future PDC (`pdc_date` = utc today+7) full balance via testids → invoice **SENT**, `invoice-amount-paid` AED 0.00, payment row PENDING not cash
+   - Separate SENT invoice: PDC `pdc_date=utc today` → Deposit → Clear → amount_paid increases; status PARTIAL or PAID
+   - Bounce: SENT + PDC today → Deposit → Bounce → not PAID; balance_due still full; GET `/clients/{id}/credit` or badge (do not force HOLD)
+
+2. **Isolation** `frontend/e2e/pdc-isolation.spec.ts`
+   - Workspace A: putWorkspaceFtaApi + createFtaSentInvoiceApi + POST PDC (`Idempotency-Key`)
+   - Workspace B: POST `/pdc/deposit|clear|bounce|return` on A’s ids → **404** not 403
+   - Workspace B: PUT `/invoices/{A}/payments/{id}` → **404**
+   - Workspace A: PUT same payment (`{"status":"SUCCESS"}`) → **405** (if 422, assert not 200 and document)
+
+## Helpers
+
+- Reuse `registerViaUi`, `registerWorkspace`, `createFtaSentInvoiceApi`, `authJson`, `uniqueEmail`, `E2E_PASSWORD`, `isoDate`, FTA helpers.
+- Add **optional** extra headers on `authJson` for Idempotency-Key. Existing CN/AR/credit isolation callers stay unchanged (no 5th-header required).
+- AR statement still records **CASH** via payment modal (`getByTitle('Record Payment')` + amount/select). Do not change that spec. Keep `invoice-record-payment`, `payment-amount`, `payment-method`, `payment-submit`.
+- No backend / Alembic. Prefer existing WP-B testids.
+
+## Acceptance
+
+- `npm run test:e2e` all existing + new green
+- `npm run build` green
+- Isolation 404/405 confirmed; future PDC did not PAID
+- No git commit
+
+---
+
+# WP-C PDC truth Playwright E2E — Implementation (completed)
+
+**Date:** 2026-09-01
+**Owner:** frontend / coder
+**No git commit. No backend / Alembic.**
+
+## Result
+
+- `npm run test:e2e` — **22 passed** (8.1m), chromium, workers 1. Product/FTA/quote/LPO/credit-hold/DN/CN/AR statement unchanged (statement still records **CASH** via the payment modal).
+- `npm run build` — **green** (`tsc -b && vite build`, Vite 8.2.1).
+- Future PDC: invoice stayed **SENT**, `invoice-amount-paid` AED 0.00, payment row PENDING not cash.
+- Same-day PDC: Deposit → Clear → amount_paid AED 210.00, status PAID.
+- Bounce: invoice not PAID; balance_due AED 210.00; credit GET/badge evaluated (not forced HOLD).
+- Isolation: workspace B `POST .../pdc/{deposit,clear,bounce,return}` and `PUT .../payments/{id}` → **404** not 403. Workspace A PUT `{status:SUCCESS}` → **405** (not 200).
+
+## Files
+
+- `frontend/e2e/helpers.ts` — optional `extraHeaders` on `authJson` (Idempotency-Key for PDC create). CN/AR isolation callers unchanged.
+- `frontend/e2e/pdc.spec.ts` — happy path (future / clear / bounce)
+- `frontend/e2e/pdc-isolation.spec.ts` — 404/405
+
+## Out (unchanged)
+
+Volume pricing, bilingual, debit notes, WhatsApp, Peppol, refunds, Alembic, git commit.

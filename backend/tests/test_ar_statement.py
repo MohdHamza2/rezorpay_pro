@@ -493,6 +493,21 @@ def test_success_pdc_in_paid():
         pdc_date=today.isoformat(),
     )
     assert pay.status_code == 200, pay.text
+    assert pay.json()["data"]["status"] == "PENDING"
+    payment_id = pay.json()["data"]["id"]
+    dep = client.post(
+        f"/api/v1/invoices/{invoice['id']}/payments/{payment_id}/pdc/deposit",
+        json={},
+        headers=headers,
+    )
+    assert dep.status_code == 200, dep.text
+    cleared = client.post(
+        f"/api/v1/invoices/{invoice['id']}/payments/{payment_id}/pdc/clear",
+        json={},
+        headers=headers,
+    )
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["data"]["status"] == "SUCCESS"
     r = _stmt(headers, client_id, today, today)
     assert r.status_code == 200, r.text
     data = r.json()["data"]

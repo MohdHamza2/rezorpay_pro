@@ -35,6 +35,7 @@ import toast from 'react-hot-toast';
 import { Skeleton } from '../components/Skeleton';
 import { isCreditableStatus } from './creditNoteHelpers';
 import { InvoiceArPanel } from './InvoiceArPanel';
+import { paymentRecordedMessage } from './paymentHelpers';
 import styles from './Invoices.module.css';
 
 type LineForm = {
@@ -253,12 +254,16 @@ export const Invoices = () => {
 
   const paymentMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: PaymentData }) => recordPayment(id, data),
-    onSuccess: () => {
+    onSuccess: (payment) => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['clients'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-payments'] });
+      toast.success(paymentRecordedMessage(payment));
       setIsPaymentModalOpen(false);
       setPaymentInvoice(null);
       setPaymentAmount('');
+      setPaymentMethod('BANK_TRANSFER');
       setReferenceNumber('');
       setBankName('');
       setPdcDate('');
@@ -533,6 +538,7 @@ export const Invoices = () => {
                       {(inv.status === 'SENT' || inv.status === 'PARTIALLY_PAID' || inv.status === 'OVERDUE') && (
                         <button
                           className={styles.actionBtn}
+                          data-testid="invoice-record-payment"
                           onClick={() => {
                             setPaymentInvoice(inv);
                             setPaymentAmount(Number(amountDue ?? 0).toFixed(2));
@@ -754,15 +760,25 @@ export const Invoices = () => {
             </div>
             <div className={styles.formGroup} style={{ marginTop: '1rem' }}>
               <label>Amount (AED)</label>
-              <input type="number" step="0.01" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} />
+              <input
+                type="number"
+                step="0.01"
+                data-testid="payment-amount"
+                value={paymentAmount}
+                onChange={(e) => setPaymentAmount(e.target.value)}
+              />
             </div>
             <div className={styles.formGroup}>
               <label>Payment Method</label>
-              <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
+              <select
+                data-testid="payment-method"
+                value={paymentMethod}
+                onChange={(e) => setPaymentMethod(e.target.value)}
+              >
                 <option value="BANK_TRANSFER">Bank Transfer</option>
                 <option value="CASH">Cash</option>
                 <option value="CREDIT_CARD">Credit Card</option>
-                <option value="CHEQUE">Cheque</option>
+                <option value="CHEQUE">Cheque (cleared on receipt)</option>
                 <option value="PDC">Post-Dated Cheque (PDC)</option>
               </select>
             </div>
@@ -783,8 +799,18 @@ export const Invoices = () => {
 
             {paymentMethod === 'PDC' && (
               <div className={styles.formGroup}>
-                <label>PDC Date</label>
-                <input type="date" value={pdcDate} onChange={(e) => setPdcDate(e.target.value)} />
+                <label htmlFor="payment-pdc-date">Cheque date</label>
+                <input
+                  id="payment-pdc-date"
+                  type="date"
+                  data-testid="payment-pdc-date"
+                  value={pdcDate}
+                  onChange={(e) => setPdcDate(e.target.value)}
+                  required
+                />
+                <span className={styles.hint}>
+                  Uncleared PDC is pending, not cash. Use Cheque for one-step SUCCESS.
+                </span>
               </div>
             )}
 
@@ -793,15 +819,24 @@ export const Invoices = () => {
               <button
                 type="button"
                 className={styles.primaryBtn}
-                disabled={paymentMutation.isPending || !paymentAmount}
+                data-testid="payment-submit"
+                disabled={
+                  paymentMutation.isPending ||
+                  !paymentAmount ||
+                  (paymentMethod === 'PDC' && !pdcDate)
+                }
                 onClick={() => {
-                  const data: PaymentData = { amount: parseFloat(paymentAmount), payment_method: paymentMethod };
+                  if (paymentMethod === 'PDC' && !pdcDate) {
+                    toast.error('Cheque date is required for PDC');
+                    return;
+                  }
+                  const data: PaymentData = {
+                    amount: parseFloat(paymentAmount),
+                    payment_method: paymentMethod,
+                  };
                   if (referenceNumber) data.reference_number = referenceNumber;
                   if (bankName) data.bank_name = bankName;
-                  if (paymentMethod === 'PDC') {
-                    data.pdc_date = pdcDate;
-                    data.pdc_status = 'RECEIVED';
-                  }
+                  if (paymentMethod === 'PDC') data.pdc_date = pdcDate;
                   paymentMutation.mutate({ id: paymentInvoice.id, data });
                 }}
               >

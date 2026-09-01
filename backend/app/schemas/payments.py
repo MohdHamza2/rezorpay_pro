@@ -34,8 +34,16 @@ class PaymentCreate(PaymentBase):
 
 
 class PaymentUpdate(BaseModel):
+    """Unused. PUT payments returns 405 and does not apply this body."""
+
     status: Optional[PaymentStatus] = None
     pdc_status: Optional[PDCStatus] = None
+
+
+class PdcActionRequest(BaseModel):
+    """Empty PDC transition body. Extra keys → 422."""
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class PaymentResponse(PaymentBase):
