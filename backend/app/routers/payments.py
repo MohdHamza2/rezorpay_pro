@@ -4,7 +4,7 @@ Payment Router with Idempotency and Rate Limiting.
 Endpoints:
 - POST /invoices/{id}/payments - Record payment (rate limited, idempotent)
 - GET /invoices/{id}/payments - List payments
-- GET /invoices/{id}/balance - Get balance due
+- GET /invoices/{id}/balance - Cash paid, credits, and remaining due
 """
 
 from typing import Optional
@@ -38,6 +38,19 @@ from app.auth.dependencies import get_current_user, get_current_workspace_id
 from app.limiter import limiter
 
 router = APIRouter(tags=["Payments"])
+
+
+def _balance_payload(invoice: Invoice) -> BalanceDueResponse:
+    """Cash and credits are separate; due is max(0, total − paid − credited)."""
+    amount_paid = invoice.amount_paid
+    return BalanceDueResponse(
+        total_amount=invoice.total_amount,
+        amount_paid=amount_paid,
+        amount_credited=invoice.amount_credited,
+        total_paid=amount_paid,
+        balance_due=InvoiceService.calculate_balance_due(invoice),
+        currency=invoice.currency,
+    )
 
 
 @router.post(
@@ -198,12 +211,7 @@ async def get_balance_due(
     session: AsyncSession = Depends(get_session),
     workspace_id: UUID = Depends(get_current_workspace_id),
 ):
-    """
-    Get current balance due for an invoice.
-
-    Only counts successful payments toward balance.
-    """
-    # Get invoice with payments
+    """Return invoice AR: cash paid, credits, and remaining due."""
     result = await session.execute(
         select(Invoice)
         .options(selectinload(Invoice.payments))
@@ -217,20 +225,7 @@ async def get_balance_due(
             status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found"
         )
 
-    # Calculate balance due (only successful payments)
-    balance_due = InvoiceService.calculate_balance_due(invoice)
-
-    # Calculate total paid (only successful payments)
-    total_paid = invoice.total_amount - balance_due
-
-    return SuccessResponse(
-        data=BalanceDueResponse(
-            total_amount=invoice.total_amount,
-            total_paid=total_paid,
-            balance_due=balance_due,
-            currency=invoice.currency,
-        )
-    )
+    return SuccessResponse(data=_balance_payload(invoice))
 
 
 @router.put(

@@ -26,7 +26,6 @@ from app.models.client import Client
 from app.models.credit_status_event import CreditEventReason
 from app.models.invoice import Invoice, InvoiceStatus
 from app.models.invoice_item import InvoiceItem
-from app.models.payment import PaymentStatus
 from app.models.product import Product, ProductPrice
 from app.models.workspace import Workspace
 from app.schemas.common import ErrorCode, ErrorDetail
@@ -194,6 +193,7 @@ class InvoiceService:
             subtotal=Decimal("0"),
             tax_amount=Decimal("0"),
             total_amount=Decimal("0"),
+            amount_credited=Decimal("0.00"),
             created_at=_now(),
             updated_at=_now(),
         )
@@ -275,16 +275,14 @@ class InvoiceService:
 
     @staticmethod
     def calculate_balance_due(invoice: Invoice) -> Decimal:
-        """
-        Calculate remaining balance on invoice.
+        """Remaining AR: max(0, total − paid − credited). SUCCESS payments only."""
+        return invoice.balance_due
 
-        ⚠️ CRITICAL: Only counts successful payments.
-        Failed payments are kept for audit trail but don't affect balance.
-        """
-        total_paid = sum(
-            p.amount for p in invoice.payments if p.status == PaymentStatus.SUCCESS
-        )
-        return invoice.total_amount - total_paid
+    @staticmethod
+    def calculate_credit_owing(invoice: Invoice) -> Decimal:
+        credited = invoice.amount_credited or Decimal("0")
+        raw = invoice.total_amount - credited - invoice.amount_paid
+        return money(max(Decimal("0"), -raw))
 
     @staticmethod
     def determine_status_from_balance(invoice: Invoice) -> InvoiceStatus:
@@ -296,11 +294,12 @@ class InvoiceService:
         if invoice.status in (InvoiceStatus.CANCELLED, InvoiceStatus.DRAFT):
             return invoice.status
         balance = InvoiceService.calculate_balance_due(invoice)
-        if balance <= 0:
+        owing = InvoiceService.calculate_credit_owing(invoice)
+        if owing > 0 or balance == 0:
             return InvoiceStatus.PAID
         if should_mark_overdue(invoice):
             return InvoiceStatus.OVERDUE
-        if balance < invoice.total_amount:
+        if invoice.amount_paid > 0:
             return InvoiceStatus.PARTIALLY_PAID
         return InvoiceStatus.SENT
 

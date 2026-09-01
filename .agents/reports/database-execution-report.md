@@ -2,6 +2,36 @@
 
 ---
 
+## 2026-09-01 — WP-A Tax Credit Notes schema (planned BEFORE code)
+
+**Spec:** `architecture/wave-credit-notes-addendum.md` §7. Architect lock: Alembic YES, new revision only. `down_revision = "a7c4e9d2b105"`. NEVER rewrite DN (`a7c4e9d2b105`), credit HOLD, LPO, quotes, FTA, or Product Master.
+
+### Locked
+
+- Tables: `credit_note_counters`, `credit_notes`, `credit_note_items`, `credit_note_events`.
+- `credit_note_counters` composite PK `(workspace_id, year)` — clone invoice counters. Do **not** reuse invoice/quotation/lpo/dn/spo counters. Numbers `CN-YYYY-XXXX` allocated at create. Soft-delete does not rewind.
+- `invoices.amount_credited` Numeric(12,2) NOT NULL default 0.
+- `clients.credit_balance` Numeric(12,2) NOT NULL default 0.
+- PG enum value `CREDIT_NOTE_ISSUED` on `invoiceeventtype` via `ALTER TYPE ... ADD VALUE`.
+- PostgreSQL ENUMs: `creditnotestatus` (DRAFT|ISSUED), `creditnotereason` (SALES_RETURN|INVOICE_ERROR|DISCOUNT|GOODWILL|OTHER), `creditnoteeventtype` (CN_CREATED|CN_UPDATED|CN_ISSUED).
+- No debit notes. No payment mutations. No `/apply`.
+
+### Verification (planned)
+
+`alembic upgrade head` on DATABASE_URL and `alembic check` clean. Tests use SQLModel `create_all` on `{DATABASE_URL}_test`. Never SQLite.
+
+---
+
+## 2026-09-01 — WP-A Tax Credit Notes schema (implemented)
+
+**Revision:** `b8d5f0c3a216` revises `a7c4e9d2b105`. File: `backend/alembic/versions/b8d5f0c3a216_add_credit_notes.py`.
+
+Applied via test `alembic upgrade head` + `alembic check`: "No new upgrade operations detected". DN revision `a7c4e9d2b105` not rewritten.
+
+Created: `credit_note_counters`, `credit_notes`, `credit_note_items`, `credit_note_events`. Added `invoices.amount_credited` Numeric(12,2) NOT NULL default 0 and `clients.credit_balance` Numeric(12,2) NOT NULL default 0. `ALTER TYPE invoiceeventtype ADD VALUE IF NOT EXISTS 'CREDIT_NOTE_ISSUED'`. ENUMs `creditnotestatus`, `creditnotereason`, `creditnoteeventtype`. No debit notes. No payment table changes.
+
+---
+
 ## 2026-09-01 — WP-A Delivery Notes schema (planned BEFORE code)
 
 **Spec:** `architecture/wave-delivery-notes-addendum.md` §10. Architect lock: Alembic YES, new revision only. `down_revision = "9f3a7c2e1d04"`. NEVER rewrite credit (`9f3a7c2e1d04`), LPO, quotes, FTA, or Product Master.

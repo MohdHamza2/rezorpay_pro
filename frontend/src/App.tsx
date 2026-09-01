@@ -16,6 +16,9 @@ import { LpoDetail } from './pages/LpoDetail';
 import { DeliveryNotes } from './pages/DeliveryNotes';
 import { DeliveryNoteForm } from './pages/DeliveryNoteForm';
 import { DeliveryNoteDetail } from './pages/DeliveryNoteDetail';
+import { CreditNotes } from './pages/CreditNotes';
+import { CreditNoteForm } from './pages/CreditNoteForm';
+import { CreditNoteDetail } from './pages/CreditNoteDetail';
 import { Invoices } from './pages/Invoices';
 import { Settings } from './pages/Settings';
 import { Products } from './pages/Products';
@@ -68,6 +71,10 @@ function App() {
               <Route path="delivery-notes/new" element={<DeliveryNoteForm />} />
               <Route path="delivery-notes/:id/edit" element={<DeliveryNoteForm />} />
               <Route path="delivery-notes/:id" element={<DeliveryNoteDetail />} />
+              <Route path="credit-notes" element={<CreditNotes />} />
+              <Route path="credit-notes/new" element={<CreditNoteForm />} />
+              <Route path="credit-notes/:id/edit" element={<CreditNoteForm />} />
+              <Route path="credit-notes/:id" element={<CreditNoteDetail />} />
               <Route path="invoices" element={<Invoices />} />
               <Route path="settings" element={<Settings />} />
               <Route path="products" element={<Products />} />

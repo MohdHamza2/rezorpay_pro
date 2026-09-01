@@ -33,6 +33,9 @@ class Client(SQLModel, table=True):
             "payment_terms_days IN (0, 30, 45, 60)",
             name="check_client_payment_terms_days",
         ),
+        CheckConstraint(
+            "credit_balance >= 0", name="check_client_credit_balance_nonneg"
+        ),
     )
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
@@ -66,6 +69,10 @@ class Client(SQLModel, table=True):
     )
     credit_status_changed_by: Optional[uuid.UUID] = Field(
         default=None, foreign_key="users.id", nullable=True
+    )
+    credit_balance: Decimal = Field(
+        default=Decimal("0.00"),
+        sa_column=Column(Numeric(12, 2), nullable=False, server_default="0"),
     )
 
     # Timestamps

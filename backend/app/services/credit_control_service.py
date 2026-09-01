@@ -304,6 +304,7 @@ class CreditControlService:
             "exposure": snap.exposure,
             "oldest_overdue_days": snap.oldest_overdue_days,
             "buckets": aging_buckets(invoices, today),
+            "credit_balance": money(client.credit_balance or ZERO),
         }
 
     @staticmethod

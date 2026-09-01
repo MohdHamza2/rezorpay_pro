@@ -27,6 +27,7 @@ class InvoiceEventType(str, Enum):
     PAYMENT_ADDED = "PAYMENT_ADDED"
     STATUS_CHANGED = "STATUS_CHANGED"
     INVOICE_VOIDED = "INVOICE_VOIDED"
+    CREDIT_NOTE_ISSUED = "CREDIT_NOTE_ISSUED"
 
 
 class InvoiceEvent(SQLModel, table=True):

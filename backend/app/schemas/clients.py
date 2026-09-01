@@ -94,6 +94,7 @@ class ClientResponse(ClientBase):
     credit_status: CreditStatus = CreditStatus.ACTIVE
     effective_credit_limit: Decimal = Decimal("0.00")
     exposure: Decimal = Decimal("0.00")
+    credit_balance: Decimal = Decimal("0.00")
     created_at: datetime
     updated_at: datetime
     deleted_at: Optional[datetime] = None
@@ -115,6 +116,7 @@ class ClientCreditResponse(BaseModel):
     exposure: Decimal
     oldest_overdue_days: Optional[int] = None
     buckets: CreditBuckets
+    credit_balance: Decimal = Decimal("0.00")
 
 
 class ClientListResponse(BaseModel):

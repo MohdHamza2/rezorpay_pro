@@ -146,6 +146,7 @@ export const Clients = () => {
                 <th>Name</th>
                 <th>Email</th>
                 <th>Credit</th>
+                <th>Unapplied credit</th>
                 <th>Exposure / limit</th>
                 <th>Actions</th>
               </tr>
@@ -156,6 +157,9 @@ export const Clients = () => {
                   <td>{client.name}</td>
                   <td>{client.email}</td>
                   <td><CreditStatusBadge status={client.credit_status} /></td>
+                  <td data-testid="client-credit-balance">
+                    {client.credit_balance != null ? formatAed(client.credit_balance) : '—'}
+                  </td>
                   <td data-testid="client-credit-exposure">
                     {formatAed(client.exposure)} / {formatAed(client.effective_credit_limit)}
                   </td>
@@ -178,7 +182,7 @@ export const Clients = () => {
               ))}
               {clients?.length === 0 && (
                 <tr>
-                  <td colSpan={5} style={{ textAlign: 'center', padding: '2rem' }}>
+                  <td colSpan={6} style={{ textAlign: 'center', padding: '2rem' }}>
                     No clients found.
                   </td>
                 </tr>
@@ -274,6 +278,13 @@ export const Clients = () => {
                       <span>61–90 {formatAed(credit.buckets.days_61_90)}</span>
                       <span>90+ {formatAed(credit.buckets.days_90_plus)}</span>
                     </div>
+                  )}
+                  {(credit?.credit_balance != null || editingClient.credit_balance != null) && (
+                    <span className={styles.hint} data-testid="client-credit-balance">
+                      Unapplied credit (credit notes, not cash):{' '}
+                      {formatAed(credit?.credit_balance ?? editingClient.credit_balance)}
+                      . Not applied to the next invoice in this release.
+                    </span>
                   )}
                 </div>
               )}

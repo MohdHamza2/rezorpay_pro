@@ -38,6 +38,7 @@ from app.routers.customer_purchase_orders import (
     router as customer_purchase_orders_router,
 )
 from app.routers.delivery_notes import router as delivery_notes_router
+from app.routers.credit_notes import router as credit_notes_router
 
 settings = get_settings()
 logger = logging.getLogger("uvicorn.error")
@@ -182,6 +183,7 @@ app.include_router(supplier_invoices_router, prefix="/api/v1")
 app.include_router(quotations_router, prefix="/api/v1")
 app.include_router(customer_purchase_orders_router, prefix="/api/v1")
 app.include_router(delivery_notes_router, prefix="/api/v1")
+app.include_router(credit_notes_router, prefix="/api/v1")
 
 
 @app.get("/")

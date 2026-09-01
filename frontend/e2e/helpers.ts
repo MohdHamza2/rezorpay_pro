@@ -379,6 +379,50 @@ export async function inventoryOnHand(
   return rows.reduce((sum, row) => sum + Number(row.on_hand ?? 0), 0);
 }
 
+export async function putWorkspaceFtaApi(
+  request: APIRequestContext,
+  token: string,
+): Promise<void> {
+  await expectApiData(
+    await authJson(request, 'PUT', '/api/v1/workspaces/me', token, {
+      trn: FTA_TRN,
+      address: FTA_SELLER_ADDRESS,
+      credit_limit_default: '100000.00',
+    }),
+    200,
+  );
+}
+
+export async function createFtaSentInvoiceApi(
+  request: APIRequestContext,
+  token: string,
+): Promise<{ clientId: string; invoiceId: string; itemId: string }> {
+  const client = await expectApiData<{ id: string }>(
+    await authJson(request, 'POST', '/api/v1/clients', token, {
+      name: 'Client A',
+      email: uniqueEmail('cn-iso-client'),
+      address: FTA_BUYER_ADDRESS,
+    }),
+    201,
+  );
+  const today = isoDate();
+  const created = await expectApiData<{ id: string }>(
+    await authJson(request, 'POST', '/api/v1/invoices', token, {
+      client_id: client.id,
+      issue_date: today,
+      due_date: today,
+      supply_date: today,
+      items: [{ description: 'NYA 4mm cable', quantity: '2', unit_price: '100.00' }],
+    }),
+    201,
+  );
+  const sent = await expectApiData<{ id: string; items: { id: string }[] }>(
+    await authJson(request, 'POST', `/api/v1/invoices/${created.id}/send`, token, {}),
+    200,
+  );
+  return { clientId: client.id, invoiceId: sent.id, itemId: sent.items[0].id };
+}
+
 export async function createCatalogLpoViaUi(
   page: Page,
   input: { clientName: string; sku: string; quantity: string; price: string },

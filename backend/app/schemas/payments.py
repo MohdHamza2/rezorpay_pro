@@ -49,7 +49,16 @@ class PaymentResponse(PaymentBase):
 
 
 class BalanceDueResponse(BaseModel):
+    """Invoice AR snapshot. Credits are not cash.
+
+    amount_paid / total_paid: Σ SUCCESS payments only.
+    amount_credited: issued credit notes.
+    balance_due: max(0, total − paid − credited).
+    """
+
     total_amount: Decimal
+    amount_paid: Decimal
+    amount_credited: Decimal = Decimal("0.00")
     total_paid: Decimal
     balance_due: Decimal
     currency: str

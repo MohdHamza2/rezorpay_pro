@@ -3,6 +3,109 @@
 
 ---
 
+## 2026-09-01 — WP-A W2 GET /invoices/{id}/balance credits-as-cash (implemented)
+
+**Nit:** W2 in `.agents/reports/wp-a-credit-notes-review.md`. Backend only. No Alembic rewrite. No git commit.
+
+### Done
+
+- `GET /invoices/{id}/balance` no longer sets `total_paid = total − balance_due` (that treated issued CNs as cash).
+- Response now exposes `amount_paid` (SUCCESS payments only) and `amount_credited` separately.
+- `total_paid` is cash-only (same as `amount_paid`).
+- `balance_due` stays `max(0, total − paid − credited)` via `InvoiceService.calculate_balance_due`.
+- Pytest: unpaid CN → `total_paid`/`amount_paid` stay 0; partial payment + CN → `total_paid` equals cash, not cash+credit.
+
+### Files
+
+- `backend/app/schemas/payments.py` — `BalanceDueResponse` + `amount_paid` / `amount_credited`
+- `backend/app/routers/payments.py` — `_balance_payload`
+- `backend/tests/test_credit_notes.py` — `_get_balance`; unpaid GET `/balance` asserts; `test_balance_endpoint_does_not_treat_credits_as_paid`
+
+### Pytest (PostgreSQL `_test`)
+
+- `tests/test_credit_notes.py`: **14 passed**
+- `tests/test_invoices.py`: **25 passed**
+- Combined: **39 passed, 0 failed**
+
+black + ruff clean on touched files.
+
+---
+
+## 2026-09-01 — WP-A W2 GET /invoices/{id}/balance credits-as-cash (planned BEFORE code)
+
+**Nit:** W2 in `.agents/reports/wp-a-credit-notes-review.md`. Backend only. No Alembic rewrite. No git commit.
+
+### Locked
+
+- `GET /invoices/{id}/balance` must not treat credit notes as cash.
+- Expose `amount_paid` (SUCCESS payments only) and `amount_credited` separately.
+- Keep `total_paid` as cash received: same as `amount_paid`, never `total_amount − balance_due`.
+- `balance_due` stays `max(0, total − paid − credited)`.
+- Pytest: after an issued CN, `total_paid` / `amount_paid` are not inflated by the credited amount.
+- Files: `backend/app/schemas/payments.py`, `backend/app/routers/payments.py`, `backend/tests/test_credit_notes.py`.
+
+---
+
+## 2026-09-01 — WP-A Tax Credit Notes API (planned BEFORE code)
+
+**Spec:** `architecture/wave-credit-notes-addendum.md` WP-A. Architect note: `.agents/reports/architect-credit-notes-note.md`. No UI/PDF/Playwright. No git commit.
+
+### Locked
+
+- `CreditNoteNumberService` SELECT FOR UPDATE `CN-YYYY-XXXX` on `credit_note_counters` at create. Gapless. Soft-delete does not rewind.
+- Parent invoice SENT/PARTIALLY_PAID/PAID/OVERDUE only. DRAFT/CANCELLED → 403 `INVALID_STATE`. Other workspace → 404.
+- Lines ≥ 1, each `invoice_item_id`. Qty ≤ remaining vs ISSUED CNs. Frozen `unit_price`/`tax_rate`/discounts (mismatch 422). Header total ≤ `invoice.total − Σ ISSUED CN.total` else 400 `CREDIT_EXCEEDS_REMAINING` `field=total_amount`. Same `money()`.
+- DRAFT → ISSUED posts AR. No `/apply`. No PUT/DELETE after ISSUED. Soft-delete DRAFT only. Issue idempotent 200. SELECT FOR UPDATE CN + invoice.
+- `balance_due = money(max(0, total − paid − credited))`. Never mutate payment rows or invoice line money.
+- Unpaid/partial: shrink due; PAID if remainder covered. PAID + CN: stay PAID; increment `clients.credit_balance` by this CN’s over-credit. No auto-apply.
+- Issue never `CREDIT_HOLD`. Re-evaluate after issue. Create/PUT never blocked.
+- FTA snapshots on issue from invoice snapshots (live fallback like send, no FTA hard-fail).
+- Tests: `backend/tests/test_credit_notes.py` §10 + invoices/payments/credit_control regression. PostgreSQL `_test`.
+
+### Files (planned)
+
+- `backend/app/models/credit_note_counter.py`, `credit_note.py`, `credit_note_item.py`, `credit_note_event.py`
+- `backend/alembic/versions/b8d5f0c3a216_add_credit_notes.py` (`down_revision = "a7c4e9d2b105"`)
+- `backend/app/services/credit_note_number.py`, `credit_note_support.py`, `credit_note_service.py`
+- `backend/app/schemas/credit_notes.py`, `routers/credit_notes.py`, `main.py`
+- Invoice/client/payment hooks: `invoice.py`, `invoice_event.py`, `invoice_service.py`, `schemas/invoices.py`, `client.py`, `schemas/clients.py`, `credit_control_service.py`
+- `backend/tests/test_credit_notes.py`
+
+---
+
+## 2026-09-01 — WP-A Tax Credit Notes API (implemented)
+
+**Spec:** addendum WP-A. No UI/PDF/Playwright. No git commit.
+
+### Done
+
+- `CreditNoteNumberService` SELECT FOR UPDATE `CN-YYYY-XXXX` via `credit_note_counters` (savepoint on first-year insert race). Soft-delete does not rewind.
+- Parent SENT/PARTIALLY_PAID/PAID/OVERDUE only. DRAFT/CANCELLED → 403. Other workspace → 404.
+- Frozen invoice-line money; omit `tax_rate` copies invoice 5%. Qty > remaining → 400. Header > remaining → 400 `CREDIT_EXCEEDS_REMAINING`. Extra keys 422.
+- DRAFT → ISSUED posts AR (`amount_credited`, `balance_due = max(0, total − paid − credited)`). Idempotent issue 200. PUT/DELETE ISSUED → 403. No `/apply`.
+- PAID + CN stays PAID; over-credit increments `clients.credit_balance`. Payments never updated/deleted. Issue never `CREDIT_HOLD`.
+- FTA snapshots copied on issue from invoice (live fallback, no FTA hard-fail).
+
+### Files
+
+- models: `credit_note_counter.py`, `credit_note.py`, `credit_note_item.py`, `credit_note_event.py` + invoice/client/invoice_event/user
+- `backend/alembic/versions/b8d5f0c3a216_add_credit_notes.py`
+- `credit_note_number.py`, `credit_note_support.py`, `credit_note_service.py`
+- `schemas/credit_notes.py`, `routers/credit_notes.py`, `main.py`
+- `invoice_service.py` balance/status, `credit_control_service.py` aging `credit_balance`
+- `backend/tests/test_credit_notes.py`
+
+### Pytest (PostgreSQL `_test`)
+
+- `tests/test_credit_notes.py`: **13 passed**
+- `tests/test_invoices.py`: **25 passed**
+- `tests/test_credit_control.py`: **17 passed**
+- Combined: **55 passed, 0 failed**
+
+`alembic upgrade head` + `alembic check` clean. black + ruff clean on touched files.
+
+---
+
 ## 2026-09-01 — WP-A Delivery Notes API (planned BEFORE code)
 
 **Spec:** `architecture/wave-delivery-notes-addendum.md` WP-A. Architect note: `.agents/reports/architect-delivery-notes-note.md`. No UI/PDF/Playwright. No git commit.

@@ -67,6 +67,10 @@ from app.models.dn_counter import DnCounter
 from app.models.delivery_note import DeliveryNote, DeliveryNoteStatus
 from app.models.delivery_note_item import DeliveryNoteItem
 from app.models.delivery_note_event import DeliveryNoteEvent, DeliveryNoteEventType
+from app.models.credit_note_counter import CreditNoteCounter
+from app.models.credit_note import CreditNote, CreditNoteReason, CreditNoteStatus
+from app.models.credit_note_item import CreditNoteItem
+from app.models.credit_note_event import CreditNoteEvent, CreditNoteEventType
 
 __all__ = [
     "Workspace",
@@ -133,4 +137,11 @@ __all__ = [
     "DeliveryNoteItem",
     "DeliveryNoteEvent",
     "DeliveryNoteEventType",
+    "CreditNoteCounter",
+    "CreditNote",
+    "CreditNoteReason",
+    "CreditNoteStatus",
+    "CreditNoteItem",
+    "CreditNoteEvent",
+    "CreditNoteEventType",
 ]

@@ -181,6 +181,7 @@ class InvoiceResponse(InvoiceBase):
     tax_amount: Decimal
     total_amount: Decimal
     amount_paid: Decimal
+    amount_credited: Decimal = Decimal("0.00")
     balance_due: Decimal
     items: List[InvoiceItemResponse]
     created_at: datetime

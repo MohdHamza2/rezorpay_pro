@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getInvoices,
@@ -25,13 +26,15 @@ import { getProductPrices, getProducts, PRODUCT_PAGE_SIZE } from '../api/product
 import { useForm, useFieldArray } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Edit2, Plus, Trash2, Send, XCircle, DollarSign, Download, Eye } from 'lucide-react';
+import { Edit2, Plus, Trash2, Send, XCircle, DollarSign, Download, Eye, FileMinus } from 'lucide-react';
 import { pdf } from '@react-pdf/renderer';
 import { InvoicePDF } from '../components/pdf/InvoicePDF';
 import { InvoicePdfPreview } from '../components/pdf/InvoicePdfPreview';
 import { getCurrentWorkspace } from '../api/workspaces';
 import toast from 'react-hot-toast';
 import { Skeleton } from '../components/Skeleton';
+import { isCreditableStatus } from './creditNoteHelpers';
+import { InvoiceArPanel } from './InvoiceArPanel';
 import styles from './Invoices.module.css';
 
 type LineForm = {
@@ -224,6 +227,7 @@ function buildUpdatePayload(data: InvoiceFormValues): InvoiceUpdatePayload {
 }
 
 export const Invoices = () => {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
@@ -236,6 +240,7 @@ export const Invoices = () => {
   const [pdcDate, setPdcDate] = useState('');
   const [pdfBusyId, setPdfBusyId] = useState<string | null>(null);
   const [previewInvoice, setPreviewInvoice] = useState<Invoice | null>(null);
+  const [arInvoiceId, setArInvoiceId] = useState<string | null>(null);
   const [sendBlock, setSendBlock] = useState<{ code: string; message: string } | null>(null);
 
   const { data: invoices, isLoading } = useQuery({ queryKey: ['invoices'], queryFn: getInvoices });
@@ -440,6 +445,8 @@ export const Invoices = () => {
                 <th>Client</th>
                 <th>Status</th>
                 <th>Total</th>
+                <th>Paid (cash)</th>
+                <th>Credited</th>
                 <th>Amount Due</th>
                 <th>Issue Date</th>
                 <th>Actions</th>
@@ -449,13 +456,28 @@ export const Invoices = () => {
               {invoices?.map((inv) => {
                 const client = clients?.find((entry) => entry.id === inv.client_id);
                 const amountDue = Number(inv.balance_due ?? 0);
+                const showCredited = inv.amount_credited !== undefined && inv.amount_credited !== null;
                 return (
                   <tr key={inv.id} data-testid={`invoice-row-${inv.invoice_number}`}>
-                    <td><strong>{inv.invoice_number}</strong></td>
+                    <td>
+                      <button
+                        type="button"
+                        className={styles.actionBtn}
+                        style={{ fontWeight: 700, color: '#2563eb' }}
+                        data-testid={`invoice-open-${inv.invoice_number}`}
+                        onClick={() => setArInvoiceId(inv.id)}
+                      >
+                        {inv.invoice_number}
+                      </button>
+                    </td>
                     <td>{client?.name || 'Unknown Client'}</td>
                     <td data-testid="invoice-status">{getStatusBadge(inv.status)}</td>
                     <td>{formatAed(inv.total_amount)}</td>
-                    <td>{formatAed(amountDue)}</td>
+                    <td data-testid="invoice-amount-paid">{formatAed(inv.amount_paid)}</td>
+                    <td data-testid="invoice-amount-credited">
+                      {showCredited ? formatAed(inv.amount_credited) : '—'}
+                    </td>
+                    <td data-testid="invoice-balance-due">{formatAed(amountDue)}</td>
                     <td>{new Date(inv.issue_date).toLocaleDateString()}</td>
                     <td>
                       <button
@@ -521,13 +543,23 @@ export const Invoices = () => {
                           <DollarSign size={16} />
                         </button>
                       )}
+                      {isCreditableStatus(inv.status) && (
+                        <button
+                          className={styles.actionBtn}
+                          data-testid="invoice-create-cn"
+                          onClick={() => navigate(`/credit-notes/new?invoice_id=${inv.id}`)}
+                          title="Create tax credit note"
+                        >
+                          <FileMinus size={16} />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );
               })}
               {invoices?.length === 0 && (
                 <tr>
-                  <td colSpan={7} style={{ textAlign: 'center', padding: '2rem' }}>No invoices found.</td>
+                  <td colSpan={9} style={{ textAlign: 'center', padding: '2rem' }}>No invoices found.</td>
                 </tr>
               )}
             </tbody>
@@ -787,6 +819,10 @@ export const Invoices = () => {
           workspace={workspace}
           onClose={() => setPreviewInvoice(null)}
         />
+      )}
+
+      {arInvoiceId && (
+        <InvoiceArPanel invoiceId={arInvoiceId} onClose={() => setArInvoiceId(null)} />
       )}
     </div>
   );

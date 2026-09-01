@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, date, timezone
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
 from typing import Optional, TYPE_CHECKING
 
@@ -44,6 +44,7 @@ class Invoice(SQLModel, table=True):
         CheckConstraint("subtotal >= 0", name="check_subtotal_positive"),
         CheckConstraint("tax_amount >= 0", name="check_tax_amount_positive"),
         CheckConstraint("total_amount >= 0", name="check_total_amount_positive"),
+        CheckConstraint("amount_credited >= 0", name="check_amount_credited_nonneg"),
         Index(
             "ix_invoices_workspace_id_client_id_status",
             "workspace_id",
@@ -65,6 +66,10 @@ class Invoice(SQLModel, table=True):
     subtotal: Decimal = Field(sa_column=Column(Numeric(12, 2), nullable=False))
     tax_amount: Decimal = Field(sa_column=Column(Numeric(12, 2), nullable=False))
     total_amount: Decimal = Field(sa_column=Column(Numeric(12, 2), nullable=False))
+    amount_credited: Decimal = Field(
+        default=Decimal("0.00"),
+        sa_column=Column(Numeric(12, 2), nullable=False, server_default="0"),
+    )
 
     status: InvoiceStatus = Field(
         sa_column=Column(
@@ -130,4 +135,10 @@ class Invoice(SQLModel, table=True):
 
     @property
     def balance_due(self) -> Decimal:
-        return self.total_amount - self.amount_paid
+        credited = (
+            self.amount_credited if self.amount_credited is not None else Decimal("0")
+        )
+        raw = self.total_amount - self.amount_paid - credited
+        if raw < 0:
+            raw = Decimal("0")
+        return raw.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)

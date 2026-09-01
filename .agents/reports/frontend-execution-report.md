@@ -1071,3 +1071,201 @@ HOLD 1.1m, LPO isolation 1.1m, and product-isolation 1.1m are register `5/minute
 - Playwright not wired into GitHub Actions
 - Auth register 5/minute (retries; isolation specs can wait ~1m)
 - Next after A–C: tax credit notes (gap 10)
+
+---
+
+# WP-B Tax Credit Notes UI + PDF — Plan (before edits)
+
+**Date:** 2026-09-01
+**Owner:** frontend / coder
+**Depends on:** WP-A API (`/api/v1/credit-notes`, Alembic `b8d5f0c3a216`). Isolation HTTP 404 (wrapper code may be `HTTP_ERROR`). Review: `.agents/reports/wp-a-credit-notes-review.md`.
+**Spec:** `architecture/wave-credit-notes-addendum.md` WP-B, `.agents/frontend-agent.md`
+
+## Goal
+
+Sales UI + Tax Credit Note PDF for tax credit notes. Copy the delivery-note split: list / create-edit / detail / PDF. Do not display credits as cash paid (W2). Do not change Alembic, InvoicePDF title, or Playwright (WP-C).
+
+## API client contract
+
+- Base `/api/v1/credit-notes`. JWT via existing `apiClient`.
+- List unwraps `PaginatedResponse`: `response.data.data` array + `pagination`. Query: `invoice_id`, `client_id`, `status`, `search`, `page`, `per_page`.
+- Create/update bodies `extra="forbid"`-safe: only `invoice_id`, `reason`, optional `reason_notes` / `issue_date` / `items[]` with `invoice_item_id` + `quantity`. Never send money fields (backend copies frozen invoice lines). Issue POST `{}` only.
+- Isolation: treat **HTTP 404**, not `error.code === "NOT_FOUND"` (W1).
+- Do not call `GET /invoices/{id}/balance` (`total_paid` inflates by credits — W2).
+
+## Files to change
+
+| File | Change |
+|---|---|
+| `frontend/src/api/creditNotes.ts` | Types + list/get/create/update/delete/issue |
+| `frontend/src/pages/creditNoteHelpers.ts` | Remaining qty from ISSUED CNs, form schema, payloads |
+| `frontend/src/pages/CreditNotes.tsx` | Paginated list, filters, issue/edit/PDF |
+| `frontend/src/pages/CreditNoteForm.tsx` | Pick SENT/PAID/PARTIAL/OVERDUE invoice, line picker |
+| `frontend/src/pages/CreditNoteDetail.tsx` | Issue, DRAFT-only edit/delete, PDF preview |
+| `frontend/src/pages/CreditNoteStatusBadge.tsx` | DRAFT / ISSUED |
+| `frontend/src/components/pdf/CreditNotePDF.tsx` | Title **Tax Credit Note**; original INV; TRNs; Helvetica; English |
+| `frontend/src/components/pdf/CreditNotePdfPreview.tsx` | HTML preview same title |
+| `frontend/src/App.tsx` | `/credit-notes` under AuthGuard + Layout |
+| `frontend/src/components/Layout.tsx` | Nav under Sales near Invoices |
+| `frontend/src/api/invoices.ts` | Optional `amount_credited` |
+| `frontend/src/api/clients.ts` | Optional `credit_balance` |
+| `frontend/src/pages/Invoices.tsx` | AR panel: credited vs paid vs due; link to CNs; never label CN as payment |
+| `frontend/src/pages/Clients.tsx` | Read-only `credit_balance` (no apply) |
+| `InvoicePDF.tsx` | **Unchanged** (stays Tax Invoice) |
+
+## UX
+
+- Create from invoice: remaining qty = invoice line qty − Σ ISSUED CN qty. DRAFT does not reserve. Qty 0 omits the line. Amount-discount lines (W4): credit remaining as a block.
+- Issue posts AR (no `/apply`). DRAFT-only PUT/DELETE.
+- Invoice UI: `amount_credited` + adjusted `balance_due` if present. Amount paid stays cash. Client: unapplied `credit_balance`.
+- `.toFixed` only with `?? 0`.
+
+## Out of scope
+
+Playwright WP-C, Alembic, debit notes, auto-apply credit_balance, Arabic PDF, git commit.
+
+## Acceptance
+
+1. `cd frontend && npm run build` succeeds
+2. AuthGuard wraps `/credit-notes`
+3. Extra keys never sent; paginated `data` array
+4. Tax Invoice PDF title unchanged
+
+---
+
+# WP-B Tax Credit Notes UI + PDF — Implementation (completed)
+
+**Date:** 2026-09-01
+**Owner:** frontend / coder
+**Alembic:** not touched (`b8d5f0c3a216` remains WP-A).
+
+## Result
+
+`cd frontend && npm run build` — `tsc -b && vite build` succeeded (Vite 8.2.1). Pre-existing chunk-size warning only.
+
+## Shipped
+
+- API client unwraps paginated `data` array. Create/update send only allowed keys (`invoice_item_id` + `quantity` on lines). Issue POST `{}`. Isolation toasts/pages use HTTP 404 (`isHttpNotFound`), not `NOT_FOUND`.
+- Routes `/credit-notes`, `/new`, `/:id/edit`, `/:id` under `AuthGuard` + `Layout`. Nav **Credit Notes** under Sales & Customers, after Invoices (`nav-credit-notes`).
+- Create DRAFT from SENT / PAID / PARTIALLY_PAID / OVERDUE invoice. Line picker caps qty at remaining (invoice qty − Σ ISSUED CN qty). Amount-discount lines must credit remaining in full (W4). Issue posts AR. DRAFT-only edit/delete.
+- `CreditNotePDF` / preview title **Tax Credit Note**; original INV number + issue date; seller/buyer TRN snapshots (live fallback on DRAFT). English, Helvetica. `InvoicePDF` still **Tax Invoice**.
+- Invoice AR panel: amount paid (cash) vs amount credited (credit notes) vs balance due. Never labels a CN as a payment. Does not call `GET /invoices/{id}/balance`.
+- Client list + credit panel: read-only unapplied `credit_balance`. No apply UI.
+- `.toFixed` on new money/qty helpers uses `?? 0`.
+
+## Files
+
+**New:** `frontend/src/api/creditNotes.ts`, `frontend/src/pages/creditNoteHelpers.ts`, `frontend/src/pages/CreditNotes.tsx`, `frontend/src/pages/CreditNoteForm.tsx`, `frontend/src/pages/CreditNoteDetail.tsx`, `frontend/src/pages/CreditNoteStatusBadge.tsx`, `frontend/src/pages/CreditNotes.module.css`, `frontend/src/pages/InvoiceArPanel.tsx`, `frontend/src/components/pdf/CreditNotePDF.tsx`, `frontend/src/components/pdf/CreditNotePdfPreview.tsx`
+
+**Edited:** `frontend/src/App.tsx`, `frontend/src/components/Layout.tsx`, `frontend/src/api/invoices.ts`, `frontend/src/api/clients.ts`, `frontend/src/pages/Invoices.tsx`, `frontend/src/pages/Clients.tsx`, `.agents/reports/frontend-execution-report.md`
+
+## Out of scope (unchanged)
+
+Playwright WP-C, Alembic, debit notes, auto-apply `credit_balance`, Arabic PDF, git commit.
+
+---
+
+# WP-C Tax Credit Notes Playwright E2E — Plan (before edits)
+
+**Date:** 2026-09-01
+**Owner:** frontend / coder
+**Depends on:** WP-A API (`/api/v1/credit-notes`, Alembic `b8d5f0c3a216`) + WP-B UI (`/credit-notes`, PDF title **Tax Credit Note**, AR panel cash vs credited)
+**Spec:** `architecture/wave-credit-notes-addendum.md` WP-C; W1 isolation HTTP 404 (wrapper may be `HTTP_ERROR`); W2 do not use `GET /invoices/{id}/balance` `total_paid`
+
+## Goal
+
+Extend the existing Vite Playwright harness (`frontend/playwright.config.ts`, `frontend/e2e/helpers.ts`, product + FTA + quotation + LPO + credit HOLD + DN specs). Prove FTA-valid SIMPLIFIED invoice send → create CN from SENT invoice → issue posts AR (`amount_credited` up, `balance_due` down, `amount_paid` still cash 0) → HTML preview title **Tax Credit Note**. Workspace B GET CN is **404** not 403. Optional cheap: qty above remaining is blocked in the form. Do not break product/FTA/quote/LPO/credit-hold/DN specs. Never SQLite. No debit notes.
+
+## Harness (reuse)
+
+| Item | Choice |
+|---|---|
+| Config | existing `frontend/playwright.config.ts` — `testDir: e2e`, Chromium, workers 1 |
+| Helpers | `frontend/e2e/helpers.ts`, `global-setup.ts` (`GET /health/ready`) |
+| Script | `npm run test:e2e` from `frontend/` |
+| API | docker postgres **5434**, API **8000**, Vite **5173** |
+| Auth | unique emails, password `Passw0rd1` (8+); retry register on 429 (5/minute) |
+
+## Specs to add
+
+1. `frontend/e2e/credit-notes.spec.ts` — register → Settings FTA TRN+address → client with address (SIMPLIFIED, no buyer TRN) → ad-hoc AED invoice send **SENT** → create CN from that invoice → optional qty > remaining form error → issue **ISSUED** → preview **Tax Credit Note** (not Tax Invoice) → invoice AR panel: credited up, balance down, paid (cash) still 0.
+2. `frontend/e2e/credit-note-isolation.spec.ts` — workspace A FTA send + create CN via API; workspace B `GET /api/v1/credit-notes/{id}` → **404** not 403 (request context). Key off HTTP status (W1).
+
+## UI `data-testid`
+
+Reuse `nav-credit-notes`, `cn-create`, `cn-form`, `cn-invoice-select`, `cn-qty-0`, `cn-remaining-0`, `cn-form-submit`, `cn-detail`, `cn-status`, `cn-issue`, `cn-preview-pdf`, `cn-pdf-title`, `invoice-create-cn`, `invoice-ar-panel`, `invoice-amount-paid`, `invoice-amount-credited`, `invoice-balance-due`. Isolation keys off HTTP 404.
+
+## Out of scope
+
+Debit notes, PAID+CN `credit_balance` browser path (API pytest covers it), auto-apply credit, Arabic PDF, GitHub Actions, git commit.
+
+## Acceptance
+
+- `npm run test:e2e` green (product + FTA + quotations + LPO + credit HOLD + DN + CN)
+- `npm run build` still succeeds
+- Fix UI bugs hit in the run; API bugs → log only (pytest already covers WP-A)
+
+---
+
+# WP-C Tax Credit Notes Playwright E2E — Implementation (completed)
+
+**Date:** 2026-09-01
+**API:** docker postgres host **5434**, API **8000**, Vite **5173**. `/health/ready` 200 (`database: connected`). Not SQLite.
+
+## Result
+
+```
+Running 16 tests using 1 worker
+  ok  1 [chromium] › e2e\credit-hold.spec.ts:12:1 › COD client second invoice send is credit HOLD (7.6s)
+  ok  2 [chromium] › e2e\credit-isolation.spec.ts:4:1 › cross-tenant client credit GET returns 404 (438ms)
+  ok  3 [chromium] › e2e\credit-note-isolation.spec.ts:10:1 › cross-tenant credit note GET returns 404 (537ms)
+  ok  4 [chromium] › e2e\credit-notes.spec.ts:11:1 › simplified tax invoice credit note issue posts AR (1.2m)
+  ok  5 [chromium] › e2e\delivery-note-isolation.spec.ts:11:1 › cross-tenant delivery note GET returns 404 (575ms)
+  ok  6 [chromium] › e2e\delivery-notes.spec.ts:21:1 › catalog LPO delivery note confirm issues stock (4.0s)
+  ok  7 [chromium] › e2e\delivery-notes.spec.ts:77:1 › HOLD blocks DN confirm when block_do_on_hold (359ms)
+  ok  8 [chromium] › e2e\fta-isolation.spec.ts:4:1 › cross-tenant invoice GET returns 404 (1.1m)
+  ok  9 [chromium] › e2e\fta-send-blocked.spec.ts:4:1 › send invoice without workspace TRN is blocked (1.3s)
+  ok 10 [chromium] › e2e\fta-tax-invoice.spec.ts:11:1 › simplified tax invoice send and preview (1.9s)
+  ok 11 [chromium] › e2e\lpo-isolation.spec.ts:4:1 › cross-tenant LPO GET returns 404 (1.1m)
+  ok 12 [chromium] › e2e\lpos.spec.ts:12:1 › manual LPO receive partial invoice lands draft invoice (4.6s)
+  ok 13 [chromium] › e2e\product-catalog.spec.ts:12:1 › product master catalog happy path (2.5s)
+  ok 14 [chromium] › e2e\product-isolation.spec.ts:4:1 › cross-tenant product GET returns 404 (420ms)
+  ok 15 [chromium] › e2e\quotation-isolation.spec.ts:4:1 › cross-tenant quotation GET returns 404 (1.1m)
+  ok 16 [chromium] › e2e\quotations.spec.ts:12:1 › quotation send accept convert to draft invoice (2.0s)
+  16 passed (5.0m)
+```
+
+`npm run build` — `tsc -b && vite build` succeeded (Vite 8.2.1). Pre-existing chunk-size warning only.
+
+Product + FTA + quotation + LPO + credit HOLD + DN specs still pass. Isolation 404 (not 403) confirmed for `GET /credit-notes/{id}`. Issue posted AR: invoice total AED 210.00 → credited AED 105.00, cash paid still AED 0.00, balance due AED 105.00, status stayed SENT.
+
+FTA isolation 1.1m, LPO isolation 1.1m, quotation-isolation 1.1m, and CN happy path 1.2m are register `5/minute` retry (helpers wait 16s on 429). CN isolation itself was 537ms.
+
+## Specs shipped
+
+1. **Happy path** — unique register (password 8+) → Settings FTA TRN+address → SIMPLIFIED client (address, no buyer TRN) → ad-hoc invoice qty 2 @ 100 send **SENT** (preview still **Tax Invoice**) → Create CN → qty 99 blocked (`Cannot exceed remaining`) → qty 1 create DRAFT `CN-YYYY-XXXX` → issue **ISSUED** → HTML preview title **Tax Credit Note** (invoice `pdf-title` absent, seller TRN present) → invoice AR panel: credited AED 105.00, paid (cash) AED 0.00, balance AED 105.00, copy “not cash payments”.
+2. **Isolation** — workspace B `GET /api/v1/credit-notes/{id}` → **404** not 403.
+
+## UI / harness
+
+- List Amount Due `data-testid="invoice-balance-due"` (AR panel already had it; list GET omits `amount_credited` so credited vs cash is asserted in the AR panel GET).
+- Form `cn-qty-error-0` for remaining-qty overflow (UI stand-in for `CREDIT_EXCEEDS_REMAINING`; API 400 still pytest-only).
+- Helpers: `putWorkspaceFtaApi`, `createFtaSentInvoiceApi`. Register still retries 429.
+
+## Files
+
+- `frontend/e2e/credit-notes.spec.ts` (new)
+- `frontend/e2e/credit-note-isolation.spec.ts` (new)
+- `frontend/e2e/helpers.ts`
+- `frontend/src/pages/Invoices.tsx`
+- `frontend/src/pages/CreditNoteForm.tsx`
+- `.agents/reports/frontend-execution-report.md`
+
+## Not covered (leftovers)
+
+- PAID invoice + CN → `credit_balance` in the browser; API pytest covers it
+- Header `CREDIT_EXCEEDS_REMAINING` 400 on issue (two DRAFTs); form caps qty instead
+- Debit notes, auto-apply credit, Arabic PDF
+- Playwright not wired into GitHub Actions
+- Auth register 5/minute (retries; isolation specs can wait ~1m)
+- Next after A–C: AR statement / PDC / volume pricing (not debit notes)

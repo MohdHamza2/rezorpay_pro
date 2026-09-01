@@ -1,0 +1,42 @@
+.badgeIssued { background-color: #f0fdf4; color: #16a34a; }
+
+.qtyInput {
+  width: 6rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  box-sizing: border-box;
+  font-family: inherit;
+}
+
+.muted {
+  color: #64748b;
+  font-size: 0.8rem;
+}
+
+.arGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.5rem 1.5rem;
+  margin-bottom: 1rem;
+}
+
+@media (min-width: 640px) {
+  .arGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.arLabel {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.arValue {
+  color: #1e293b;
+  margin-top: 0.2rem;
+}

@@ -19,6 +19,7 @@ export interface ClientCredit {
   exposure: number | string;
   oldest_overdue_days: number | null;
   buckets: CreditBuckets;
+  credit_balance?: number | string | null;
 }
 
 /** GET/list row. Do not POST/PUT this shape — extra keys 422. */
@@ -34,6 +35,7 @@ export interface Client {
   credit_status?: CreditStatus;
   effective_credit_limit?: number | string;
   exposure?: number | string;
+  credit_balance?: number | string | null;
   created_at: string;
 }
 
