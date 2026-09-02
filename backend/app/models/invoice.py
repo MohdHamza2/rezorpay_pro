@@ -45,6 +45,7 @@ class Invoice(SQLModel, table=True):
         CheckConstraint("tax_amount >= 0", name="check_tax_amount_positive"),
         CheckConstraint("total_amount >= 0", name="check_total_amount_positive"),
         CheckConstraint("amount_credited >= 0", name="check_amount_credited_nonneg"),
+        CheckConstraint("amount_debited >= 0", name="check_amount_debited_nonneg"),
         Index(
             "ix_invoices_workspace_id_client_id_status",
             "workspace_id",
@@ -67,6 +68,10 @@ class Invoice(SQLModel, table=True):
     tax_amount: Decimal = Field(sa_column=Column(Numeric(12, 2), nullable=False))
     total_amount: Decimal = Field(sa_column=Column(Numeric(12, 2), nullable=False))
     amount_credited: Decimal = Field(
+        default=Decimal("0.00"),
+        sa_column=Column(Numeric(12, 2), nullable=False, server_default="0"),
+    )
+    amount_debited: Decimal = Field(
         default=Decimal("0.00"),
         sa_column=Column(Numeric(12, 2), nullable=False, server_default="0"),
     )
@@ -136,9 +141,16 @@ class Invoice(SQLModel, table=True):
     @property
     def balance_due(self) -> Decimal:
         credited = (
-            self.amount_credited if self.amount_credited is not None else Decimal("0")
+            self.amount_credited
+            if getattr(self, "amount_credited", None) is not None
+            else Decimal("0")
         )
-        raw = self.total_amount - self.amount_paid - credited
+        debited = (
+            self.amount_debited
+            if getattr(self, "amount_debited", None) is not None
+            else Decimal("0")
+        )
+        raw = self.total_amount - self.amount_paid - credited + debited
         if raw < 0:
             raw = Decimal("0")
         return raw.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)

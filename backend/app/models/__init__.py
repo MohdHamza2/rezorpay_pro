@@ -71,6 +71,13 @@ from app.models.credit_note_counter import CreditNoteCounter
 from app.models.credit_note import CreditNote, CreditNoteReason, CreditNoteStatus
 from app.models.credit_note_item import CreditNoteItem
 from app.models.credit_note_event import CreditNoteEvent, CreditNoteEventType
+from app.models.tax_debit_note import (
+    TaxDebitNote,
+    TaxDebitNoteItem,
+    TaxDebitNoteStatus,
+    TaxDebitNoteReason,
+    TaxDebitNoteCounter,
+)
 
 __all__ = [
     "Workspace",
@@ -144,4 +151,9 @@ __all__ = [
     "CreditNoteItem",
     "CreditNoteEvent",
     "CreditNoteEventType",
+    "TaxDebitNote",
+    "TaxDebitNoteItem",
+    "TaxDebitNoteStatus",
+    "TaxDebitNoteReason",
+    "TaxDebitNoteCounter",
 ]

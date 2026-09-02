@@ -61,12 +61,14 @@ class BalanceDueResponse(BaseModel):
 
     amount_paid / total_paid: Σ SUCCESS payments only.
     amount_credited: issued credit notes.
-    balance_due: max(0, total − paid − credited).
+    amount_debited: issued tax debit notes.
+    balance_due: max(0, total − paid − credited + debited).
     """
 
     total_amount: Decimal
     amount_paid: Decimal
     amount_credited: Decimal = Decimal("0.00")
+    amount_debited: Decimal = Decimal("0.00")
     total_paid: Decimal
     balance_due: Decimal
     currency: str

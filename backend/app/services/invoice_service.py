@@ -194,6 +194,7 @@ class InvoiceService:
             tax_amount=Decimal("0"),
             total_amount=Decimal("0"),
             amount_credited=Decimal("0.00"),
+            amount_debited=Decimal("0.00"),
             created_at=_now(),
             updated_at=_now(),
         )
@@ -281,7 +282,8 @@ class InvoiceService:
     @staticmethod
     def calculate_credit_owing(invoice: Invoice) -> Decimal:
         credited = invoice.amount_credited or Decimal("0")
-        raw = invoice.total_amount - credited - invoice.amount_paid
+        debited = invoice.amount_debited or Decimal("0")
+        raw = invoice.total_amount - credited + debited - invoice.amount_paid
         return money(max(Decimal("0"), -raw))
 
     @staticmethod

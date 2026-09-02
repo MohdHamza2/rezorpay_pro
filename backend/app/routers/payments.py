@@ -60,6 +60,7 @@ def _balance_payload(invoice: Invoice) -> BalanceDueResponse:
         total_amount=invoice.total_amount,
         amount_paid=amount_paid,
         amount_credited=invoice.amount_credited,
+        amount_debited=invoice.amount_debited,
         total_paid=amount_paid,
         balance_due=InvoiceService.calculate_balance_due(invoice),
         currency=invoice.currency,

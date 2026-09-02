@@ -18,6 +18,8 @@ from app.models.credit_note_event import CreditNoteEvent, CreditNoteEventType
 from app.models.credit_note_item import CreditNoteItem
 from app.models.invoice import Invoice, InvoiceStatus
 from app.models.invoice_item import InvoiceItem
+from app.models.tax_debit_note import TaxDebitNote, TaxDebitNoteStatus
+from app.models.tax_debit_note import TaxDebitNoteItem
 from app.schemas.common import ErrorCode
 from app.services.customer_po_support import raise_error
 from app.services.invoice_service import (
@@ -134,6 +136,20 @@ async def issued_qty_map(
     return {row[0]: dec(row[1] or 0) for row in result.all()}
 
 
+async def tdn_issued_qty_map(
+    session: AsyncSession, invoice_id: uuid.UUID
+) -> Dict[uuid.UUID, Decimal]:
+    result = await session.execute(
+        select(TaxDebitNoteItem.invoice_item_id, func.sum(TaxDebitNoteItem.quantity))
+        .join(TaxDebitNote)
+        .where(TaxDebitNote.invoice_id == invoice_id)
+        .where(TaxDebitNote.status == TaxDebitNoteStatus.ISSUED)
+        .where(TaxDebitNote.deleted_at.is_(None))
+        .group_by(TaxDebitNoteItem.invoice_item_id)
+    )
+    return {row[0]: dec(row[1] or 0) for row in result.all()}
+
+
 async def issued_header_total(session: AsyncSession, invoice_id: uuid.UUID) -> Decimal:
     result = await session.execute(
         select(func.coalesce(func.sum(CreditNote.total_amount), 0))
@@ -144,9 +160,26 @@ async def issued_header_total(session: AsyncSession, invoice_id: uuid.UUID) -> D
     return money(dec(result.scalar() or 0))
 
 
-def remaining_qty(item: InvoiceItem, qty_map: Dict[uuid.UUID, Decimal]) -> Decimal:
-    used = qty_map.get(item.id, ZERO)
-    return money(dec(item.quantity) - used)
+async def tdn_issued_header_total(
+    session: AsyncSession, invoice_id: uuid.UUID
+) -> Decimal:
+    result = await session.execute(
+        select(func.coalesce(func.sum(TaxDebitNote.total_amount), 0))
+        .where(TaxDebitNote.invoice_id == invoice_id)
+        .where(TaxDebitNote.status == TaxDebitNoteStatus.ISSUED)
+        .where(TaxDebitNote.deleted_at.is_(None))
+    )
+    return money(dec(result.scalar() or 0))
+
+
+def remaining_qty(
+    item: InvoiceItem,
+    cn_qty_map: Dict[uuid.UUID, Decimal],
+    tdn_qty_map: Dict[uuid.UUID, Decimal],
+) -> Decimal:
+    used = cn_qty_map.get(item.id, ZERO)
+    added = tdn_qty_map.get(item.id, ZERO)
+    return money(dec(item.quantity) + added - used)
 
 
 def assert_header_remaining(cn_total: Decimal, remaining: Decimal) -> None:
@@ -247,6 +280,7 @@ async def add_lines(
         )
     invoice_items = await load_invoice_items(session, invoice.id)
     qty_map = await issued_qty_map(session, invoice.id)
+    tdn_qty_map = await tdn_issued_qty_map(session, invoice.id)
     seen: set[uuid.UUID] = set()
     built: List[CreditNoteItem] = []
     for body in items:
@@ -261,11 +295,14 @@ async def add_lines(
         seen.add(inv_item.id)
         assert_frozen(body, inv_item)
         quantity = dec(body["quantity"])
-        assert_qty_remaining(quantity, remaining_qty(inv_item, qty_map))
+        assert_qty_remaining(quantity, remaining_qty(inv_item, qty_map, tdn_qty_map))
         built.append(build_item(cn.id, inv_item, quantity))
     apply_totals(cn, built)
+    tdn_total = await tdn_issued_header_total(session, invoice.id)
     remaining = money(
-        dec(invoice.total_amount) - await issued_header_total(session, invoice.id)
+        dec(invoice.total_amount)
+        + tdn_total
+        - await issued_header_total(session, invoice.id)
     )
     assert_header_remaining(cn.total_amount, remaining)
     for item in built:
@@ -284,12 +321,16 @@ async def assert_cn_remaining(
             ErrorCode.VALIDATION_ERROR,
             "At least one line is required",
         )
+    tdn_total = await tdn_issued_header_total(session, invoice.id)
     remaining = money(
-        dec(invoice.total_amount) - await issued_header_total(session, invoice.id)
+        dec(invoice.total_amount)
+        + tdn_total
+        - await issued_header_total(session, invoice.id)
     )
     assert_header_remaining(cn.total_amount, remaining)
     invoice_items = await load_invoice_items(session, invoice.id)
     qty_map = await issued_qty_map(session, invoice.id)
+    tdn_qty_map = await tdn_issued_qty_map(session, invoice.id)
     seen: set[uuid.UUID] = set()
     for item in items:
         inv_item = invoice_items.get(item.invoice_item_id)
@@ -308,7 +349,9 @@ async def assert_cn_remaining(
                 "invoice_item_id",
             )
         seen.add(item.invoice_item_id)
-        assert_qty_remaining(dec(item.quantity), remaining_qty(inv_item, qty_map))
+        assert_qty_remaining(
+            dec(item.quantity), remaining_qty(inv_item, qty_map, tdn_qty_map)
+        )
 
 
 def _resolve_invoice_item(
