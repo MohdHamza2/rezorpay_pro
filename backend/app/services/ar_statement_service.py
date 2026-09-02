@@ -15,6 +15,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.models.client import Client
 from app.models.credit_note import CreditNote, CreditNoteStatus
+from app.models.tax_debit_note import TaxDebitNote, TaxDebitNoteStatus
 from app.models.invoice import Invoice, InvoiceStatus
 from app.models.payment import Payment, PaymentStatus
 from app.models.workspace import Workspace
@@ -42,6 +43,7 @@ ACTIVITY_ORDER = {
     StatementDocType.PAYMENT: 1,
     StatementDocType.PAYMENT_PENDING: 2,
     StatementDocType.TAX_CREDIT_NOTE: 3,
+    StatementDocType.TAX_DEBIT_NOTE: 4,
 }
 ACTIVITY_LINE_CAP = 2000
 MAX_RANGE_DAYS = 366
@@ -225,10 +227,27 @@ def credit_note_activity(note: CreditNote, invoice_number: Optional[str]) -> dic
     )
 
 
+def debit_note_activity(note: TaxDebitNote, invoice_number: Optional[str]) -> dict:
+    """Tax Debit Note debit."""
+    return labelled_line(
+        on=note.issue_date,
+        doc_type=StatementDocType.TAX_DEBIT_NOTE,
+        number=note.tax_debit_note_number,
+        reference=note.original_invoice_number or invoice_number,
+        payment_method=None,
+        payment_status=None,
+        cleared_cash=None,
+        pending_amount=ZERO,
+        debit=note.total_amount,
+        credit=ZERO,
+    )
+
+
 def collect_activity(
     invoices: Sequence[Invoice],
     payments: Sequence[Payment],
     notes: Sequence[CreditNote],
+    debit_notes: Sequence[TaxDebitNote],
     numbers: dict[uuid.UUID, str],
     start: date,
     end: date,
@@ -244,6 +263,9 @@ def collect_activity(
     for note in notes:
         if in_period(note.issue_date, start, end):
             rows.append(credit_note_activity(note, numbers.get(note.invoice_id)))
+    for dnote in debit_notes:
+        if in_period(dnote.issue_date, start, end):
+            rows.append(debit_note_activity(dnote, numbers.get(dnote.invoice_id)))
     return rows
 
 
@@ -251,6 +273,7 @@ def reconstruct_opening(
     invoices: Sequence[Invoice],
     payments: Sequence[Payment],
     notes: Sequence[CreditNote],
+    debit_notes: Sequence[TaxDebitNote],
     start: date,
 ) -> Decimal:
     """billed_before − paid_before − credited_before for dates < from."""
@@ -264,13 +287,17 @@ def reconstruct_opening(
         ZERO,
     )
     credited = sum((cn.total_amount for cn in notes if cn.issue_date < start), ZERO)
-    return money(billed - paid - credited)
+    debited = sum(
+        (dn.total_amount for dn in debit_notes if dn.issue_date < start), ZERO
+    )
+    return money(billed - paid - credited + debited)
 
 
 def period_totals(
     invoices: Sequence[Invoice],
     payments: Sequence[Payment],
     notes: Sequence[CreditNote],
+    debit_notes: Sequence[TaxDebitNote],
     start: date,
     end: date,
 ) -> dict:
@@ -301,10 +328,15 @@ def period_totals(
         ),
         ZERO,
     )
+    debited = sum(
+        (dn.total_amount for dn in debit_notes if in_period(dn.issue_date, start, end)),
+        ZERO,
+    )
     return {
         "billed": money(billed),
         "paid": money(paid),
         "credited": money(credited),
+        "debited": money(debited),
         "pending": money(pending),
     }
 
@@ -398,6 +430,21 @@ class ArStatementService:
         return list(result.scalars().all())
 
     @staticmethod
+    async def _load_debit_notes(
+        session: AsyncSession, workspace_id: UUID, invoice_ids: Sequence[uuid.UUID]
+    ) -> list[TaxDebitNote]:
+        if not invoice_ids:
+            return []
+        result = await session.execute(
+            select(TaxDebitNote)
+            .where(TaxDebitNote.workspace_id == workspace_id)
+            .where(TaxDebitNote.invoice_id.in_(invoice_ids))
+            .where(TaxDebitNote.status == TaxDebitNoteStatus.ISSUED)
+            .where(TaxDebitNote.deleted_at.is_(None))
+        )
+        return list(result.scalars().all())
+
+    @staticmethod
     async def _footer(
         session: AsyncSession, workspace: Workspace, client: Client, as_of: date
     ) -> dict:
@@ -429,13 +476,18 @@ class ArStatementService:
         numbers = {inv.id: inv.invoice_number for inv in invoices}
         payments = await cls._load_payments(session, invoice_ids)
         notes = await cls._load_credit_notes(session, workspace.id, invoice_ids)
-        opening = reconstruct_opening(invoices, payments, notes, period_from)
+        debit_notes = await cls._load_debit_notes(session, workspace.id, invoice_ids)
+        opening = reconstruct_opening(
+            invoices, payments, notes, debit_notes, period_from
+        )
         activity = collect_activity(
-            invoices, payments, notes, numbers, period_from, period_to
+            invoices, payments, notes, debit_notes, numbers, period_from, period_to
         )
         assert_activity_cap(len(activity))
         lines, closing = assemble_lines(opening, period_from, activity)
-        totals = period_totals(invoices, payments, notes, period_from, period_to)
+        totals = period_totals(
+            invoices, payments, notes, debit_notes, period_from, period_to
+        )
         totals["closing_running"] = closing
         footer = await cls._footer(session, workspace, client, resolved)
         logger.info(

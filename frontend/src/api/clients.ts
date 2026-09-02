@@ -67,7 +67,8 @@ export type StatementDocType =
   | 'TAX_INVOICE'
   | 'PAYMENT'
   | 'PAYMENT_PENDING'
-  | 'TAX_CREDIT_NOTE';
+  | 'TAX_CREDIT_NOTE'
+  | 'TAX_DEBIT_NOTE';
 
 export type ArStatementQuery = {
   from: string;
@@ -102,6 +103,7 @@ export interface ArStatementTotals {
   billed: number | string;
   paid: number | string;
   credited: number | string;
+  debited?: number | string;
   pending: number | string;
   closing_running: number | string;
 }

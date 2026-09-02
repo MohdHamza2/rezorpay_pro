@@ -17,6 +17,7 @@ class StatementDocType(str, Enum):
     PAYMENT = "PAYMENT"
     PAYMENT_PENDING = "PAYMENT_PENDING"
     TAX_CREDIT_NOTE = "TAX_CREDIT_NOTE"
+    TAX_DEBIT_NOTE = "TAX_DEBIT_NOTE"
 
 
 DOC_TYPE_LABELS = {
@@ -25,6 +26,7 @@ DOC_TYPE_LABELS = {
     StatementDocType.PAYMENT: "Payment",
     StatementDocType.PAYMENT_PENDING: "Payment (pending)",
     StatementDocType.TAX_CREDIT_NOTE: "Tax Credit Note",
+    StatementDocType.TAX_DEBIT_NOTE: "Tax Debit Note",
 }
 
 
@@ -60,6 +62,7 @@ class ArStatementTotals(BaseModel):
     billed: Decimal
     paid: Decimal
     credited: Decimal
+    debited: Decimal
     pending: Decimal
     closing_running: Decimal
 

@@ -1,6 +1,7 @@
 export const PDF_LABELS = {
   billTo: { en: 'BILL TO:', ar: 'إلى:' },
   creditTo: { en: 'CREDIT TO:', ar: 'إشعار إلى:' },
+  debitTo: { en: 'DEBIT TO:', ar: 'إشعار مدين إلى:' },
   quoteTo: { en: 'QUOTE TO:', ar: 'عرض إلى:' },
   customer: { en: 'CUSTOMER:', ar: 'العميل:' },
   deliverTo: { en: 'DELIVER TO:', ar: 'تسليم إلى:' },
@@ -72,6 +73,7 @@ export const PDF_LABELS = {
   paymentPending: { en: 'Payment (pending)', ar: 'دفعة (معلقة)' },
   taxInvoice: { en: 'Tax Invoice', ar: 'فاتورة ضريبية' },
   taxCreditNote: { en: 'Tax Credit Note', ar: 'إشعار دائن ضريبي' },
+  taxDebitNote: { en: 'Tax Debit Note', ar: 'إشعار مدين ضريبي' },
   watermarkCancelled: { en: 'CANCELLED', ar: 'ملغى' },
   watermarkExpired: { en: 'EXPIRED', ar: 'منتهي' },
   watermarkRejected: { en: 'REJECTED', ar: 'مرفوض' },

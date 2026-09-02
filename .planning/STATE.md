@@ -10,6 +10,6 @@
 
 ## Pending Works
 - [x] Complete WP-A (API + Alembic).
-- Complete WP-B (UI + PDF).
+- [x] Complete WP-B (UI + PDF).
 - Complete WP-C (Playwright).
 - Proceed to Phase 2.

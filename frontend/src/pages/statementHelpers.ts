@@ -60,6 +60,10 @@ export function isCreditNoteLine(docType: StatementDocType): boolean {
   return docType === 'TAX_CREDIT_NOTE';
 }
 
+export function isDebitNoteLine(docType: StatementDocType): boolean {
+  return docType === 'TAX_DEBIT_NOTE';
+}
+
 export function isPendingLine(docType: StatementDocType): boolean {
   return docType === 'PAYMENT_PENDING';
 }

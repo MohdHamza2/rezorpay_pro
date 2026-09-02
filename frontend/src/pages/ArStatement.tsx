@@ -141,6 +141,15 @@ function TotalsFooter({ data }: { data: StatementDoc }) {
         />
         <span data-testid="statement-credited">{formatAed(data.totals.credited)}</span>
       </div>
+      {data.totals.debited !== undefined && (
+        <div className={quote.totalRow}>
+          <HtmlStackHead
+            en="Debited (tax debit notes)"
+            ar="المدين (إشعارات مدينة)"
+          />
+          <span data-testid="statement-debited">{formatAed(data.totals.debited)}</span>
+        </div>
+      )}
       <div className={quote.totalStrong}>
         <HtmlStackHead en="Amount due now" ar={PDF_LABELS.amountDueNow.ar} />
         <span data-testid="statement-amount-due">{formatAed(data.amount_due_now)}</span>

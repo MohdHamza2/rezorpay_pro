@@ -164,6 +164,15 @@ function TotalsBlock({ data }: { data: ArStatement }) {
         />
         <Text>AED {formatMoney(data.totals.credited)}</Text>
       </View>
+      {data.totals.debited !== undefined ? (
+        <View style={styles.summaryRow}>
+          <PdfStackedLabel
+            en="Debited (tax debit notes)"
+            ar="المدين (إشعارات مدينة)"
+          />
+          <Text>AED {formatMoney(data.totals.debited)}</Text>
+        </View>
+      ) : null}
       <View style={styles.summaryTotal}>
         <PdfStackedLabel en={PDF_LABELS.amountDueNow.en} ar={PDF_LABELS.amountDueNow.ar} boldEn />
         <Text>AED {formatMoney(data.amount_due_now)}</Text>

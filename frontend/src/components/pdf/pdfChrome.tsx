@@ -128,6 +128,7 @@ export function statementTypeAr(docType: StatementDocType): string {
   if (docType === 'TAX_INVOICE') return PDF_LABELS.taxInvoice.ar;
   if (docType === 'PAYMENT') return PDF_LABELS.payment.ar;
   if (docType === 'PAYMENT_PENDING') return PDF_LABELS.paymentPending.ar;
+  if (docType === 'TAX_DEBIT_NOTE') return PDF_LABELS.taxDebitNote.ar;
   return PDF_LABELS.taxCreditNote.ar;
 }
 

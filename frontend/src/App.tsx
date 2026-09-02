@@ -20,6 +20,9 @@ import { DeliveryNoteDetail } from './pages/DeliveryNoteDetail';
 import { CreditNotes } from './pages/CreditNotes';
 import { CreditNoteForm } from './pages/CreditNoteForm';
 import { CreditNoteDetail } from './pages/CreditNoteDetail';
+import { DebitNotes } from './pages/DebitNotes';
+import { DebitNoteForm } from './pages/DebitNoteForm';
+import { DebitNoteDetail } from './pages/DebitNoteDetail';
 import { Invoices } from './pages/Invoices';
 import { Settings } from './pages/Settings';
 import { Products } from './pages/Products';
@@ -77,6 +80,10 @@ function App() {
               <Route path="credit-notes/new" element={<CreditNoteForm />} />
               <Route path="credit-notes/:id/edit" element={<CreditNoteForm />} />
               <Route path="credit-notes/:id" element={<CreditNoteDetail />} />
+              <Route path="debit-notes" element={<DebitNotes />} />
+              <Route path="debit-notes/new" element={<DebitNoteForm />} />
+              <Route path="debit-notes/:id/edit" element={<DebitNoteForm />} />
+              <Route path="debit-notes/:id" element={<DebitNoteDetail />} />
               <Route path="invoices" element={<Invoices />} />
               <Route path="settings" element={<Settings />} />
               <Route path="products" element={<Products />} />
