@@ -2,7 +2,6 @@ import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import selectinload
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -29,7 +28,9 @@ class EnquiryNumberService:
         counter = result.scalar_one_or_none()
 
         if counter is None:
-            counter = EnquiryCounter(workspace_id=workspace_id, year=year, last_number=1)
+            counter = EnquiryCounter(
+                workspace_id=workspace_id, year=year, last_number=1
+            )
             session.add(counter)
             try:
                 await session.flush()

@@ -1,9 +1,8 @@
 import uuid
 from datetime import datetime, timezone
-from typing import List, Optional, Tuple
+from typing import Optional, Tuple
 
 from fastapi import status
-from sqlalchemy import delete
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -19,7 +18,14 @@ from app.services.quotation_service import QuotationService
 
 def raise_error(status_code: int, code: ErrorCode, msg: str) -> None:
     from fastapi import HTTPException
-    raise HTTPException(status_code=status_code, detail={"code": code.value if hasattr(code, "value") else str(code), "message": msg})
+
+    raise HTTPException(
+        status_code=status_code,
+        detail={
+            "code": code.value if hasattr(code, "value") else str(code),
+            "message": msg,
+        },
+    )
 
 
 class EnquiryService:
@@ -155,7 +161,7 @@ class EnquiryService:
                     "tax_rate": "0",
                 }
             )
-            
+
         # Also include raw description as a fallback item if there are no structured items
         if not items_data and enquiry.items_description:
             items_data.append(

@@ -32,8 +32,12 @@ class Enquiry(SQLModel, table=True):
     __tablename__ = "enquiries"
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    workspace_id: uuid.UUID = Field(foreign_key="workspaces.id", index=True, nullable=False)
-    client_id: Optional[uuid.UUID] = Field(foreign_key="clients.id", index=True, nullable=True)
+    workspace_id: uuid.UUID = Field(
+        foreign_key="workspaces.id", index=True, nullable=False
+    )
+    client_id: Optional[uuid.UUID] = Field(
+        foreign_key="clients.id", index=True, nullable=True
+    )
 
     enquiry_number: str = Field(sa_column=Column(String(50), nullable=False))
     status: str = Field(default=EnquiryStatus.NEW, nullable=False)
@@ -46,7 +50,9 @@ class Enquiry(SQLModel, table=True):
     contact_email: Optional[str] = None
 
     items_description: Optional[str] = None  # Raw request description
-    whatsapp_message_id: Optional[str] = Field(sa_column=Column(String(255), unique=True, nullable=True))  # Deduplication
+    whatsapp_message_id: Optional[str] = Field(
+        sa_column=Column(String(255), unique=True, nullable=True)
+    )  # Deduplication
 
     notes: Optional[str] = None
     assigned_to: Optional[uuid.UUID] = Field(foreign_key="users.id", nullable=True)
@@ -60,7 +66,8 @@ class Enquiry(SQLModel, table=True):
         sa_column=Column(DateTime(timezone=True), nullable=True),
     )
     deleted_at: Optional[datetime] = Field(
-        default=None, sa_column=Column(DateTime(timezone=True), nullable=True, index=True)
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True, index=True),
     )
 
     # Relationships

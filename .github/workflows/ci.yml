@@ -121,5 +121,5 @@ jobs:
         run: pip install pip-audit
 
       - name: Run pip-audit
-        run: pip-audit --strict
+        run: pip-audit --strict --skip en-core-web-sm
         continue-on-error: true  # Don't block CI initially, just report

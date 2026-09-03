@@ -14,12 +14,16 @@ class EnquiryItem(SQLModel, table=True):
     __tablename__ = "enquiry_items"
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    enquiry_id: uuid.UUID = Field(foreign_key="enquiries.id", index=True, nullable=False)
+    enquiry_id: uuid.UUID = Field(
+        foreign_key="enquiries.id", index=True, nullable=False
+    )
     product_id: Optional[uuid.UUID] = Field(foreign_key="products.id", nullable=True)
 
     description: str  # The requested item description
     quantity_requested: Decimal = Field(max_digits=12, decimal_places=4)
-    uom_id: Optional[uuid.UUID] = Field(foreign_key="units_of_measure.id", nullable=True)
+    uom_id: Optional[uuid.UUID] = Field(
+        foreign_key="units_of_measure.id", nullable=True
+    )
 
     notes: Optional[str] = None
 

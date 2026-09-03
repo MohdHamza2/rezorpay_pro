@@ -1,5 +1,5 @@
 import uuid
-from typing import List, Optional
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func
@@ -7,7 +7,7 @@ from sqlalchemy.orm import selectinload
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.auth.dependencies import get_current_user, get_current_workspace_id
+from app.auth.dependencies import get_current_user
 from app.database import get_session
 from app.models.enquiry import Enquiry
 from app.models.user import User
@@ -35,8 +35,7 @@ async def get_enquiries(
     client_id: Optional[uuid.UUID] = None,
 ):
     query = select(Enquiry).where(
-        Enquiry.workspace_id == user.workspace_id,
-        Enquiry.deleted_at.is_(None)
+        Enquiry.workspace_id == user.workspace_id, Enquiry.deleted_at.is_(None)
     )
     if status:
         query = query.where(Enquiry.status == status)
@@ -88,7 +87,9 @@ async def get_enquiry(
 ):
     enquiry = await EnquiryService.get_visible(session, id, user.workspace_id)
     if not enquiry:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Enquiry not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Enquiry not found"
+        )
     return enquiry
 
 
@@ -99,10 +100,14 @@ async def update_enquiry(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ):
-    enquiry = await EnquiryService.get_visible(session, id, user.workspace_id, for_update=True)
+    enquiry = await EnquiryService.get_visible(
+        session, id, user.workspace_id, for_update=True
+    )
     if not enquiry:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Enquiry not found")
-    
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Enquiry not found"
+        )
+
     enquiry = await EnquiryService.update(session, enquiry, user.id, data)
     await session.commit()
     return await EnquiryService.get_visible(session, enquiry.id, user.workspace_id)
@@ -115,10 +120,14 @@ async def update_enquiry_status(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ):
-    enquiry = await EnquiryService.get_visible(session, id, user.workspace_id, for_update=True)
+    enquiry = await EnquiryService.get_visible(
+        session, id, user.workspace_id, for_update=True
+    )
     if not enquiry:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Enquiry not found")
-    
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Enquiry not found"
+        )
+
     enquiry.status = data.status
     await session.commit()
     return await EnquiryService.get_visible(session, enquiry.id, user.workspace_id)
@@ -130,10 +139,14 @@ async def convert_enquiry_to_quotation(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ):
-    enquiry = await EnquiryService.get_visible(session, id, user.workspace_id, for_update=True)
+    enquiry = await EnquiryService.get_visible(
+        session, id, user.workspace_id, for_update=True
+    )
     if not enquiry:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Enquiry not found")
-    
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Enquiry not found"
+        )
+
     quotation, _ = await EnquiryService.convert_to_quotation(
         session=session,
         enquiry=enquiry,
@@ -141,7 +154,9 @@ async def convert_enquiry_to_quotation(
         workspace_id=user.workspace_id,
     )
     await session.commit()
-    
+
     # We must format it using the quotation serialization logic
-    q_read = await QuotationService.get_visible(session, quotation.id, user.workspace_id)
+    q_read = await QuotationService.get_visible(
+        session, quotation.id, user.workspace_id
+    )
     return QuotationService.serialize(q_read)
