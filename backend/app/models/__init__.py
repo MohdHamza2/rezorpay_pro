@@ -78,6 +78,9 @@ from app.models.tax_debit_note import (
     TaxDebitNoteReason,
     TaxDebitNoteCounter,
 )
+from app.models.enquiry import Enquiry, EnquiryStatus, EnquirySource
+from app.models.enquiry_item import EnquiryItem
+from app.models.enquiry_counter import EnquiryCounter
 
 __all__ = [
     "Workspace",
@@ -156,4 +159,9 @@ __all__ = [
     "TaxDebitNoteStatus",
     "TaxDebitNoteReason",
     "TaxDebitNoteCounter",
+    "Enquiry",
+    "EnquiryItem",
+    "EnquiryStatus",
+    "EnquirySource",
+    "EnquiryCounter",
 ]

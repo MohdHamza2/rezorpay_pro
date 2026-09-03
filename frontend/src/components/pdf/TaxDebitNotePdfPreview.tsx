@@ -38,12 +38,12 @@ export function TaxDebitNotePdfPreview({
   const originalNumber = cn.original_invoice_number || invoice?.invoice_number || '—';
   const originalDate = cn.original_issue_date || invoice?.issue_date || '—';
   return (
-    <div className={styles.modalOverlay} data-testid="cn-pdf-preview">
+    <div className={styles.modalOverlay} data-testid="tdn-pdf-preview">
       <div className={styles.pdfPreview}>
         <div className={styles.modalHeader}>
           <HtmlDualTitle
-            en={PDF_TITLES.taxTaxDebitNote.en}
-            ar={PDF_TITLES.taxTaxDebitNote.ar}
+            en={PDF_TITLES.taxDebitNote.en}
+            ar={PDF_TITLES.taxDebitNote.ar}
             enTestId="tdn-pdf-title"
             arTestId="tdn-pdf-title-ar"
             enAs="h3"
@@ -52,18 +52,18 @@ export function TaxDebitNotePdfPreview({
             type="button"
             className={styles.closeBtn}
             onClick={onClose}
-            data-testid="cn-pdf-preview-close"
+            data-testid="tdn-pdf-preview-close"
           >
             &times;
           </button>
         </div>
         <HtmlStackedLine
-          en={`Tax Debit Note No: ${cn.credit_note_number}`}
+          en={`Tax Debit Note No: ${cn.debit_note_number}`}
           ar={PDF_LABELS.debitNoteNo.ar}
         />
         <HtmlStackedLine en={`Issue Date: ${cn.issue_date}`} ar={PDF_LABELS.issueDate.ar} />
         <HtmlStackedLine
-          testId="cn-pdf-original-invoice"
+          testId="tdn-pdf-original-invoice"
           en={`Original Invoice: ${originalNumber}`}
           ar={PDF_LABELS.originalInvoice.ar}
         />
@@ -72,13 +72,13 @@ export function TaxDebitNotePdfPreview({
           ar={PDF_LABELS.originalIssueDate.ar}
         />
         <HtmlStackedLine
-          testId="cn-pdf-seller-trn"
+          testId="tdn-pdf-seller-trn"
           en={`Seller TRN: ${sellerTrn || '—'}`}
           ar={PDF_LABELS.trn.ar}
         />
         {sellerAddress ? <p>{sellerAddress}</p> : null}
         <HtmlStackedLine
-          testId="cn-pdf-buyer-trn"
+          testId="tdn-pdf-buyer-trn"
           en={`Buyer TRN: ${buyerTrn || '—'}`}
           ar={PDF_LABELS.trn.ar}
         />

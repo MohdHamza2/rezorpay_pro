@@ -1,7 +1,7 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import styles from './Layout.module.css';
-import { LayoutDashboard, Users, FileText, FileMinus, FilePlus, LogOut, Settings as SettingsIcon, Package, Truck, Boxes, ShoppingCart, SendToBack, FileSignature, ClipboardCheck, ScrollText, ClipboardList, PackageMinus } from 'lucide-react';
+import { LayoutDashboard, Users, FileText, FileMinus, FilePlus, LogOut, Settings as SettingsIcon, Package, Truck, Boxes, ShoppingCart, SendToBack, FileSignature, ClipboardCheck, ScrollText, ClipboardList, PackageMinus, MessageSquare } from 'lucide-react';
 
 export const Layout = () => {
   const { user, logout } = useAuth();
@@ -22,6 +22,7 @@ export const Layout = () => {
       title: 'Sales & Customers',
       items: [
         { path: '/clients', label: 'Clients', icon: Users },
+        { path: '/enquiries', label: 'Enquiries', icon: MessageSquare },
         { path: '/quotations', label: 'Quotations', icon: ScrollText },
         { path: '/lpos', label: 'LPO', icon: ClipboardList },
         { path: '/delivery-notes', label: 'Delivery Notes', icon: PackageMinus },

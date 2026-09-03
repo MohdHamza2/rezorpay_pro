@@ -79,11 +79,11 @@ class TaxDebitNoteDetailResponse(TaxDebitNoteResponse):
     items: List[TaxDebitNoteItemResponse]
 
     # Seller Snapshot
-    seller_name: Optional[str]
-    seller_trn: Optional[str]
-    seller_address: Optional[str]
+    seller_name_snapshot: Optional[str] = None
+    seller_trn_snapshot: Optional[str] = None
+    seller_address_snapshot: Optional[str] = None
 
     # Buyer Snapshot
-    buyer_name: Optional[str]
-    buyer_trn: Optional[str]
-    buyer_address: Optional[str]
+    buyer_name_snapshot: Optional[str] = None
+    buyer_trn_snapshot: Optional[str] = None
+    buyer_address_snapshot: Optional[str] = None

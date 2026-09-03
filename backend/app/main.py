@@ -22,6 +22,7 @@ from app.routers import (
     health_router,
     invoices_router,
     payments_router,
+    enquiries_router,
 )
 from app.routers.dashboard import router as dashboard_router
 from app.routers.workspaces import router as workspaces_router
@@ -173,6 +174,7 @@ app.include_router(invoices_router, prefix="/api/v1")
 app.include_router(payments_router, prefix="/api/v1")
 app.include_router(dashboard_router, prefix="/api/v1")
 app.include_router(workspaces_router, prefix="/api/v1")
+app.include_router(enquiries_router, prefix="/api/v1/enquiries")
 app.include_router(products_router, prefix="/api/v1")
 app.include_router(suppliers_router, prefix="/api/v1")
 app.include_router(inventory_router, prefix="/api/v1")

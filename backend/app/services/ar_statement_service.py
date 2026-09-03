@@ -232,7 +232,7 @@ def debit_note_activity(note: TaxDebitNote, invoice_number: Optional[str]) -> di
     return labelled_line(
         on=note.issue_date,
         doc_type=StatementDocType.TAX_DEBIT_NOTE,
-        number=note.tax_debit_note_number,
+        number=note.debit_note_number,
         reference=note.original_invoice_number or invoice_number,
         payment_method=None,
         payment_status=None,

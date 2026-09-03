@@ -19,6 +19,7 @@ from app.models.credit_status_event import CreditStatus
 if TYPE_CHECKING:
     from app.models.workspace import Workspace
     from app.models.invoice import Invoice
+    from app.models.enquiry import Enquiry
 
 
 class Client(SQLModel, table=True):
@@ -91,3 +92,4 @@ class Client(SQLModel, table=True):
     # Relationships
     workspace: Optional["Workspace"] = Relationship(back_populates="clients")
     invoices: list["Invoice"] = Relationship(back_populates="client")
+    enquiries: list["Enquiry"] = Relationship(back_populates="client")

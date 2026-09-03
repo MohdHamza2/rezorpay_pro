@@ -1,15 +1,14 @@
 # Project State
 
-**Current Phase:** Phase 1: Tax Debit Notes (Sales)
-**Status:** In Progress
+**Current Phase:** Phase 3: Sales Quotation Builder (Wave 8 - Pending)
+**Status:** Completed Phase 2
 
 ## Recent Actions
-- Initialized .planning/ brain.
-- Executed and completed Phase 1: Tax Debit Notes WP-A (API + Alembic).
-- All tests for WP-A pass.
+- Executed Phase 2 (Wave 7 Enquiry Management).
+- Verified Enquiry Management in backend (SQLModel, schemas, endpoints).
+- Verified Enquiry Management via UI in browser subagent (Kanban rendering, Detail View, Client linking).
+- Ran automated Playwright E2E tests, which successfully pass.
 
 ## Pending Works
-- [x] Complete WP-A (API + Alembic).
-- [x] Complete WP-B (UI + PDF).
-- Complete WP-C (Playwright).
-- Proceed to Phase 2.
+- [ ] Research Sales Quotation Builder domain.
+- [ ] Create implementation plan for Phase 3.

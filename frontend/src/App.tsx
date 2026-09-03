@@ -8,6 +8,8 @@ import { Layout } from './components/Layout';
 import { Dashboard } from './pages/Dashboard';
 import { Clients } from './pages/Clients';
 import { ArStatement } from './pages/ArStatement';
+import { Enquiries } from './pages/enquiries/Enquiries';
+import { EnquiryDetail } from './pages/enquiries/EnquiryDetail';
 import { Quotations } from './pages/Quotations';
 import { QuotationForm } from './pages/QuotationForm';
 import { QuotationDetail } from './pages/QuotationDetail';
@@ -64,6 +66,8 @@ function App() {
               <Route index element={<Dashboard />} />
               <Route path="clients" element={<Clients />} />
               <Route path="clients/:id/statement" element={<ArStatement />} />
+              <Route path="enquiries" element={<Enquiries />} />
+              <Route path="enquiries/:id" element={<EnquiryDetail />} />
               <Route path="quotations" element={<Quotations />} />
               <Route path="quotations/new" element={<QuotationForm />} />
               <Route path="quotations/:id/edit" element={<QuotationForm />} />

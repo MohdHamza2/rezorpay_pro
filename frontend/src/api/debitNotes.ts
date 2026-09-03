@@ -4,10 +4,10 @@ import type { PaginatedResponse, PaginationMeta, SuccessResponse } from '../type
 export type TaxDebitNoteStatus = 'DRAFT' | 'ISSUED';
 
 export type TaxDebitNoteReason =
-  | 'SALES_RETURN'
   | 'INVOICE_ERROR'
-  | 'DISCOUNT'
-  | 'GOODWILL'
+  | 'PRICE_INCREASE'
+  | 'QTY_UNDERSTATED'
+  | 'ADDITIONAL_CHARGE'
   | 'OTHER';
 
 export interface TaxDebitNoteItemWrite {

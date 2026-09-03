@@ -553,14 +553,24 @@ export const Invoices = () => {
                         </button>
                       )}
                       {isCreditableStatus(inv.status) && (
-                        <button
-                          className={styles.actionBtn}
-                          data-testid="invoice-create-cn"
-                          onClick={() => navigate(`/credit-notes/new?invoice_id=${inv.id}`)}
-                          title="Create tax credit note"
-                        >
-                          <FileMinus size={16} />
-                        </button>
+                        <>
+                          <button
+                            className={styles.actionBtn}
+                            data-testid="invoice-create-cn"
+                            onClick={() => navigate(`/credit-notes/new?invoice_id=${inv.id}`)}
+                            title="Create tax credit note"
+                          >
+                            <FileMinus size={16} />
+                          </button>
+                          <button
+                            className={styles.actionBtn}
+                            data-testid="invoice-create-tdn"
+                            onClick={() => navigate(`/debit-notes/new?invoice_id=${inv.id}`)}
+                            title="Create tax debit note"
+                          >
+                            <Plus size={16} />
+                          </button>
+                        </>
                       )}
                     </td>
                   </tr>

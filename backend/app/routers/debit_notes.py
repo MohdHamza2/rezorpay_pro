@@ -55,8 +55,10 @@ async def list_debit_notes(
         pagination={
             "page": page,
             "per_page": per_page,
-            "total_items": total_count,
-            "total_pages": (total_count + per_page - 1) // per_page,
+            "total": total_count,
+            "pages": (total_count + per_page - 1) // per_page,
+            "has_next": page < (total_count + per_page - 1) // per_page,
+            "has_prev": page > 1,
         },
     )
 
