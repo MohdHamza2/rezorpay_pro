@@ -101,6 +101,10 @@ from app.models.stock_count import (
     StockCountItem,
     StockCountStatus,
 )
+from app.models.supplier_payment import (
+    SupplierPayment,
+    SupplierPaymentIdempotencyKey,
+)
 
 __all__ = [
     "Workspace",
@@ -198,4 +202,6 @@ __all__ = [
     "StockCount",
     "StockCountItem",
     "StockCountCounter",
+    "SupplierPayment",
+    "SupplierPaymentIdempotencyKey",
 ]

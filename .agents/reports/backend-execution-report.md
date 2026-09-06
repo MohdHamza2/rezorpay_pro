@@ -1430,3 +1430,23 @@ Full suite was RED at HEAD: 4 failures.
 Note: config.py `SECRET_KEY` default still weak (`M-1`), and head is now the enquiry module `c624e2ac4f47`.
 
 ---
+
+---
+
+## 2026-09-06 - Wave 22: Supplier AP Payments & Aging (Phase 4)
+
+**Spec:** `architecture/wave-ap-payments-addendum.md` (Wave 22 = Phase 4 slot; Wave 21 supplier 3-way match ends at `approve`, and its `PARTIALLY_PAID`/`PAID` statuses + stored `amount_paid`/`balance_due`/`paid_at` columns were the untouched hook this wave fills).
+
+### Delivered
+
+- Models `supplier_payment.py`: `SupplierPayment` (immutable SUCCESS-only, `amount > 0` CheckConstraint, tz-aware `payment_date` indexed) + `SupplierPaymentIdempotencyKey` (workspace-scoped composite PK, 48h TTL) mirroring AR `Payment`/`IdempotencyKey`; reuses existing `paymentmethod`/`paymentstatus` Postgres enums (`create_type=False`).
+- Alembic `a3f4c7d9e1b2` (down_revision `e1f5b8a2c3d4`): `supplier_payments` + `supplier_payment_idempotency_keys` + 5 indexes; downgrade/upgrade round-trip verified; `alembic check` clean.
+- Schemas: `supplier_payments.py` (AP methods only CASH/BANK_TRANSFER/CHEQUE -> 422 otherwise; `payment_date` not after today; `SupplierApBalanceResponse`), `ap_aging.py` (summary/detail/by_supplier), `supplier_statements.py` (doc-type enum + statement JSON, `from` via alias).
+- Services: `supplier_payment_service.py` (FOR UPDATE row lock, in-txn workspace-scoped idempotency (48h replay returns same payment), eligibility gate APPROVED/PARTIALLY_PAID else 400 `INVALID_STATE`, no overpayment else 400 `PAYMENT_EXCEEDS_BALANCE`, `_settle_invoice` writes stored columns + APPROVED->PARTIALLY_PAID->PAID with `paid_at`; `ap_aging` reuses live AR `aging_buckets` via `_AgingRow` DateTime->Date adapter, buckets `current`/`days_1_30`/`days_31_60`/`days_61_90`/`days_90_plus`); `supplier_statement_service.py` (generated AP ledger, reuses AR `validate_statement_dates`/`assert_activity_cap`, opening = pre-period invoices - pre-period SUCCESS payments, running balances, totals, `amount_due_now` + aging footer).
+- Router `supplier_payments.py` (prefix `/api/v1`): POST /supplier-payments (Idempotency-Key header required, `10/minute`), GET list w/ filters + pagination, GET /{id}, PUT -> 405 immutable, GET /supplier-invoices/{id}/ap-balance, GET /supplier-invoices/{id}/payments, GET /ap-aging[/detail|/by-supplier], GET /suppliers/{id}/statement.
+
+### Tests (PostgreSQL `invoicesaas_test`)
+
+- New: `test_supplier_payments.py` (12), `test_ap_aging.py` (6), `test_supplier_statement.py` (6) = **24 tests** incl. idempotent replay, overpayment/eligibility gates, 405, method/date 422s, workspace isolation, aging buckets/invariants, statement opening/running/totals/amount_due_now.
+- Guardian alembic-head pins re-pinned `e1f5b8a2c3d4` -> `a3f4c7d9e1b2` in `test_pdc.py` / `test_pricing.py`.
+- Full suite: **279 passed (255 baseline + 24)**, 0 failed; ruff + black clean.
