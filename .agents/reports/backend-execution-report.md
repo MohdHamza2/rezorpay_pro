@@ -3,6 +3,152 @@
 
 ---
 
+## 2026-09-06 — Wave 18: Stock Reservations from Customer POs (Phase 3 sub-feature 1)
+
+**Spec:** `architecture/wave-stock-reservations-addendum.md`. Research complete (`reserved` on `inventory_levels` was always 0, no `StockReservation` model, no writer). Locks the plan: `StockReservation` + `StockReservationItem` models, TTL 7 days, `reserved == SUM(quantity - quantity_consumed)` over ACTIVE items, release before `post_issue` on DN confirm, `/api/v1/inventory/reservations` CRUD + cancel + OWNER/ADMIN expire, new wave test module.
+
+### Done
+
+- Models `StockReservation` + `StockReservationItem` + `ReservationStatus` enum (ACTIVE/DISPATCHED/CANCELLED/EXPIRED, `reservationstatus` DB enum), `RESERVATION_TTL_DAYS = 7` — `backend/app/models/stock_reservation.py`; registered in `models/__init__.py`.
+- Alembic `b2a4d6f8e1c0_add_stock_reservations.py` (down_revision `9f3a2c1e5d84`) creates `stock_reservations` + `stock_reservation_items` (indexes on status, expires_at, product/warehouse, customer_po references); applied via `alembic upgrade head`; `alembic check` clean.
+- Schemas — `backend/app/schemas/stock_reservation.py`: `StockReservationCreate` (single warehouse enforced), `ReservationCancelRequest`/`ReservationExpireRequest` (`extra=forbid`), `StockReservationResponse`/`ReservationListItem` with `remaining`/`quantity_consumed`, `ReservationExpireResponse(expired)`.
+- Service — `backend/app/services/stock_reservation_service.py`: `create_reservation`, `cancel_reservation`, `expire_due(at)`, `release_for_dispatch` (FIFO by `created_at, id`, partial shipment advances `quantity_consumed`, full → DISPATCHED), `get_visible`, `active_remaining_by_cpo_item`, `serialize`/`serialize_list_item`. Single writer enforcing the `reserved` invariant via `lock_or_create_level`; rejects over-undelivered, over-available, and non-shippable (DRAFT) LPOs; multi-tenant scoped.
+- Router — `backend/app/routers/inventory.py`: `POST /inventory/reservations` (201), `GET /inventory/reservations` (paginated; `status`/`cpo_id`/`warehouse_id` filters), `GET /inventory/reservations/{id}`, `POST /inventory/reservations/{id}/cancel`, `POST /inventory/reservations/expire` (OWNER/ADMIN; declared before `/{id}`).
+- DN dispatch integration — `backend/app/services/delivery_note_service.py` `_issue_stock`: for `from_lpo` lines, calls `release_for_dispatch` **before** `post_issue` so shipped qty leaves `reserved` first; DN cancel path unchanged (stays DISPATCHED).
+- Tests — `backend/tests/test_stock_reservations.py`: create/cancel & reserved/available tracking, DRAFT-LPO reject, concurrent-style FIFO partial dispatch, full dispatch → DISPATCHED, TTL expire + OWNER/ADMIN 403, multi-tenant isolation, pagination/filters. Updated 3 alembic-head guard tests to `b2a4d6f8e1c0` (`test_pdc.py`, `test_pricing.py`, `test_product_electrical_specs.py`).
+
+### Pytest (PostgreSQL `_test`) + lint
+
+- `tests/test_stock_reservations.py`: **7 passed**
+- Full suite: **238 passed, 0 failed** (was 231; 5m17s)
+- `alembic heads`: **`b2a4d6f8e1c0`**; `alembic check`: clean. ruff clean; black clean on non-migration touched files (migrations keep alembic style).
+
+---
+
+## 2026-09-06 — Wave 19: Multi-warehouse Stock Transfers (Phase 3 sub-feature 2)
+
+**Spec:** `architecture/wave-stock-transfers-addendum.md`. Stock transfers move stock between warehouses (source bin → destination bin) through a DRAFT → APPROVED → IN_TRANSIT → RECEIVED lifecycle; IN_TRANSIT can be cancelled (returns to source). Uses an `in_transit` swing account so items in transit stay visible while removed from available.
+
+### Done
+
+- Models `StockTransfer` + `StockTransferItem` + `StockTransferCounter` + `TransferStatus` enum (DRAFT/APPROVED/IN_TRANSIT/RECEIVED/CANCELLED, `transferstatus` DB enum) in `backend/app/models/stock_transfer.py`; check constraints: distinct source/destination warehouse, `quantity > 0`, `0 <= received_quantity <= quantity`; registered in `models/__init__.py`. `inventory_levels.in_transit` swing column (Numeric, NOT NULL default 0, check `>= 0`) in `backend/app/models/inventory.py`.
+- Gapless line numbering `ST-YYYY-0001` — `backend/app/services/transfer_number.py` (`TransferNumberService`, SELECT FOR UPDATE + IntegrityError first-insert race retry, mirrors DnNumberService).
+- Alembic `c6b3e7a9d2f0_add_stock_transfers.py` (down_revision `b2a4d6f8e1c0`) creates `stock_transfers` + `stock_transfer_items` + `stock_transfer_counters`, adds `in_transit`; verified via downgrade → upgrade round-trip; `alembic check` clean. Note: the three lifecycle timestamps must be `sa.DateTime(timezone=True)` to match the SQLModel tz-aware columns.
+
+### Dispatch / Receive / Cancel accounting
+
+- **Dispatch** (APPROVED→IN_TRANSIT): per item, source `on_hand -= qty`, that level's `in_transit += qty`; writes a TRANSFER ledger `-qty` (source_bin set). Fails 400 if the item's source bin has insufficient `available()`.
+- **Receive** (IN_TRANSIT→RECEIVED): per item, source level `in_transit -= dispatched` (the full dispatched qty, so a partial receipt leaves the in-transit window for the discrepancy); destination `on_hand += received`; writes a TRANSFER ledger `+received` (dest bin set); line `received_quantity` records the partial/discrepancy.
+- **Cancel** (DRAFT/APPROVED free; IN_TRANSIT→CANCELLED): IN_TRANSIT returns source `on_hand += qty`, source `in_transit -= qty`, and writes a balancing `TRANSFER_RETURN` ledger `+qty`; requires `cancellation_reason`. RECEIVED/CANCELLED cannot be cancelled.
+
+### Also
+
+- Schemas — `backend/app/schemas/stock_transfer.py`: `StockTransferCreate` (min 1 item), `TransferItemCreate` (default bin resolution SKU-compatible), `TransferReceiveRequest` (per-line `received_quantity`), `TransferCancelRequest` (`extra=forbid`), `StockTransferResponse`/`StockTransferListItem` with `remaining`.
+- Service — `backend/app/services/stock_transfer_service.py`: `create_transfer`, `approve_transfer`, `dispatch_transfer`, `receive_transfer`, `cancel_transfer`, `get_visible`, `serialize`/`serialize_list_item`. Deliberately does **not** set `header.items` on a pending header (avoid lazy-load `MissingGreenlet`); items added directly and header reloaded via `get_visible`.
+- Router — `backend/app/routers/inventory.py`: `POST /inventory/transfers` (201), `GET /inventory/transfers` (paginated; `status`/`source_warehouse_id`/`destination_warehouse_id` filters), `GET /inventory/transfers/{id}`, `POST /inventory/transfers/{id}/approve|/dispatch|/receive|/cancel`. `InventoryLevelResponse` gained `in_transit`.
+- Tests — `backend/tests/test_stock_transfers.py` (8 tests): create (draft, `ST-` gapless number, default bin resolving), dispatch + TRANSFER ledger + source available drop, insufficient source 400, full receive (dest on_hand +, source in_transit cleared, ledger +), partial receive discrepancy, cancel rules + state-machine guards (dispatch-before-approve 400, double approve 400), multi-tenant isolation, pagination/validation. Updated 3 alembic-head guard tests to `c6b3e7a9d2f0`.
+
+### Pytest (PostgreSQL `_test`) + lint
+
+- `tests/test_stock_transfers.py`: **8 passed** (together with reservations + delivery-notes modules: 29 passed)
+- Full suite: **246 passed, 0 failed** (was 238; 5m33s)
+- `alembic heads`: **`c6b3e7a9d2f0`**; `alembic check`: clean. ruff clean; black clean on non-migration touched files (migrations keep alembic style).
+
+---
+
+## 2026-09-06 — Wave 19b: Stock Counting / Reconciliation (Phase 3 sub-feature 3)
+
+**Spec:** `architecture/wave-stock-counting-addendum.md`. Scheduling a count snapshots expected quantities from each `InventoryLevel.on_hand` per bin (includes reserved/damaged; `in_transit` excluded), counting records physical results per line, and reconciliation adjusts `on_hand` by the variance once a manager approves flagged lines. Only `on_hand` is ever touched.
+
+### Done
+
+- Models `StockCount` + `StockCountItem` + `StockCountCounter` + `StockCountStatus` enum (SCHEDULED/IN_PROGRESS/COMPLETED/RECONCILED/CANCELLED, `stockcountstatus` DB enum) in `backend/app/models/stock_count.py`; line check constraints `expected_quantity >= 0`, `counted_quantity >= 0`, unique `(count_id, product_id, bin_id)`; tz-aware lifecycle timestamps; registered in `models/__init__.py`.
+- Gapless line numbering `SC-YYYY-0001` — `backend/app/services/stock_count_number.py` (`StockCountNumberService`, SELECT FOR UPDATE + IntegrityError first-insert race retry, mirrors DnNumberService).
+- Alembic `e1f5b8a2c3d4_add_stock_counts.py` (down_revision `c6b3e7a9d2f0`) creates `stock_counts` + `stock_count_items` + `stock_count_counters`; applied via `alembic upgrade head`; downgrade → upgrade round-trip verified; `alembic check` clean.
+
+### Accounting
+
+- **Create**: snapshots `expected_quantity = on_hand` for every level in the warehouse (empty bins with a level still get a line). No stock movement.
+- **Variance** = counted − expected. `COUNT_TOLERANCE_PERCENT = 2.00`; `needs_approval` uses a multiplication compare (`abs(variance) * 100 > expected * 2.00`, no floats/division) so exact-zero and at-tolerance lines pass; `expected == 0` with variance != 0 → flagged. Computed at complete.
+- **Reconcile** (COMPLETED only): blocks while any flagged line is unapproved; then per line applies `level.on_hand += variance` (via `lock_or_create_level`) and writes one ADJUSTMENT ledger row per changed line — `reference_type="COUNT"`, `reference_id=count.id`, `reason="COUNT_CORRECTION"`, `notes="<count_number> variance"`, `source_bin_id` for negative variance / `destination_bin_id` for positive. Reserved/damaged/in_transit untouched.
+
+### Also
+
+- Schemas — `backend/app/schemas/stock_count.py`: `StockCountCreate`, `CountRecordRequest` (`extra=forbid`, non-negative `counted_quantity`), `StockCountItemResponse` with `variance`, `StockCountResponse`, `StockCountListItem` with `item_count`/`count_in_progress`/`flagged_lines`.
+- Service — `backend/app/services/stock_count_service.py`: `create_count`, `record_count` (SCHEDULED→IN_PROGRESS, sets `started_at`), `complete_count` (400 if any uncounted line), `approve_count`, `reconcile_count`, `cancel_count` (SCHEDULED/IN_PROGRESS only, no stock movement), `get_visible`, `serialize`/`serialize_list_item`. OWNER/ADMIN gate on every mutation (`_require_manager`), GET open to members.
+- Router — `backend/app/routers/inventory.py`: `POST /inventory/counts` (201), `GET /inventory/counts` (paginated; `status`/`warehouse_id` filters), `GET /inventory/counts/{count_id}`, `POST /inventory/counts/{count_id}/record|/complete|/approve|/reconcile|/cancel`. Routes declared after `/levels`/`/warehouses`; no collision.
+- Tests — `backend/tests/test_stock_counts.py` (9 tests): create + gapless `SC-` numbering + snapshot + multi-tenant ghost-warehouse 404, record/complete lifecycle with uncounted-line 400 + negative 422, tolerance/`needs_approval` unit matrix + flagging at complete, reconcile applies `on_hand` deltas + ADJUSTMENT/COUNT ledger + approve-before-reconcile 400, zero-expected (drained source via transfer dispatch) flagged + reconciled, cancel rules + terminal-state guards, MEMBER 403 vs GET 200, cross-workspace 404 isolation, pagination + filters + bad-status 422. Updated the 3 alembic-head guard tests: `test_pdc.py`/`test_pricing.py` pinned to `e1f5b8a2c3d4`; `test_product_electrical_specs.py` rewritten to walk the head→root lineage dynamically (survives quote-style differences and future waves instead of pinning a head).
+
+### Note (recovery incident)
+
+A PowerShell inline `python -c` file-rewrite truncated `tests/test_pdc.py`, `tests/test_pricing.py`, `tests/test_product_electrical_specs.py` to 0 bytes. Restored via `git checkout --` (HEAD predates Wave 18/19 pin bumps) and re-pinned the head assertions to `e1f5b8a2c3d4`. Lesson: never use inline `python -c` with PowerShell quoting to edit files — use the edit tool.
+
+### Pytest (PostgreSQL `_test`) + lint
+
+- `tests/test_stock_counts.py`: **9 passed**; restored guard modules (`test_pdc.py`, `test_pricing.py`, `test_product_electrical_specs.py`): **41 passed**
+- Full suite: **255 passed, 0 failed** (was 246; 6m01s)
+- `alembic heads`: **`e1f5b8a2c3d4`**; `alembic check`: clean. ruff clean; black clean on non-migration touched files (migrations keep alembic style).
+
+---
+
+## 2026-09-06 — M-5: gapless PR/RFQ/GRN numbering (full-project audit remediation)
+
+**Spec:** `.agents/reports/full-project-audit-2026-09-06.md` finding M-5. Count-based (`len(all rows)+1`) PR/RFQ/GRN numbers were unsafe under concurrency (duplicate-key 500s). Replaced with the established `InvoiceCounter`/`SPOCounter` pattern.
+
+### Done
+
+- New counter models `PRCounter`/`RFQCounter`/`GRNCounter` (`pr_counters`/`rfq_counters`/`grn_counters`, composite PK workspace_id+year) — `backend/app/models/pr_counter.py`, `rfq_counter.py`, `grn_counter.py`, registered in `models/__init__.py`.
+- New `PRNumberService`/`RFQNumberService`/`GRNNumberService` — SELECT FOR UPDATE + IntegrityError first-insert race retry (mirrors `EnquiryNumberService`) — `backend/app/services/pr_number.py`, `rfq_number.py`, `grn_number.py`.
+- Wiring: `POST /procurement/requests` (`procurement.py`), `POST /rfq/requests` (`rfq.py`), `GRNService.create_draft_grn` (`grn_service.py`; removed `_generate_grn_number`).
+- Both routers now hoist `import time` mid-function (resolves the E402 half of M-7) and capture `user.id` **before** the counter service, because the service's `session.rollback()` on the first-insert race expires ORM objects — accessing them after would raise `MissingGreenlet`.
+- Alembic `9f3a2c1e5d84_add_gapless_pr_rfq_grn_counters.py` (down_revision `c624e2ac4f47`) creates the 3 counter tables; applied via `alembic upgrade head`.
+- Tests: added concurrent PR/RFQ/GRN creation (10 threads each, sequential gapless assertions) to `tests/test_concurrent_numbering.py`; updated the 3 alembic-head guard tests to new head `9f3a2c1e5d84` (`test_pdc.py`, `test_pricing.py`, `test_product_electrical_specs.py`).
+
+### Pytest (PostgreSQL `_test`)
+
+- `tests/test_concurrent_numbering.py`: **7 passed** (was 4)
+- Full suite: **228 passed, 0 failed** (5m04s)
+- `alembic heads`: **`9f3a2c1e5d84`**; `alembic check`: clean. ruff clean; black clean on non-migration touched files (migrations keep alembic style).
+
+---
+
+## 2026-09-06 — F-2: backend test suite fixed (full-project audit remediation)
+
+**Spec:** `.agents/reports/full-project-audit-2026-09-06.md` finding F-2. Suite was red with 4 failures.
+
+### Done
+
+- `tests/test_ar_statement_tdn.py`: rewritten with its own sync engine / `TestingSessionLocal` / `override_get_session` + module-scoped autouse `setup_database` (drop_all/create_all); fixed stale route `tax-debit-notes` → `/api/v1/debit-notes`; fixed `reason: PRICE_UPDATE` → `PRICE_INCREASE`. Black-formatted.
+- Alembic-head guard tests pinned to current head `c624e2ac4f47`: `test_pdc.py`, `test_pricing.py`, `test_product_electrical_specs.py`.
+
+### Pytest (PostgreSQL `_test`)
+
+- Full suite: **228 passed, 0 failed** (was 224 passed, 4 failed). ruff + black clean.
+
+---
+
+## 2026-09-06 — M-10: leftover root test scripts deleted (full-project audit remediation)
+
+**Spec:** `.agents/reports/full-project-audit-2026-09-06.md` finding M-10.
+
+- Deleted `backend/test_e2e.py`, `backend/test_step2_api.py`, `backend/test_step2_production.py` (outside `tests/`; `pytest.ini` `testpaths=tests` already excluded them — no test loss). Only remaining references are `graphifyy/cache/ast/*.json` AST caches.
+
+---
+
+## 2026-09-06 — M-1 + M-2: secret guard + configurable CORS (full-project audit remediation)
+
+**Spec:** `.agents/reports/full-project-audit-2026-09-06.md` findings M-1 and M-2.
+
+### Done
+
+- `backend/app/config.py`: added `DEFAULT_SECRET_KEY` / `DEFAULT_CORS_ORIGINS`, `CORS_ORIGINS: list[str]` field (JSON env var), and a `@model_validator(mode="after")` that raises `RuntimeError` if `ENVIRONMENT == "production"` and `SECRET_KEY` is still the default.
+- `backend/app/main.py`: CORS middleware now uses `settings.CORS_ORIGINS`.
+- `backend/app/routers/health.py`: hoisted `HTTPException` import (E402).
+- `backend/.env.example`: added commented `CORS_ORIGINS` JSON example.
+- CI unaffected (already sets `SECRET_KEY: ci-test-secret-key-not-for-production`).
+
+---
+
 ## 2026-09-01 — WP-A Bilingual PDF assets pytest (planned BEFORE code)
 
 **Spec:** `architecture/wave-bilingual-pdf-addendum.md` §7. Filesystem only; no DB; never SQLite. **No Alembic.** No git commit. No routers/schemas/models.
@@ -1252,5 +1398,35 @@ Frontend, Playwright, debit notes, Peppol, hs_code, snapshot columns, git commit
 ### Out of WP-A (deferred)
 
 Frontend / Playwright (WP-B/C), debit notes (next; parent = `1a30af047312`), Peppol, hs_code, snapshot columns, git commit.
+
+---
+
+## 2026-09-06 — F-2: backend test suite green (full-project audit remediation)
+
+**Spec:** `.agents/reports/full-project-audit-2026-09-06.md` finding F-2.
+
+### Problem
+
+Full suite was RED at HEAD: 4 failures.
+
+1. `tests/test_ar_statement_tdn.py::test_stmt_with_tdn` — standalone-fragile: imported helpers from `test_ar_statement.py` but had no `setup_database` fixture of its own, so schema (`users`) did not exist when the module ran without its sibling. Also used stale route `/api/v1/tax-debit-notes` (router is `/debit-notes`) and invalid `reason: PRICE_UPDATE`.
+2. `tests/test_pdc.py::test_fta_cn_hold_overpay_alembic` — pinned old head `b8d5f0c3a216` in `alembic heads` output.
+3. `tests/test_pricing.py::test_schema_not_float_and_alembic_head` — same stale pin.
+4. `tests/test_product_electrical_specs.py::test_alembic_new_revision_parent_and_check` — asserted the electrical-specs revision itself was the head.
+
+### Files changed
+
+- `tests/test_ar_statement_tdn.py` — added own sync `engine` + `TestingSessionLocal` + `override_get_session` + module-scoped autouse `setup_database` (drop_all/create_all on `invoicesaas_test`), switched routes to `/api/v1/debit-notes`, fixed `reason` to `PRICE_INCREASE`.
+- `tests/test_pdc.py` — head pin `b8d5f0c3a216` → `c624e2ac4f47`.
+- `tests/test_pricing.py` — head pin `b8d5f0c3a216` → `c624e2ac4f47`.
+- `tests/test_product_electrical_specs.py` — head assertion now `c624e2ac4f47`; "no `b8d5f0c3a216 (head)`" retained.
+
+### Pytest (PostgreSQL `invoicesaas_test`)
+
+- Full suite: **228 passed, 0 failed** (5m04s).
+- `tests/test_ar_statement_tdn.py` + `tests/test_ar_statement.py`: **15 passed**.
+- black + ruff clean on all four files.
+
+Note: config.py `SECRET_KEY` default still weak (`M-1`), and head is now the enquiry module `c624e2ac4f47`.
 
 ---

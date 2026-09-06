@@ -6,6 +6,7 @@ Do not refactor ``test_products.py`` — helpers are duplicated here.
 
 import ast
 import asyncio
+import re
 import shutil
 import subprocess
 import sys
@@ -476,8 +477,27 @@ def test_alembic_new_revision_parent_and_check():
     )
     assert heads.returncode == 0, heads.stdout + heads.stderr
     head_text = heads.stdout + heads.stderr
-    assert rev_match in head_text
-    assert "b8d5f0c3a216 (head)" not in head_text
+    head_revs = re.findall(r"^([0-9a-f]{12}) \(head\)", head_text, flags=re.M)
+    assert len(head_revs) == 1, head_text
+    assert head_revs[0] != "b8d5f0c3a216"
+
+    revisions: dict[str, str | None] = {}
+    for path in VERSIONS_DIR.glob("*.py"):
+        src = path.read_text(encoding="utf-8")
+        rev = re.search(r'revision: str = ["\']([0-9a-f]{12})["\']', src)
+        if rev is None:
+            continue
+        down = re.search(
+            r'down_revision: Union\[str, None\] = ["\']([0-9a-f]{12})["\']', src
+        )
+        revisions[rev.group(1)] = down.group(1) if down else None
+
+    lineage: list[str] = []
+    node: str | None = head_revs[0]
+    while node is not None:
+        lineage.append(node)
+        node = revisions.get(node)
+    assert rev_match in lineage
     upgrade = subprocess.run(
         [alembic_bin, "upgrade", "head"],
         cwd=BACKEND_DIR,
