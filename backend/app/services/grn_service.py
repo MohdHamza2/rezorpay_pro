@@ -15,6 +15,7 @@ from app.models.inventory import (
     WarehouseBin,
 )
 from app.models.spo import SupplierPurchaseOrderItem
+from app.services.grn_number import GRNNumberService
 
 from app.schemas.grn import (
     GRNCreate,
@@ -27,26 +28,13 @@ from app.schemas.grn import (
 
 class GRNService:
     @staticmethod
-    async def _generate_grn_number(
-        session: AsyncSession, workspace_id: uuid.UUID
-    ) -> str:
-        # A proper sequence generator should be used, but simplified here
-        count_query = await session.execute(
-            select(GoodsReceiptNote).where(
-                GoodsReceiptNote.workspace_id == workspace_id
-            )
-        )
-        count = len(count_query.scalars().all())
-        return f"GRN-{datetime.now().strftime('%Y')}-{str(count + 1).zfill(6)}"
-
-    @staticmethod
     async def create_draft_grn(
         session: AsyncSession,
         workspace_id: uuid.UUID,
         user_id: uuid.UUID,
         data: GRNCreate,
     ) -> GoodsReceiptNote:
-        grn_number = await GRNService._generate_grn_number(session, workspace_id)
+        grn_number = await GRNNumberService.generate_grn_number(session, workspace_id)
 
         grn = GoodsReceiptNote(
             workspace_id=workspace_id,

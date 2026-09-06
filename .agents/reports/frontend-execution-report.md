@@ -2203,3 +2203,29 @@ Flow:
 - `product-catalog.spec.ts`: pass (no spec fields required)
 - `product-isolation.spec.ts`: pass (cross-tenant GET still **404**, not 403)
 - `npm run build`: **green** (`tsc -b && vite build`)
+
+---
+
+## 2026-09-06 — F-1: frontend production build fixed (full-project audit remediation)
+
+**Spec:** `.agents/reports/full-project-audit-2026-09-06.md` finding F-1. `npm run build` was failing with 12 TS errors that shipped silently because CI had no frontend job.
+
+### Files changed
+
+- `src/components/pdf/TaxDebitNotePDF.tsx`:
+  - `PDF_LABELS.taxDebitNoteNo` → `PDF_LABELS.debitNoteNo` (label key never existed).
+  - `cn.tax_debit_note_number` → `cn.debit_note_number` (field name per `api/debitNotes.ts`).
+  - Download filename `TaxTaxDebitNote_...` → `TaxDebitNote_...` (double-prefix typo).
+- `src/pages/InvoiceArPanel.tsx`:
+  - `row.tax_debit_note_number` → `row.debit_note_number`.
+  - `amount_debited` coerced to `number` (was `number | string | null`, failed `> 0` type math).
+- `src/api/invoices.ts` — added `amount_debited?: number | string | null` to `InvoiceListItem` to match backend `InvoiceResponse`.
+- `src/pages/enquiries/Enquiries.tsx` — removed unused `Plus` import.
+- `src/pages/enquiries/EnquiryDetail.tsx` — removed unused `useState`, `Check`, `Edit2`, `Play`, `RefreshCw`, `X` imports.
+
+### Verification
+
+- `npm run build`: **green** (`tsc -b && vite build`, 2226 modules, 1.15s).
+- `npm run lint` (oxlint): warnings only (pre-existing fast-refresh / unused catch-param pattern across other files; none new).
+
+Note: the audit also found the 3 other blocking fixes — F-2 (backend tests, see backend report) and F-3 (add frontend job to CI, see `.github/workflows/ci.yml`). Chunk-size warning (2 MB main bundle) remains as a known non-blocking item.

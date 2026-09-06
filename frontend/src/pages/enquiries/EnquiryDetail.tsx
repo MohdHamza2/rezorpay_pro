@@ -1,8 +1,7 @@
-import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { ArrowLeft, Check, Edit2, Play, RefreshCw, X } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { getClients } from '../../api/clients';
 import {
   convertEnquiryToQuotation,
@@ -32,7 +31,7 @@ export const EnquiryDetail = () => {
     queryFn: () => getEnquiry(id!),
     enabled: Boolean(id),
   });
-  
+
   const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: getClients });
 
   const invalidate = () => {
@@ -77,9 +76,9 @@ export const EnquiryDetail = () => {
 
   return (
     <div className={styles.container}>
-      <button 
-        className={styles.iconBtn} 
-        style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }} 
+      <button
+        className={styles.iconBtn}
+        style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
         onClick={() => navigate('/enquiries')}
       >
         <ArrowLeft size={16} /> Back to Enquiries
@@ -143,7 +142,7 @@ export const EnquiryDetail = () => {
           {/* Details Section */}
           <div style={{ background: 'white', padding: '1.5rem', borderRadius: '8px', border: '1px solid #e5e7eb', marginBottom: '2rem' }}>
             <h3 style={{ marginTop: 0, marginBottom: '1rem', fontSize: '1.125rem' }}>Enquiry Details</h3>
-            
+
             {enquiry.items_description && (
               <div style={{ marginBottom: '1.5rem' }}>
                 <strong style={{ display: 'block', fontSize: '0.875rem', color: '#6b7280', marginBottom: '0.5rem' }}>
@@ -181,7 +180,7 @@ export const EnquiryDetail = () => {
               </div>
             )}
           </div>
-          
+
           {/* Notes Section */}
           {enquiry.notes && (
             <div style={{ background: 'white', padding: '1.5rem', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
@@ -213,21 +212,21 @@ export const EnquiryDetail = () => {
                   </div>
                 )}
               </div>
-              
+
               {enquiry.contact_phone && (
                 <div>
                   <strong style={{ display: 'block', fontSize: '0.75rem', color: '#6b7280', textTransform: 'uppercase' }}>Phone</strong>
                   {enquiry.contact_phone}
                 </div>
               )}
-              
+
               {enquiry.contact_whatsapp && (
                 <div>
                   <strong style={{ display: 'block', fontSize: '0.75rem', color: '#6b7280', textTransform: 'uppercase' }}>WhatsApp</strong>
                   {enquiry.contact_whatsapp}
                 </div>
               )}
-              
+
               {enquiry.contact_email && (
                 <div>
                   <strong style={{ display: 'block', fontSize: '0.75rem', color: '#6b7280', textTransform: 'uppercase' }}>Email</strong>

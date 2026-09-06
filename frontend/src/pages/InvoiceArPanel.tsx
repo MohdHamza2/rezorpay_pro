@@ -33,7 +33,8 @@ export function InvoiceArPanel({ invoiceId, onClose }: Props) {
   });
 
   const credited = invoice?.amount_credited;
-  const debited = invoice?.amount_debited;
+  const debitedRaw = invoice?.amount_debited;
+  const debited = debitedRaw === undefined || debitedRaw === null ? null : Number(debitedRaw);
   const showCredited = credited !== undefined && credited !== null;
   const showDebited = debited !== undefined && debited !== null && debited > 0;
   const creditable = invoice ? isCreditableStatus(invoice.status) : false;
@@ -96,7 +97,7 @@ export function InvoiceArPanel({ invoiceId, onClose }: Props) {
                       className={quoteStyles.numberLink}
                       onClick={() => navigate(`/debit-notes/${row.id}`)}
                     >
-                      {row.tax_debit_note_number}
+                      {row.debit_note_number}
                     </button>
                     {' '}
                     {row.status} · {formatAed(row.total_amount)}

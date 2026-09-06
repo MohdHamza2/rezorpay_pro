@@ -190,8 +190,8 @@ export const TaxDebitNotePDF = ({
           <BuyerBlock cn={cn} client={client} />
           <View style={styles.noteDetails}>
             <View style={styles.detailRow}>
-              <PdfStackedLabel en={PDF_LABELS.taxDebitNoteNo.en} ar={PDF_LABELS.taxDebitNoteNo.ar} />
-              <Text style={styles.detailValue}>{cn.tax_debit_note_number}</Text>
+              <PdfStackedLabel en={PDF_LABELS.debitNoteNo.en} ar={PDF_LABELS.debitNoteNo.ar} />
+              <Text style={styles.detailValue}>{cn.debit_note_number}</Text>
             </View>
             <View style={styles.detailRow}>
               <PdfStackedLabel en={PDF_LABELS.issueDate.en} ar={PDF_LABELS.issueDate.ar} />
@@ -270,7 +270,7 @@ export async function downloadTaxDebitNotePdf(args: {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = `TaxTaxDebitNote_${args.cn.tax_debit_note_number}.pdf`;
+  anchor.download = `TaxDebitNote_${args.cn.debit_note_number}.pdf`;
   anchor.click();
   URL.revokeObjectURL(url);
 }

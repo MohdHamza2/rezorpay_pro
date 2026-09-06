@@ -1,127 +1,27 @@
 # Codebase Concerns
 
 **Analysis Date:** 2026-08-31
+**Last Audit:** 2026-09-06 (see `.agents/reports/full-project-audit-2026-09-06.md`)
 
 ## Tech Debt
 
-**Product master API incomplete:**
-- Issue: Models include identifiers, UOM conversions, and prices (`backend/app/models/product.py`) but `backend/app/routers/products.py` only lists/creates Category, Brand, UOM, Product. No GET-by-id, PUT, DELETE, search, pagination, or nested resources. Frontend "Add Product" is `alert('Add Product UI coming soon')` (`frontend/src/pages/Products.tsx`). Hermes plan `.hermes/plans/2026-08-27_153000-wave3-product-master.md` still describes this gap.
-- Files: `backend/app/routers/products.py`, `backend/app/schemas/products.py`, `frontend/src/pages/Products.tsx`, `frontend/src/api/products.ts`
-- Impact: Electrical catalog (SKU, conversions, customer prices) cannot be maintained in production UI; invoices still use free-text lines with no `product_id` (`backend/app/models/invoice_item.py`).
-- Fix approach: Complete schemas + nested routes as in the Hermes plan; add `test_products.py`; replace alert with create/edit modals; link invoice items to products when sales docs need SKU/VAT.
+**~~Product master API incomplete:~~ RESOLVED (2026-09-06 audit)**
+- ~~Issue: Models include identifiers, UOM conversions, and prices (`backend/app/models/product.py`) but `backend/app/routers/products.py` only lists/creates Category, Brand, UOM, Product. No GET-by-id, PUT, DELETE, search, pagination, or nested resources. Frontend "Add Product" is `alert('Add Product UI coming soon')` (`frontend/src/pages/Products.tsx`). Hermes plan `.hermes/plans/2026-08-27_153000-wave3-product-master.md` still describes this gap.~~
+- Resolved: full CRUD + search + pagination + nested resources landed; `test_products.py` covers the suite.
 
-**Supplier child tables unused:**
-- Issue: `SupplierContact`, `SupplierBankAccount`, `SupplierDocument`, `SupplierProduct` exist (`backend/app/models/supplier.py`) with no router endpoints. `backend/app/routers/suppliers.py` is list/create on the root row only.
-- Files: `backend/app/routers/suppliers.py`, `frontend/src/pages/Suppliers.tsx`
-- Impact: Cannot store IBAN, trade license, VAT certificate, or supplier SKU mapping — required for UAE vendor onboarding.
-- Fix approach: Nested CRUD under `/suppliers/{id}/…` with workspace checks; UI tabs.
+**~~Payment PUT vs immutability rule:~~ RESOLVED (2026-09-06 audit)**
+- ~~Issue: `.claude/CLAUDE.md` says payments are immutable. `PUT /api/v1/invoices/{id}/payments/{id}` updates `status` and `pdc_status`.~~
+- Resolved: PUT → **405**; PDC management moved to explicit lifecycle endpoints.
 
-**Unsafe document numbering (PR, RFQ, GRN):**
-- Issue: `len(select all)+1` without `FOR UPDATE` (`backend/app/routers/procurement.py`, `backend/app/routers/rfq.py`, `backend/app/services/grn_service.py` `_generate_grn_number`). Concurrent creates collide on unique `(workspace_id, number)`.
-- Files: those three; contrast working `backend/app/services/invoice_number.py` and `spo_number.py`
-- Impact: Duplicate-key 500s under concurrent warehouse receiving or buyer PR creation.
-- Fix approach: Counter tables like `InvoiceCounter`/`SPOCounter`; never load all rows to count.
+**~~Invoice OVERDUE never computed:~~ RESOLVED (2026-09-06 audit)**
+- ~~Symptoms: Status enum includes `OVERDUE` but no job/query sets it when `due_date < today` and balance > 0.~~
+- Resolved: computed on-read via `should_mark_overdue` (`backend/app/services/credit_control_service.py`).
 
-**Payment PUT vs immutability rule:**
-- Issue: `.claude/CLAUDE.md` says payments are immutable. `PUT /api/v1/invoices/{id}/payments/{id}` updates `status` and `pdc_status` (`backend/app/routers/payments.py`). V3 test plan requires 405 on PUT.
-- Files: `backend/app/routers/payments.py`, `backend/app/schemas/payments.py` `PaymentUpdate`
-- Impact: Amount is not editable (good) but status mutation can change AR without a new event type for PDC clear/bounce.
-- Fix approach: Keep PDC as an explicit lifecycle endpoint that writes an audit event and recalculates invoice status; do not allow arbitrary status writes; add tests.
-
-**Service layer inconsistency:**
-- Issue: Clients/products/suppliers/PR/RFQ/inventory/dashboard/workspaces skip services and query in routers. Mid-file `import time` in PR/RFQ routers.
-- Files: `backend/app/routers/procurement.py`, `rfq.py`, `products.py`, `suppliers.py`
-- Impact: Duplicated numbering bugs; harder to test; E402 violations.
-- Fix approach: Extract numbering + create into services; hoist imports.
-
-**List pagination incomplete:**
-- Issue: CLAUDE.md requires pagination on all lists. Only clients, invoices, payments paginate. Products/suppliers/inventory/PR/RFQ/SPO/GRN/AP return full arrays.
-- Files: `backend/app/routers/products.py` and siblings; frontend has no `pagination` types (`frontend/src/types/api.ts`)
-- Impact: Unbounded payloads as catalogs grow.
-- Fix approach: `PaginatedResponse` + `page`/`per_page` on every list; update axios wrappers.
-
-**Frontend invoice list contract:**
-- Issue: `getInvoices` types `SuccessResponse<Invoice[]>` (`frontend/src/api/invoices.ts`) but backend `GET /invoices` returns `PaginatedResponse` with `data` + `pagination`. It works only because `data` is still the array. No page controls in `frontend/src/pages/Invoices.tsx`.
-- Files: `frontend/src/api/invoices.ts`, `backend/app/routers/invoices.py`
-- Impact: Silent truncation at `per_page` default 20.
-- Fix approach: Type pagination; add page UI; same for clients.
-
-**Tests use `create_all`, not Alembic:**
-- Issue: Fixtures `SQLModel.metadata.drop_all` / `create_all` (`backend/tests/test_auth.py` et al.). CI separately runs `alembic upgrade head` on empty DB then pytest which drops and recreates from models.
-- Files: every `setup_database` fixture
-- Impact: Tests can pass with model-only schema while production Alembic differs (ENUM names, server defaults).
-- Fix approach: Session fixture that migrates once; stop `create_all` in tests.
-
-**Wave numbering mismatch:**
-- Issue: `.agents/MASTER_PLAN_V3.md` Wave 7 = Enquiry, Wave 8 = Quotation. Implemented migrations named Wave 7 inventory, Wave 8 PR, Wave 9 RFQ, Wave 10 SPO, Wave 11 GRN. `.agents/reports/README.md` still shows Wave 0 IN PROGRESS / later waves PENDING.
-- Files: `.agents/MASTER_PLAN_V3.md`, `backend/alembic/versions/*`, `.agents/reports/README.md`
-- Impact: Planners implement the wrong next wave.
-- Fix approach: Publish a single current-state roadmap (GSD `ROADMAP.md`) mapping implemented modules vs V3 wave ids. `.planning/STATE.md` / `ROADMAP.md` / `REQUIREMENTS.md` are missing.
-
-**Invoice items are free-text:**
-- Issue: `InvoiceItem` has description/qty/price/tax only (`backend/app/models/invoice_item.py`). No `product_id`, UOM, SKU, or electrical spec snapshot.
-- Impact: Cannot reprint from catalog; no BOQ/LPO line traceability.
-- Fix approach: Optional `product_id` + snapshot fields; tax default from product or workspace `default_tax_rate`.
-
-**Credit control stored, not enforced:**
-- Issue: Workspace `credit_limit_default`, `credit_warning_days`, `credit_hold_days`, `block_po_on_hold`, `block_do_on_hold` (`backend/app/models/workspace.py`) have no engine. Client has no per-customer limit or aging.
-- Files: `backend/app/models/workspace.py`, `backend/app/models/client.py`, `frontend/src/pages/Settings.tsx`
-- Impact: Settings UI implies blocking that does not happen. DO/CPO modules do not exist to block.
-- Fix approach: Implement aging + HOLD after CPO/DO exist; until then do not expose block flags as if live.
-
-**GRN purchase-return stub:**
-- Issue: `pass` after rejected qty (`backend/app/services/grn_service.py` around auto-PurchaseReturn).
-- Impact: Rejected goods do not create PRN/debit note.
-- Fix approach: Implement PurchaseReturn when Wave 25 entities exist; until then persist a discrepancy record.
-
-**Duplicate GRN migrations:**
-- Issue: `2a98d90a2f79_add_wave_11_grn.py` and `5f24e4eb1428_add_grn_models.py` both add GRN-related schema.
-- Files: `backend/alembic/versions/`
-- Impact: Fragile history; `alembic check` currently clean — do not squash without a freeze.
-- Fix approach: Leave chain; document head revision in ROADMAP.
-
-**Workspace schema vs API:**
-- Issue: Model has `over_receipt_tolerance_percent`, `spo_amendment_approval_threshold` (`backend/app/models/workspace.py`) omitted from `WorkspaceResponse` (`backend/app/schemas/workspaces.py`).
-- Impact: Operators cannot configure SPO/GRN tolerances from Settings.
-- Fix approach: Add fields to schema + Settings form.
-
-**Leftover scripts:**
-- Issue: `backend/test_e2e.py`, `test_step2_api.py`, `test_step2_production.py` outside `tests/`.
-- Impact: Confusion; accidental `pytest` from wrong directory.
-- Fix approach: Delete or move to `scripts/` gitignored.
-
-## Known Bugs
-
-**Invoice OVERDUE never computed:**
-- Symptoms: Status enum includes `OVERDUE` (`backend/app/models/invoice.py`) but no job/query sets it when `due_date < today` and balance > 0.
-- Files: `backend/app/models/invoice.py`, `backend/app/services/invoice_service.py`
-- Trigger: Aging invoices stay `SENT` / `PARTIALLY_PAID`
-- Workaround: Filter due dates in UI (not implemented)
-
-**Health ready mid-file import:**
-- Symptoms: E402 in `backend/app/routers/health.py` (`from fastapi import HTTPException` inside except)
-- Files: `backend/app/routers/health.py`
-- Trigger: ruff on that file if CI expands to all routers (CI currently `ruff check app/` — this is a violation)
-- Workaround: Hoist import
-
-**Dashboard outstanding loads all invoices:**
-- Symptoms: `get_dashboard_stats` selectinloads every non-cancelled invoice to sum `balance_due` in Python (`backend/app/routers/dashboard.py`)
-- Files: `backend/app/routers/dashboard.py`
-- Trigger: Large AR books
-- Workaround: SQL aggregate of totals minus successful payments
-
-**Register slug races:**
-- Symptoms: Slug uniqueness loop without lock (`backend/app/auth/router.py`)
-- Trigger: Parallel registers with same workspace name
-- Workaround: UniqueViolation retry
-
-## Security Considerations
-
-**JWT secret defaults:**
-- Risk: `SECRET_KEY` default `"change-me-in-production"` (`backend/app/config.py`)
-- Files: `backend/app/config.py`, `backend/.env.example`
-- Current mitigation: example file warns to change; no startup check refusing default in `ENVIRONMENT=production`
-- Recommendations: Fail boot if production and secret is default/short; rotate; consider RS256 later
+**~~JWT secret defaults:~~ RESOLVED (2026-09-06)**
+- ~~Risk: `SECRET_KEY` default `"change-me-in-production"` (`backend/app/config.py`)~~
+- ~~Files: `backend/app/config.py`, `backend/.env.example`~~
+- ~~Current mitigation: example file warns to change; no startup check refusing default in `ENVIRONMENT=production`~~
+- Resolved: `Settings` model-validator raises `RuntimeError` when `ENVIRONMENT=production` and `SECRET_KEY` is the default. `.env.example` updated. `backend/app/routers/health.py` E402 import also cleaned.
 
 **Tokens in localStorage:**
 - Risk: XSS can steal access+refresh (`frontend/src/contexts/AuthContext.tsx`)
@@ -129,11 +29,11 @@
 - Current mitigation: none (no CSP documented)
 - Recommendations: httpOnly cookies + CSRF, or strict CSP when hosting
 
-**CORS localhost-only:**
-- Risk: Production SPA origin rejected; temptation to `allow_origins=["*"]`
-- Files: `backend/app/main.py`
-- Current mitigation: explicit localhost list
-- Recommendations: `CORS_ORIGINS` env list
+**~~CORS localhost-only:~~ RESOLVED (2026-09-06)**
+- ~~Risk: Production SPA origin rejected; temptation to `allow_origins=["*"]`~~
+- ~~Files: `backend/app/main.py`~~
+- ~~Current mitigation: explicit localhost list~~
+- Resolved: `Settings.CORS_ORIGINS: list[str]` (JSON env var, default localhost dev list) wired into `main.py` CORS middleware; documented in `.env.example`.
 
 **RBAC unused:**
 - Risk: MEMBER equals OWNER for all writes
@@ -157,15 +57,15 @@
 
 ## Performance Bottlenecks
 
-**PR/RFQ numbering full-table load:**
-- Problem: `select(ProcurementRequest).where(workspace)` then `len(all())`
-- Files: `backend/app/routers/procurement.py`, `rfq.py`
-- Cause: Count via load
-- Improvement path: `func.count` or counter row
+**~~PR/RFQ numbering full-table load:~~ RESOLVED (2026-09-06)**
+- ~~Problem: `select(ProcurementRequest).where(workspace)` then `len(all())`~~
+- ~~Files: `backend/app/routers/procurement.py`, `rfq.py`~~
+- ~~Cause: Count via load~~
+- Resolved: gapless `pr_counters` / `rfq_counters` / `grn_counters` tables + `FOR UPDATE` services (`PRNumberService`, `RFQNumberService`, `GRNNumberService`), Alembic `9f3a2c1e5d84`. Concurrent-create coverage added in `test_concurrent_numbering.py`.
 
-**GRN number same pattern:**
-- Files: `backend/app/services/grn_service.py`
-- Improvement path: `GRNCounter` + `FOR UPDATE`
+**~~GRN number same pattern:~~ RESOLVED (2026-09-06)**
+- ~~Files: `backend/app/services/grn_service.py`~~
+- Resolved: `GRNCounter` + `FOR UPDATE` via `GRNNumberService` (see above).
 
 **Dashboard AR sum in process:**
 - Files: `backend/app/routers/dashboard.py`

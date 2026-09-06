@@ -243,6 +243,196 @@ def test_concurrent_spo_creation_no_duplicates():
     ), f"SPO numbers not sequential. Got {numbers}, expected {expected}"
 
 
+# ========== PR NUMBERING ==========
+
+
+def _seed_purchasing_fks(
+    client: TestClient, token: str, ws_id: str, suffix: str
+) -> tuple[str, str, str, str]:
+    """Seed supplier, warehouse, uom and product for procurement tests."""
+    r = client.post(
+        f"/api/v1/suppliers?workspace_id={ws_id}",
+        json={
+            "name": "Supplier",
+            "email": "sup@example.com",
+            "currency": "AED",
+            "supplier_code": f"SUP-{suffix}",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code in (200, 201), r.text
+    supplier_id = r.json()["data"]["id"]
+
+    r = client.post(
+        f"/api/v1/inventory/warehouses?workspace_id={ws_id}",
+        json={"name": "WH", "code": f"WH-{suffix}", "address": "123"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code in (200, 201), r.text
+    warehouse_id = r.json()["data"]["id"]
+
+    r = client.post(
+        f"/api/v1/products/uom?workspace_id={ws_id}",
+        json={"name": "Pieces", "code": f"PCS-{suffix}"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code in (200, 201), r.text
+    uom_id = r.json()["data"]["id"]
+
+    r = client.post(
+        f"/api/v1/products?workspace_id={ws_id}",
+        json={
+            "name": "Widget",
+            "internal_sku": f"WDGT-{suffix}",
+            "base_uom_id": uom_id,
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code in (200, 201), r.text
+    product_id = r.json()["data"]["id"]
+
+    return supplier_id, warehouse_id, uom_id, product_id
+
+
+def test_concurrent_pr_creation_no_duplicates():
+    """Create 10 PRs concurrently and verify all numbers are unique and sequential."""
+    token, ws_id = _register("owner_concurrent_pr", "PR Workspace")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    _, warehouse_id, uom_id, product_id = _seed_purchasing_fks(
+        client, token, ws_id, uuid.uuid4().hex[:6]
+    )
+
+    def create_pr(index: int) -> str:
+        """Create a PR and return its number."""
+        r = client.post(
+            "/api/v1/procurement/requests",
+            json={
+                "source_type": "STOCK_REPLENISHMENT",
+                "destination_type": "WAREHOUSE",
+                "warehouse_id": warehouse_id,
+                "procurement_method": "DIRECT",
+                "required_by_date": "2026-09-10",
+                "items": [
+                    {
+                        "product_id": product_id,
+                        "uom_id": uom_id,
+                        "requested_quantity": 5,
+                    }
+                ],
+            },
+            headers=headers,
+        )
+        assert r.status_code == 200, f"PR {index} failed: {r.text}"
+        return r.json()["data"]["request_number"]
+
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        pr_numbers = list(executor.map(create_pr, range(10)))
+
+    assert len(pr_numbers) == len(
+        set(pr_numbers)
+    ), f"Duplicate PR numbers detected: {pr_numbers}"
+
+    numbers = sorted([int(num.split("-")[-1]) for num in pr_numbers])
+    expected = list(range(1, 11))
+    assert (
+        numbers == expected
+    ), f"PR numbers not sequential. Got {numbers}, expected {expected}"
+    assert all(num.startswith("PR-") for num in pr_numbers)
+
+
+# ========== RFQ NUMBERING ==========
+
+
+def test_concurrent_rfq_creation_no_duplicates():
+    """Create 10 RFQs concurrently and verify all numbers are unique and sequential."""
+    token, ws_id = _register("owner_concurrent_rfq", "RFQ Workspace")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    _, _, uom_id, product_id = _seed_purchasing_fks(
+        client, token, ws_id, uuid.uuid4().hex[:6]
+    )
+
+    def create_rfq(index: int) -> str:
+        """Create an RFQ and return its number."""
+        r = client.post(
+            "/api/v1/rfq/requests",
+            json={
+                "rfq_type": "STANDARD",
+                "award_mode": "SPLIT",
+                "evaluation_criteria": "LOWEST_LANDED_COST",
+                "deadline": "2026-09-20T18:00:00Z",
+                "currency": "AED",
+                "items": [
+                    {
+                        "product_id": product_id,
+                        "uom_id": uom_id,
+                        "quantity": 10,
+                        "is_mandatory": True,
+                    }
+                ],
+            },
+            headers=headers,
+        )
+        assert r.status_code == 200, f"RFQ {index} failed: {r.text}"
+        return r.json()["data"]["rfq_number"]
+
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        rfq_numbers = list(executor.map(create_rfq, range(10)))
+
+    assert len(rfq_numbers) == len(
+        set(rfq_numbers)
+    ), f"Duplicate RFQ numbers detected: {rfq_numbers}"
+
+    numbers = sorted([int(num.split("-")[-1]) for num in rfq_numbers])
+    expected = list(range(1, 11))
+    assert (
+        numbers == expected
+    ), f"RFQ numbers not sequential. Got {numbers}, expected {expected}"
+    assert all(num.startswith("RFQ-") for num in rfq_numbers)
+
+
+# ========== GRN NUMBERING ==========
+
+
+def test_concurrent_grn_creation_no_duplicates():
+    """Create 10 draft GRNs concurrently and verify all numbers are unique and sequential."""
+    token, ws_id = _register("owner_concurrent_grn", "GRN Workspace")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    supplier_id, warehouse_id, _, _ = _seed_purchasing_fks(
+        client, token, ws_id, uuid.uuid4().hex[:6]
+    )
+
+    def create_grn(index: int) -> str:
+        """Create a draft GRN and return its number."""
+        r = client.post(
+            "/api/v1/grns",
+            json={
+                "supplier_id": supplier_id,
+                "warehouse_id": warehouse_id,
+                "received_date": "2026-09-06",
+            },
+            headers=headers,
+        )
+        assert r.status_code == 201, f"GRN {index} failed: {r.text}"
+        return r.json()["data"]["grn_number"]
+
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        grn_numbers = list(executor.map(create_grn, range(10)))
+
+    assert len(grn_numbers) == len(
+        set(grn_numbers)
+    ), f"Duplicate GRN numbers detected: {grn_numbers}"
+
+    numbers = sorted([int(num.split("-")[-1]) for num in grn_numbers])
+    expected = list(range(1, 11))
+    assert (
+        numbers == expected
+    ), f"GRN numbers not sequential. Got {numbers}, expected {expected}"
+    assert all(num.startswith("GRN-") for num in grn_numbers)
+
+
 # ========== CROSS-YEAR BOUNDARY ==========
 
 

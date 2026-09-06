@@ -47,6 +47,7 @@ export interface InvoiceListItem {
   total_amount: number;
   amount_paid: number;
   amount_credited?: number | string | null;
+  amount_debited?: number | string | null;
   balance_due: number;
   issue_date: string;
   due_date: string;

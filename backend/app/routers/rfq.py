@@ -11,6 +11,7 @@ from app.models.user import User
 from app.models.rfq import RFQ, RFQItem
 from app.schemas.rfq import RFQCreate, RFQResponse
 from app.schemas.common import SuccessResponse
+from app.services.rfq_number import RFQNumberService
 
 router = APIRouter(prefix="/rfq", tags=["RFQ & Sourcing"])
 
@@ -36,16 +37,13 @@ async def create_rfq(
     workspace_id: uuid.UUID = Depends(get_current_workspace_id),
     user: User = Depends(get_current_user),
 ):
-    import time
-
-    count = await session.execute(select(RFQ).where(RFQ.workspace_id == workspace_id))
-    num = len(count.scalars().all()) + 1
-    req_num = f"RFQ-{time.strftime('%Y')}-{str(num).zfill(6)}"
+    user_id = user.id
+    rfq_number = await RFQNumberService.generate_rfq_number(session, workspace_id)
 
     rfq = RFQ(
         workspace_id=workspace_id,
-        rfq_number=req_num,
-        created_by_id=user.id,
+        rfq_number=rfq_number,
+        created_by_id=user_id,
         **data.model_dump(exclude={"items"}),
     )
     session.add(rfq)

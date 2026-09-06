@@ -11,6 +11,7 @@ from app.models.user import User
 from app.models.procurement import ProcurementRequest, ProcurementRequestItem
 from app.schemas.procurement import ProcurementRequestCreate, ProcurementRequestResponse
 from app.schemas.common import SuccessResponse
+from app.services.pr_number import PRNumberService
 
 router = APIRouter(prefix="/procurement", tags=["Procurement Management"])
 
@@ -38,21 +39,13 @@ async def create_pr(
     workspace_id: uuid.UUID = Depends(get_current_workspace_id),
     user: User = Depends(get_current_user),
 ):
-    import time
-
-    # Generate request number
-    count = await session.execute(
-        select(ProcurementRequest).where(
-            ProcurementRequest.workspace_id == workspace_id
-        )
-    )
-    num = len(count.scalars().all()) + 1
-    req_num = f"PR-{time.strftime('%Y')}-{str(num).zfill(6)}"
+    user_id = user.id
+    req_num = await PRNumberService.generate_pr_number(session, workspace_id)
 
     pr = ProcurementRequest(
         workspace_id=workspace_id,
         request_number=req_num,
-        requested_by_id=user.id,
+        requested_by_id=user_id,
         **data.model_dump(exclude={"items"}),
     )
     session.add(pr)

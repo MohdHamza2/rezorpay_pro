@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
-import { Eye, LayoutGrid, List, Plus } from 'lucide-react';
+import { Eye, LayoutGrid, List } from 'lucide-react';
 import { getClients } from '../../api/clients';
 import { getEnquiries, type EnquiryRead, type EnquiryStatus } from '../../api/enquiries';
 import styles from './Enquiries.module.css';
@@ -28,7 +28,7 @@ export const Enquiries = () => {
   const perPage = viewMode === 'kanban' ? 100 : 20;
 
   const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: getClients });
-  
+
   const { data, isLoading } = useQuery({
     queryKey: ['enquiries', { status, clientId, search, page, perPage }],
     queryFn: () =>
@@ -227,7 +227,7 @@ export const Enquiries = () => {
             </select>
           </div>
         </div>
-        
+
         <div className={styles.viewToggle}>
           <button
             className={`${styles.toggleBtn} ${viewMode === 'kanban' ? styles.active : ''}`}
