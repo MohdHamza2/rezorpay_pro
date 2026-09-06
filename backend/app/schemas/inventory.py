@@ -62,6 +62,7 @@ class InventoryLevelResponse(BaseModel):
     on_hand: Decimal
     reserved: Decimal
     damaged: Decimal
+    in_transit: Decimal
     available: Decimal = Decimal("0.00")
 
 

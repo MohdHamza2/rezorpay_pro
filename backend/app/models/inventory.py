@@ -72,6 +72,7 @@ class InventoryLevel(SQLModel, table=True):
         CheckConstraint("on_hand >= 0", name="chk_inventory_on_hand_positive"),
         CheckConstraint("reserved >= 0", name="chk_inventory_reserved_positive"),
         CheckConstraint("damaged >= 0", name="chk_inventory_damaged_positive"),
+        CheckConstraint("in_transit >= 0", name="chk_inventory_in_transit_positive"),
     )
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
@@ -93,6 +94,9 @@ class InventoryLevel(SQLModel, table=True):
         default=0, sa_column=Column(Numeric(12, 2), nullable=False)
     )
     damaged: Decimal = Field(
+        default=0, sa_column=Column(Numeric(12, 2), nullable=False)
+    )
+    in_transit: Decimal = Field(
         default=0, sa_column=Column(Numeric(12, 2), nullable=False)
     )
 
