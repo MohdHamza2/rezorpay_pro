@@ -14,6 +14,7 @@ from app.schemas.clients import CreditBuckets
 class SupplierStatementDocType(str, Enum):
     OPENING = "OPENING"
     SUPPLIER_INVOICE = "SUPPLIER_INVOICE"
+    SUPPLIER_DEBIT_NOTE = "SUPPLIER_DEBIT_NOTE"
     SUPPLIER_PAYMENT = "SUPPLIER_PAYMENT"
     SUPPLIER_PAYMENT_PENDING = "SUPPLIER_PAYMENT_PENDING"
 
@@ -21,6 +22,7 @@ class SupplierStatementDocType(str, Enum):
 DOC_TYPE_LABELS = {
     SupplierStatementDocType.OPENING: "Opening balance",
     SupplierStatementDocType.SUPPLIER_INVOICE: "Supplier Invoice",
+    SupplierStatementDocType.SUPPLIER_DEBIT_NOTE: "Supplier debit note",
     SupplierStatementDocType.SUPPLIER_PAYMENT: "Payment",
     SupplierStatementDocType.SUPPLIER_PAYMENT_PENDING: "Payment (pending)",
 }
@@ -56,6 +58,7 @@ class SupplierStatementLine(BaseModel):
 class SupplierStatementTotals(BaseModel):
     billed: Decimal
     paid: Decimal
+    credited: Decimal
     pending: Decimal
     closing_running: Decimal
 

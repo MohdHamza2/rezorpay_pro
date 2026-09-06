@@ -183,8 +183,14 @@ async def post_issue(
     reference_id: uuid.UUID,
     *,
     reverse: bool = False,
+    reference_type: Optional[str] = None,
+    reason: Optional[str] = None,
 ) -> InventoryLevel:
-    """ISSUE −qty on confirm, ISSUE +qty on cancel. Never ADJUSTMENT."""
+    """ISSUE −qty on confirm, ISSUE +qty on cancel. Never ADJUSTMENT.
+
+    `reference_type`/`reason` default to delivery-note lineage (DN / DN_CANCEL);
+    purchase returns pass reference_type="PRN", reason="PURCHASE_RETURN".
+    """
     qty = qty_dec(quantity)
     if qty <= ZERO:
         raise_error(
@@ -201,7 +207,7 @@ async def post_issue(
         txn_qty = qty
         source_bin_id = None
         destination_bin_id = bin_id
-        reference_type = "DN_CANCEL"
+        ref_type = reference_type or "DN_CANCEL"
     else:
         if available(level) < qty:
             raise_error(
@@ -214,7 +220,7 @@ async def post_issue(
         txn_qty = -qty
         source_bin_id = bin_id
         destination_bin_id = None
-        reference_type = "DN"
+        ref_type = reference_type or "DN"
     level.updated_at = _now()
     session.add(
         InventoryTransaction(
@@ -224,9 +230,10 @@ async def post_issue(
             quantity=txn_qty,
             source_bin_id=source_bin_id,
             destination_bin_id=destination_bin_id,
-            reference_type=reference_type,
+            reference_type=ref_type,
             reference_id=reference_id,
             user_id=user_id,
+            reason=reason,
         )
     )
     return level

@@ -286,9 +286,12 @@ class GRNService:
         )
 
         # Auto-PurchaseReturn draft (GRN-004)
-        if item.quantity_rejected > 0:
-            # Hook logic placeholder. PurchaseReturn model assumed to be handled separately or added later if exists.
-            pass
+        if item.quantity_rejected > 0 or item.quantity_damaged > 0:
+            from app.services.purchase_return_service import purchase_return_service
+
+            await purchase_return_service.record_disposition_auto_items(
+                session, workspace_id, user_id, grn, item
+            )
 
         # Update GRN status
         grn.stock_posted = True

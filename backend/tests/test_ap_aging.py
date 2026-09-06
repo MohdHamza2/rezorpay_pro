@@ -100,7 +100,8 @@ def create_supplier(token, name, code):
 def seed_invoice(workspace_id, supplier_id, number, total, due_shift_days):
     from datetime import datetime, timezone
 
-    due = date.today() + timedelta(days=due_shift_days)
+    wrt = datetime.now(timezone.utc).date()
+    due = wrt + timedelta(days=due_shift_days)
 
     async def insert():
         async with TestingSessionLocal() as session:
@@ -111,9 +112,9 @@ def seed_invoice(workspace_id, supplier_id, number, total, due_shift_days):
                 workspace_id=workspace_id,
                 supplier_id=supplier_id,
                 supplier_invoice_number=number,
-                invoice_date=datetime.combine(
-                    date.today(), datetime.min.time()
-                ).replace(tzinfo=timezone.utc),
+                invoice_date=datetime.combine(wrt, datetime.min.time()).replace(
+                    tzinfo=timezone.utc
+                ),
                 due_date=datetime.combine(due, datetime.min.time()).replace(
                     tzinfo=timezone.utc
                 ),

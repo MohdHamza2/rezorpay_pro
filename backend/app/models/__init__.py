@@ -105,6 +105,18 @@ from app.models.supplier_payment import (
     SupplierPayment,
     SupplierPaymentIdempotencyKey,
 )
+from app.models.purchase_return import (
+    PurchaseReturn,
+    PurchaseReturnItem,
+    PurchaseReturnStatus,
+    ReturnType,
+    PurchaseReturnCounter,
+)
+from app.models.supplier_debit_note import (
+    SupplierDebitNote,
+    SupplierDebitNoteStatus,
+    SupplierDebitNoteCounter,
+)
 
 __all__ = [
     "Workspace",
@@ -204,4 +216,12 @@ __all__ = [
     "StockCountCounter",
     "SupplierPayment",
     "SupplierPaymentIdempotencyKey",
+    "PurchaseReturn",
+    "PurchaseReturnItem",
+    "PurchaseReturnStatus",
+    "ReturnType",
+    "PurchaseReturnCounter",
+    "SupplierDebitNote",
+    "SupplierDebitNoteStatus",
+    "SupplierDebitNoteCounter",
 ]

@@ -44,8 +44,9 @@ INCLUDE_STATUSES = (
 PAYMENT_STATUSES = (PaymentStatus.SUCCESS, PaymentStatus.PENDING)
 ACTIVITY_ORDER = {
     SupplierStatementDocType.SUPPLIER_INVOICE: 0,
-    SupplierStatementDocType.SUPPLIER_PAYMENT: 1,
-    SupplierStatementDocType.SUPPLIER_PAYMENT_PENDING: 2,
+    SupplierStatementDocType.SUPPLIER_DEBIT_NOTE: 1,
+    SupplierStatementDocType.SUPPLIER_PAYMENT: 2,
+    SupplierStatementDocType.SUPPLIER_PAYMENT_PENDING: 3,
 }
 ZERO = Decimal("0.00")
 
@@ -150,9 +151,32 @@ def payment_activity(payment: SupplierPayment) -> dict:
     )
 
 
+def debit_note_activity(note) -> dict:
+    return labelled_line(
+        on=debit_note_activity_date(note),
+        doc_type=SupplierStatementDocType.SUPPLIER_DEBIT_NOTE,
+        number=note.dn_number,
+        reference=note.reason,
+        payment_method=None,
+        payment_status=None,
+        cleared_cash=True,
+        pending_amount=ZERO,
+        debit=ZERO,
+        credit=note.amount,
+    )
+
+
+def debit_note_activity_date(note) -> date:
+    applied_on = note.applied_at
+    if isinstance(applied_on, datetime):
+        applied_on = applied_on.astimezone(timezone.utc).date()
+    return applied_on
+
+
 def collect_activity(
     invoices: Sequence[SupplierInvoice],
     payments: Sequence[SupplierPayment],
+    notes: Sequence,
     start: date,
     end: date,
 ) -> list[dict]:
@@ -160,6 +184,9 @@ def collect_activity(
     for invoice in invoices:
         if in_period(invoice.invoice_date.date(), start, end):
             rows.append(invoice_activity(invoice))
+    for note in notes:
+        if in_period(debit_note_activity_date(note), start, end):
+            rows.append(debit_note_activity(note))
     for payment in payments:
         if in_period(payment_on(payment), start, end):
             rows.append(payment_activity(payment))
@@ -169,6 +196,7 @@ def collect_activity(
 def reconstruct_opening(
     invoices: Sequence[SupplierInvoice],
     payments: Sequence[SupplierPayment],
+    notes: Sequence,
     start: date,
 ) -> Decimal:
     billed = sum(
@@ -183,12 +211,16 @@ def reconstruct_opening(
         ),
         ZERO,
     )
-    return money(billed - paid)
+    credited = sum(
+        (n.amount for n in notes if debit_note_activity_date(n) < start), ZERO
+    )
+    return money(billed - paid - credited)
 
 
 def period_totals(
     invoices: Sequence[SupplierInvoice],
     payments: Sequence[SupplierPayment],
+    notes: Sequence,
     start: date,
     end: date,
 ) -> dict:
@@ -198,6 +230,10 @@ def period_totals(
             for inv in invoices
             if in_period(inv.invoice_date.date(), start, end)
         ),
+        ZERO,
+    )
+    credited = sum(
+        (n.amount for n in notes if in_period(debit_note_activity_date(n), start, end)),
         ZERO,
     )
     paid = sum(
@@ -220,6 +256,7 @@ def period_totals(
     )
     return {
         "billed": money(billed),
+        "credited": money(credited),
         "paid": money(paid),
         "pending": money(pending),
     }
@@ -293,6 +330,25 @@ class SupplierStatementService:
         )
         return list(result.scalars().all())
 
+    @staticmethod
+    async def _load_adjustments(
+        session: AsyncSession, invoice_ids: Sequence[uuid.UUID]
+    ) -> list:
+        """APPLIED supplier debit notes for the include-set invoice ids."""
+        from app.models.supplier_debit_note import (
+            SupplierDebitNote,
+            SupplierDebitNoteStatus,
+        )
+
+        if not invoice_ids:
+            return []
+        result = await session.execute(
+            select(SupplierDebitNote)
+            .where(SupplierDebitNote.applied_invoice_id.in_(invoice_ids))
+            .where(SupplierDebitNote.status == SupplierDebitNoteStatus.APPLIED)
+        )
+        return list(result.scalars().all())
+
     @classmethod
     async def get_statement(
         cls,
@@ -309,11 +365,12 @@ class SupplierStatementService:
         invoices = await cls._load_include_set(session, workspace.id, supplier.id)
         invoice_ids = [inv.id for inv in invoices]
         payments = await cls._load_payments(session, invoice_ids)
-        opening = reconstruct_opening(invoices, payments, period_from)
-        activity = collect_activity(invoices, payments, period_from, period_to)
+        notes = await cls._load_adjustments(session, invoice_ids)
+        opening = reconstruct_opening(invoices, payments, notes, period_from)
+        activity = collect_activity(invoices, payments, notes, period_from, period_to)
         assert_activity_cap(len(activity))
         lines, closing = assemble_lines(opening, period_from, activity)
-        totals = period_totals(invoices, payments, period_from, period_to)
+        totals = period_totals(invoices, payments, notes, period_from, period_to)
         totals["closing_running"] = closing
         open_ap = await supplier_payment_service.open_ap_invoices(
             session, workspace.id, supplier.id

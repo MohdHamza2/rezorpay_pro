@@ -3,6 +3,42 @@
 
 ---
 
+## 2026-09-07 — Wave 23: Purchase Returns + Supplier Debit Notes (AP, Phase 4)
+
+**Spec:** `architecture/wave-purchase-returns-addendum.md`. Completes the AP half of MASTER_PLAN_V3 Wave 25 (purchase returns / supplier debit notes). Backend only. **Alembic YES** (migration `b4a2c6e8f10d`). Committed (`e256772`).
+
+### Locked (addendum)
+
+- Purchase return lifecycle `DRAFT → PENDING_SUPPLIER → APPROVED → DISPATCHED → COMPLETED`; `PENDING_SUPPLIER → REJECTED`; `DRAFT/PENDING_SUPPLIER → CANCELLED`. Gapless `PRN-YYYY-XXXX`.
+- Supplier debit note `/api/v1/supplier-debit-notes`, gapless `SDN-YYYY-XXXX` (DN-/TDN- reserved). Statuses DRAFT/ISSUED/APPLIED/CANCELLED.
+- SDN auto-created **ISSUED** at return **dispatch** (not COMPLETED). GRN-004 auto-return at disposition (rejected→QUALITY_ISSUE, damaged→DAMAGE, `spo_item.unit_price`), accumulate, cap ≤ `quantity_received`.
+- Cap invariant: cumulative returned per grn_item never exceeds `quantity_received`. Stock-out rule: `stock_out_qty = min(item.quantity, remaining_accepted, on_hand)`; zero-stock-out legal (rejected/damaged never stocked); PRN ledger rows only when stock actually moves.
+- Apply: single txn + FOR UPDATE, workspace 404, supplier mismatch 400, invoice must be APPROVED/PARTIALLY_PAID, `amount <= balance_due` else `DEBIT_NOTE_EXCEEDS_BALANCE`, reduces **only** `balance_due` (never amount_paid/status/paid_at, never flips PAID), double-apply 409, APPLIED permanent.
+- Statement integration: Pydantic-only; DN activity `on` = applied_at (UTC); ACTIVITY_ORDER invoice 0 / DN 1 / payment 2 / pending 3; opening reconstruction subtracts pre-window applied credits; `totals.credited`.
+
+### Done
+
+- Models `PurchaseReturn` + `PurchaseReturnItem` + `PurchaseReturnCounter` + `ReturnType` (QUALITY_ISSUE/DAMAGE/EXCESS) + `PurchaseReturnStatus`; `SupplierDebitNote` + `SupplierDebitNoteCounter` + `SupplierDebitNoteStatus` — `backend/app/models/purchase_return.py`, `supplier_debit_note.py`; `nullable=False` on `prn_number`/`dn_number` (SQLModel does not infer NOT NULL from explicit `sa_column`; caught by `alembic check`), registered in `models/__init__.py`.
+- Alembic `b4a2c6e8f10d_add_purchase_returns_and_supplier_debit_notes.py` (down_revision `a3f4c7d9e1b2`): 5 tables (`purchase_returns`/`purchase_return_items`/`purchase_return_counters`/`supplier_debit_notes`/`supplier_debit_note_counters`) + 3 enums + 4 check constraints. Applied via `alembic upgrade head`; downgrade → upgrade round-trip verified; `alembic check` clean. Head re-pins: `test_pdc.py`/`test_pricing.py` → `b4a2c6e8f10d`. Alembic CLI targets dev DB on port 5434.
+- Number services — `backend/app/services/purchase_return_number.py`, `supplier_debit_note_number.py` (SELECT FOR UPDATE + IntegrityError first-insert race retry, mirrors existing counter services).
+- Purchase return service — `backend/app/services/purchase_return_service.py` (with `from __future__ import annotations` fix for `'staticmethod' object is not subscriptable` on `_group_quantities`): `create/submit/approve/dispatch/complete/reject/cancel`, received-cap invariant (`_assert_quantity_available`/`_cumulative_returned` accept `exclude_return_id`; submit/dispatch group per grn_item via `_group_quantities` and exclude THIS record so an at-cap return isn't self-rejected; `create` tracks pending per grn_item for unflushed rows), `_already_stocked`/`_compute_stock_out` thread `exclude_return_id`, `_resolve_stock_bin` FOR UPDATE picks level with most available (fallback `first_active_bin`), ledger rows `reference_type="PRN"`, `reason="PURCHASE_RETURN"`, ISSUE negative, written only for `stock_out_qty > 0`; auto-SDN created at dispatch; `record_disposition_auto_items` (GRN-004) accumulates into existing DRAFT return or creates one (`_existing_auto_item` via explicit SELECT — new-record `record.items` triggers MissingGreenlet).
+- Supplier debit note service — `backend/app/services/supplier_debit_note_service.py`: `create/issue/apply/cancel`, eligibility + over-balance + supplier-match + workspace-404 guards, balance_due-only reduction, double-apply 409, cancel rules (DRAFT/ISSUED free, APPLIED blocked), auto-SDN from return dispatch, list filters `supplier_id`/`purchase_return_id`/`status` + pagination.
+- GRN-004 hook — `backend/app/services/grn_service.py` `record_disposition`: deferred-import `record_disposition_auto_items` when `quantity_rejected > 0` **or** `quantity_damaged > 0`.
+- Statement integration — `backend/app/services/supplier_statement_service.py`: `ACTIVITY_ORDER`, `debit_note_activity`/`debit_note_activity_date`, `collect_activity` with notes, `reconstruct_opening` subtracts pre-window applied credits, `period_totals["credited"]`, `_load_adjustments` by `applied_invoice_id`, wired into `get_statement`.
+- **Cross-cutting fix** — `backend/app/services/supplier_payment_service.py` `_settle_invoice`: `balance_due = max(ZERO, balance_due - amount)` instead of `total_amount - amount_paid` (the old recompute erased DN-applied credits). No-DN path unchanged.
+- Schemas — `backend/app/schemas/purchase_returns.py`, `supplier_debit_notes.py` (`reason` min_length 5), `supplier_statements.py` doc-type/label/`credited`, `common.py` errors `RETURN_QTY_EXCEEDS_RECEIVED`/`DEBIT_NOTE_EXCEEDS_BALANCE`.
+- Routers — `backend/app/routers/purchase_returns.py` (create 201, list, get, submit/approve/dispatch/complete/reject/cancel; OWNER/ADMIN mutations, member 403, cross-workspace 404), `backend/app/routers/supplier_debit_notes.py` (create 201, list/get, issue/apply/cancel); wired into `backend/app/main.py` (191 routes total).
+
+### Pytest (PostgreSQL `_test`) + lint
+
+- `tests/test_purchase_returns.py`: **10 passed** (full lifecycle w/ auto-SDN + stock-out, cap invariant, cancel-frees-cap, illegal transitions, GRN-004 auto-return quantities & price, zero stock-out, isolation 404, member 403, PRN sequence, supplier-mismatch 400).
+- `tests/test_supplier_debit_notes.py`: **7 passed** (manual create/issue/apply balance-only, exact-balance stays APPROVED, apply guards incl. 409 + foreign 404 + MATCHED gate, cancel rules, dispatch auto-SDN, list filters + SDN sequence).
+- `tests/test_supplier_statement_dn.py`: **4 passed** (DN line + ordering, opening reconstruction with backdated applied_at, DN+payment same-day ordering, cancelled note excluded).
+- Full suite: **299 passed, 0 failed** (was 279; ~7m07s). `test_ap_aging.py` seed dates made UTC-robust (this machine's local date lags UTC by a day in the evening → spurious `days_overdue` off-by-one).
+- `alembic heads`: **`b4a2c6e8f10d`**; `alembic check`: clean. ruff clean; black clean on non-migration touched files.
+
+---
+
 ## 2026-09-06 — Wave 18: Stock Reservations from Customer POs (Phase 3 sub-feature 1)
 
 **Spec:** `architecture/wave-stock-reservations-addendum.md`. Research complete (`reserved` on `inventory_levels` was always 0, no `StockReservation` model, no writer). Locks the plan: `StockReservation` + `StockReservationItem` models, TTL 7 days, `reserved == SUM(quantity - quantity_consumed)` over ACTIVE items, release before `post_issue` on DN confirm, `/api/v1/inventory/reservations` CRUD + cancel + OWNER/ADMIN expire, new wave test module.

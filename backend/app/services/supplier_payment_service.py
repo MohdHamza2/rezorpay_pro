@@ -194,9 +194,7 @@ class SupplierPaymentService:
     def _settle_invoice(invoice: SupplierInvoice, amount: Decimal) -> None:
         """Add to amount_paid, retire balance_due, transition PAID when 0."""
         invoice.amount_paid = money(invoice.amount_paid + amount)
-        invoice.balance_due = money(
-            max(ZERO, invoice.total_amount - invoice.amount_paid)
-        )
+        invoice.balance_due = money(max(ZERO, invoice.balance_due - amount))
         invoice.updated_at = datetime.now(timezone.utc)
         if invoice.balance_due == ZERO:
             invoice.status = SupplierInvoiceStatus.PAID
