@@ -39,6 +39,7 @@
 5. **Pre-commit hooks are installed** — they run automatically on `git commit`
 6. **Structured JSON logging only** — use `logger.info("msg", extra={...})`, never `print()`
 7. **No sensitive data in logs** — redact JWT tokens, passwords, user objects
+8. **Commit per completed wave/phase** — the commit is the final lifecycle step. Once a wave or phase is fully implemented, verified (tests green, ruff/black clean, `alembic check` clean), and documented (execution report + `STATE.md` updated), commit the changes with a concise, convention-matching message. Never leave verified work uncommitted and never commit partial/untested work.
 
 ### State Machine Rules
 ```

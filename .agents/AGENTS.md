@@ -32,6 +32,7 @@
 3. **New feature** → Backend Agent builds API → Frontend Agent consumes it
 4. **Bug fix** → Route to the owning agent based on which layer the bug exists in
 5. **Cross-cutting changes** (e.g., new entity end-to-end) → Database Agent first, then Backend Agent, then Frontend Agent
+6. **Commit per completed wave/phase** — after a wave or phase is fully implemented, verified (tests green, lint clean, `alembic check` clean), and documented in the reports + `STATE.md`, commit it. The commit is the final step of each wave/phase lifecycle; never leave verified work uncommitted.
 
 ## Shared Context
 
