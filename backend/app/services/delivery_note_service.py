@@ -45,6 +45,7 @@ from app.services.delivery_note_support import (
 )
 from app.services.dn_number import DnNumberService
 from app.services.inventory_ledger import post_issue, qty_dec
+from app.services.stock_reservation_service import release_for_dispatch
 
 
 class DeliveryNoteService:
@@ -426,6 +427,19 @@ class DeliveryNoteService:
         catalog = [line for line in dn.items if line.product_id is not None]
         catalog.sort(key=lambda line: (str(line.product_id), str(line.bin_id)))
         for line in catalog:
+            if (
+                not reverse
+                and dn.customer_purchase_order_id is not None
+                and line.customer_purchase_order_item_id is not None
+                and line.product_id is not None
+            ):
+                await release_for_dispatch(
+                    session,
+                    workspace_id,
+                    line.customer_purchase_order_item_id,
+                    line.product_id,
+                    qty_dec(line.quantity),
+                )
             await post_issue(
                 session,
                 workspace_id,
