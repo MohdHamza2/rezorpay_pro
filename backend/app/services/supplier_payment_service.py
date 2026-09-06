@@ -22,7 +22,7 @@ from fastapi import status
 from sqlalchemy import func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.models.payment import PaymentStatus
+from app.models.payment import PaymentMethod, PaymentStatus, PDCStatus
 from app.models.supplier import Supplier
 from app.models.supplier_invoice import SupplierInvoice, SupplierInvoiceStatus
 from app.models.supplier_payment import (
@@ -95,6 +95,7 @@ class SupplierPaymentService:
         payment_date: Optional[date] = None,
         reference_number: Optional[str] = None,
         bank_name: Optional[str] = None,
+        pdc_date: Optional[date] = None,
     ) -> SupplierPayment:
         """Record an AP payment for an approved supplier invoice.
 
@@ -160,7 +161,17 @@ class SupplierPaymentService:
                 "Overpayments are not allowed for MVP.",
             )
 
-        # Step 5: create the immutable payment (always SUCCESS this wave)
+        # Step 4b: PDC requires a post-dated cheque date (mirrors AR)
+        is_pdc = payment_method == PaymentMethod.PDC
+        if is_pdc and pdc_date is None:
+            raise_error(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                ErrorCode.VALIDATION_ERROR,
+                "pdc_date is required for PDC payments",
+                "pdc_date",
+            )
+
+        # Step 5: create the immutable payment (PDC starts PENDING up front)
         payment = SupplierPayment(
             workspace_id=workspace_id,
             supplier_id=invoice.supplier_id,
@@ -168,7 +179,9 @@ class SupplierPaymentService:
             amount=amount,
             payment_date=_payment_datetime(payment_date),
             payment_method=payment_method,
-            status=PaymentStatus.SUCCESS,
+            status=PaymentStatus.PENDING if is_pdc else PaymentStatus.SUCCESS,
+            pdc_status=PDCStatus.RECEIVED if is_pdc else None,
+            pdc_date=pdc_date if is_pdc else None,
             reference_number=reference_number,
             bank_name=bank_name,
             created_by=user_id,
@@ -185,8 +198,10 @@ class SupplierPaymentService:
             )
         )
 
-        # Step 7: recompute the stored amount_paid / balance_due columns
-        cls._settle_invoice(invoice, amount)
+        # Step 7: recompute the stored amount_paid / balance_due columns.
+        # PDC stays PENDING until CLEARED — it does not touch the invoice.
+        if not is_pdc:
+            cls._settle_invoice(invoice, amount)
 
         return payment
 

@@ -494,5 +494,5 @@ def test_schema_not_float_and_alembic_head():
         assert run.returncode == 0, run.stdout + run.stderr
         return run.stdout + run.stderr
 
-    assert "b4a2c6e8f10d" in _alembic("heads")
+    assert "234d5639ef8c" in _alembic("heads")
     assert "No new upgrade operations detected" in _alembic("check")

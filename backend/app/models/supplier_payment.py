@@ -6,14 +6,22 @@ Only `status=SUCCESS` counts toward a supplier invoice's `amount_paid`.
 """
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import CheckConstraint, Column, DateTime, ForeignKey, Numeric, String
+from sqlalchemy import (
+    CheckConstraint,
+    Column,
+    Date,
+    DateTime,
+    ForeignKey,
+    Numeric,
+    String,
+)
 from sqlmodel import Field, SQLModel
 
-from app.models.payment import PaymentMethod, PaymentStatus
+from app.models.payment import PaymentMethod, PaymentStatus, PDCStatus
 
 
 class SupplierPayment(SQLModel, table=True):
@@ -44,6 +52,10 @@ class SupplierPayment(SQLModel, table=True):
 
     reference_number: Optional[str] = Field(default=None, max_length=100)
     bank_name: Optional[str] = Field(default=None, max_length=255)
+
+    # PDC Specific Fields (post-dated cheque issued to a supplier)
+    pdc_date: Optional[date] = Field(default=None, sa_column=Column(Date))
+    pdc_status: Optional[PDCStatus] = Field(default=None)
 
     created_by: uuid.UUID = Field(foreign_key="users.id", nullable=False)
 

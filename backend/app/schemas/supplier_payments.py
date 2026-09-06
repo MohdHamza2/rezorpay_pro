@@ -7,11 +7,16 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.models.payment import PaymentMethod, PaymentStatus
+from app.models.payment import PaymentMethod, PaymentStatus, PDCStatus
 
-# AP posts only cash / bank transfer / cheque (PDC-to-supplier deferred).
+# AP posts cash / bank transfer / cheque + post-dated cheque (PDC-to-supplier).
 AP_PAYMENT_METHODS = frozenset(
-    {PaymentMethod.CASH, PaymentMethod.BANK_TRANSFER, PaymentMethod.CHEQUE}
+    {
+        PaymentMethod.CASH,
+        PaymentMethod.BANK_TRANSFER,
+        PaymentMethod.CHEQUE,
+        PaymentMethod.PDC,
+    }
 )
 
 
@@ -20,6 +25,7 @@ class SupplierPaymentCreate(BaseModel):
     amount: Decimal = Field(..., gt=0)
     payment_method: PaymentMethod = PaymentMethod.BANK_TRANSFER
     payment_date: Optional[date] = None
+    pdc_date: Optional[date] = None
 
     reference_number: Optional[str] = Field(None, max_length=100)
     bank_name: Optional[str] = Field(None, max_length=255)
@@ -28,7 +34,9 @@ class SupplierPaymentCreate(BaseModel):
     @classmethod
     def ap_method_only(cls, v: PaymentMethod) -> PaymentMethod:
         if v not in AP_PAYMENT_METHODS:
-            raise ValueError("AP payments support only CASH, BANK_TRANSFER, CHEQUE")
+            raise ValueError(
+                "AP payments support only CASH, BANK_TRANSFER, CHEQUE, PDC"
+            )
         return v
 
     @field_validator("payment_date")
@@ -36,6 +44,14 @@ class SupplierPaymentCreate(BaseModel):
     def payment_date_not_future(cls, v: Optional[date]) -> Optional[date]:
         if v and v > date.today():
             raise ValueError("Payment date cannot be in the future")
+        return v
+
+    @field_validator("pdc_date")
+    @classmethod
+    def pdc_date_required_if_pdc(cls, v: Optional[date], info) -> Optional[date]:
+        method = info.data.get("payment_method")
+        if method == PaymentMethod.PDC and v is None:
+            raise ValueError("pdc_date is required for PDC payments")
         return v
 
 
@@ -52,6 +68,8 @@ class SupplierPaymentResponse(BaseModel):
     status: PaymentStatus
     reference_number: Optional[str] = None
     bank_name: Optional[str] = None
+    pdc_date: Optional[date] = None
+    pdc_status: Optional[PDCStatus] = None
     created_by: UUID
     created_at: datetime
     updated_at: datetime

@@ -1,8 +1,8 @@
 """
-Supplier AP Payment Router — Wave 22 (Phase 4).
+Supplier AP Payment Router — Wave 22 (Phase 4), PDC-to-supplier (Wave 24).
 
 Endpoints:
-- POST /supplier-payments            record AP payment (idempotent, rate limited)
+- POST /supplier-payments            record AP payment (idempotent, rate limited; PDC→PENDING)
 - GET /supplier-payments             paginated list w/ filters
 - GET /supplier-payments/{id}        one payment
 - PUT /supplier-payments/{id}        405 immutable
@@ -10,6 +10,10 @@ Endpoints:
 - GET /supplier-invoices/{id}/payments    paginated payments for an invoice
 - GET /ap-aging                      AP aging report (summary/detail/by_supplier)
 - GET /suppliers/{id}/statement      supplier statement = AP ledger
+- POST /supplier-invoices/{id}/payments/{id}/pdc/deposit    PDC RECEIVED→DEPOSITED
+- POST /supplier-invoices/{id}/payments/{id}/pdc/clear      PDC DEPOSITED→CLEARED (SUCCESS)
+- POST /supplier-invoices/{id}/payments/{id}/pdc/bounce     PDC DEPOSITED→BOUNCED (FAILED)
+- POST /supplier-invoices/{id}/payments/{id}/pdc/return     PDC RECEIVED→RETURNED (CANCELLED)
 """
 
 from typing import Optional
@@ -18,6 +22,7 @@ from uuid import UUID
 
 from fastapi import (
     APIRouter,
+    Body,
     Depends,
     Header,
     Query,
@@ -32,6 +37,7 @@ from app.database import get_session
 from app.limiter import limiter
 from app.models.payment import PaymentStatus
 from app.models.supplier_invoice import SupplierInvoice
+from app.models.supplier_payment import SupplierPayment
 from app.models.user import User
 from app.models.workspace import Workspace
 from app.schemas.ap_aging import (
@@ -50,9 +56,11 @@ from app.schemas.supplier_payments import (
     SupplierPaymentCreate,
     SupplierPaymentResponse,
 )
+from app.schemas.payments import PdcActionRequest
 from app.schemas.supplier_statements import SupplierStatementResponse
 from app.services.customer_po_support import raise_error
 from app.services.supplier_payment_service import supplier_payment_service
+from app.services.supplier_pdc_service import supplier_pdc_service
 from app.services.supplier_statement_service import supplier_statement_service
 
 router = APIRouter(tags=["Supplier AP Payments"])
@@ -107,6 +115,7 @@ async def create_supplier_payment(
         payment_date=payment_data.payment_date,
         reference_number=payment_data.reference_number,
         bank_name=payment_data.bank_name,
+        pdc_date=payment_data.pdc_date,
     )
     await session.commit()
     return SuccessResponse(data=SupplierPaymentResponse.model_validate(payment))
@@ -340,3 +349,94 @@ async def get_supplier_statement(
         actor_id=user.id,
     )
     return SuccessResponse(data=SupplierStatementResponse.model_validate(payload))
+
+
+async def _pdc_response(
+    session: AsyncSession, payment: SupplierPayment
+) -> SuccessResponse[SupplierPaymentResponse]:
+    await session.commit()
+    return SuccessResponse(data=SupplierPaymentResponse.model_validate(payment))
+
+
+@router.post(
+    "/supplier-invoices/{invoice_id}/payments/{payment_id}/pdc/deposit",
+    response_model=SuccessResponse[SupplierPaymentResponse],
+)
+@limiter.limit("10/minute")
+async def deposit_supplier_pdc(
+    request: Request,
+    invoice_id: UUID,
+    payment_id: UUID,
+    _body: PdcActionRequest = Body(default_factory=PdcActionRequest),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+    workspace_id: UUID = Depends(get_current_workspace_id),
+):
+    """RECEIVED → DEPOSITED on or after pdc_date. Stays PENDING."""
+    payment = await supplier_pdc_service.deposit(
+        session, workspace_id, invoice_id, payment_id, user
+    )
+    return await _pdc_response(session, payment)
+
+
+@router.post(
+    "/supplier-invoices/{invoice_id}/payments/{payment_id}/pdc/clear",
+    response_model=SuccessResponse[SupplierPaymentResponse],
+)
+@limiter.limit("10/minute")
+async def clear_supplier_pdc(
+    request: Request,
+    invoice_id: UUID,
+    payment_id: UUID,
+    _body: PdcActionRequest = Body(default_factory=PdcActionRequest),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+    workspace_id: UUID = Depends(get_current_workspace_id),
+):
+    """DEPOSITED → CLEARED (SUCCESS). Historical SUCCESS PDC is a 200 no-op."""
+    payment = await supplier_pdc_service.clear(
+        session, workspace_id, invoice_id, payment_id, user
+    )
+    return await _pdc_response(session, payment)
+
+
+@router.post(
+    "/supplier-invoices/{invoice_id}/payments/{payment_id}/pdc/bounce",
+    response_model=SuccessResponse[SupplierPaymentResponse],
+)
+@limiter.limit("10/minute")
+async def bounce_supplier_pdc(
+    request: Request,
+    invoice_id: UUID,
+    payment_id: UUID,
+    _body: PdcActionRequest = Body(default_factory=PdcActionRequest),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+    workspace_id: UUID = Depends(get_current_workspace_id),
+):
+    """DEPOSITED → BOUNCED (FAILED). No credit re-evaluation on AP."""
+    payment = await supplier_pdc_service.bounce(
+        session, workspace_id, invoice_id, payment_id, user
+    )
+    return await _pdc_response(session, payment)
+
+
+@router.post(
+    "/supplier-invoices/{invoice_id}/payments/{payment_id}/pdc/return",
+    response_model=SuccessResponse[SupplierPaymentResponse],
+)
+@limiter.limit("10/minute")
+async def return_supplier_pdc(
+    request: Request,
+    invoice_id: UUID,
+    payment_id: UUID,
+    _body: PdcActionRequest = Body(default_factory=PdcActionRequest),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+    workspace_id: UUID = Depends(get_current_workspace_id),
+):
+    """RECEIVED → RETURNED (CANCELLED). Illegal from DEPOSITED."""
+    payment = await supplier_pdc_service.return_cheque(
+        session, workspace_id, invoice_id, payment_id, user
+    )
+    return await _pdc_response(session, payment)

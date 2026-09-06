@@ -3,6 +3,29 @@
 
 ---
 
+## 2026-09-07 — Wave 24: PDC-to-supplier (AP post-dated cheque issued, Phase 4)
+
+**Spec:** `architecture/wave-pdc-to-supplier-addendum.md`. Clears the Wave 22 "Out" item "PDC-to-supplier + cheque bounce/reversal" by generalizing the AR PDC machine to the payable side. The **PDC** machine ships; reversal of an already-SUCCESS CASH/BANK/CHEQUE after bank bounce stays deferred (SDN route, mirror of AR "CLEARED is terminal"). Backend only. **Alembic YES** (migration `234d5639ef8c`). Committed.
+
+### Locked (addendum)
+
+- PDC insert rule: `payment_method=PDC` → `status=PENDING`, `pdc_status=RECEIVED`, `pdc_date` **required** (422 `VALIDATION_ERROR` field=pdc_date, enforced in `record_payment` mirroring AR `_insert_status`). No `_settle_invoice` — `balance_due`/`amount_paid`/invoice status unchanged. Overpay-at-insert cap still applies (PENDING does not consume the cap).
+- CASH / BANK_TRANSFER / CHEQUE stay SUCCESS-on-receipt; CHEQUE is **not** on the machine (bounce → 403 `INVALID_STATE`).
+- Four POSTs `POST /supplier-invoices/{invoice_id}/payments/{payment_id}/pdc/{deposit|clear|bounce|return}`: deposit RECEIVED→DEPOSITED (gate `pdc_date <= utc_today()` else 400 field=pdc_date, stays PENDING); clear DEPOSITED→CLEARED (SUCCESS, overpay lock `amount > balance_due` → 400 `PAYMENT_EXCEEDS_BALANCE`, then `_settle_invoice` incrementally); bounce DEPOSITED→BOUNCED (FAILED, no credit evaluate — AP has none); return RECEIVED→RETURNED (CANCELLED). Illegal transitions → 403 `INVALID_STATE` field=pdc_status. Idempotent target-state 200s. Already-CLEARED/historical SUCCESS PDC → 200 no-op, no amount rewrite.
+- OWNER/ADMIN only on the four POSTs (MEMBER 403 `INSUFFICIENT_PERMISSIONS`); `@limiter.limit("10/minute")`; empty `{}` body (`PdcActionRequest`, extra=forbid); no `Idempotency-Key`. Isolation: invoice by id+workspace, then payment by id+invoice_id → 404, never 403.
+- Statement/aging unchanged: PENDING already renders as `SUPPLIER_PAYMENT_PENDING` (credit 0, `pending_amount`, not in `totals.paid`); FAILED/CANCELLED (BOUNCED/RETURNED) omitted by existing `PAYMENT_STATUSES`. CLEARED is terminal (no `CLEARED → BOUNCED`).
+
+### Done
+
+- Alembic `234d5639ef8c_add_supplier_pdc_columns.py` (down_revision `b4a2c6e8f10d`, head): adds `pdc_date` (Date, nullable) + `pdc_status` (PG `pdcstatus` ENUM, `create_type=False` — type already exists from `e217c0bc3af7`) to `supplier_payments`. Upgrade on dev DB; downgrade → upgrade round-trip verified; `alembic check` clean. Head re-pins: `test_pdc.py`/`test_pricing.py` → `234d5639ef8c`.
+- Model — `backend/app/models/supplier_payment.py`: `pdc_date` (`sa_column=Column(Date)`) + `pdc_status` (`Optional[PDCStatus]`), using the shared `PDCStatus` from `app/models/payment.py`.
+- Schema — `backend/app/schemas/supplier_payments.py`: `AP_PAYMENT_METHODS` widened to include PDC; `SupplierPaymentCreate.pdc_date` + validator (catches explicit null); `SupplierPaymentResponse.pdc_date`/`pdc_status`.
+- Service — `backend/app/services/supplier_payment_service.py` `record_payment`: new `pdc_date` argument forwarded from the router; PDC branch inserts PENDING+RECEIVED and **skips** `_settle_invoice`; 422 pdc_date-required guard (mirrors AR); non-PDC path unchanged.
+- New `backend/app/services/supplier_pdc_service.py` (`SupplierPdcService` < 500 lines, mirrors `PdcService`): `_require_owner_admin`, `_invalid_state`, `_require_pdc`, `_cleared_already`, `_lock_pair` (FOR UPDATE invoice then payment), deposit/clear/bounce/return; clear reuses `SupplierPaymentService._settle_invoice` under the overpay lock (DN-credit safe). No AR `update_status`/credit-evaluate on AP.
+- Router — `backend/app/routers/supplier_payments.py`: four POST endpoints + shared `_pdc_response`; forwards `pdc_date` on create; existing PUT 405/GET isolation unchanged. Same router module, no `main.py` change (already wired at `/api/v1`).
+- Tests — `backend/tests/test_supplier_pdc.py` (15 tests): future PDC PENDING+RECEIVED with no balance effect; pdc_date required 422; today-dated PDC still PENDING; non-PDC SUCCESS; deposit-before-date 400; deposit/clear lifecycle → SUCCESS+CLEARED + `_settle_invoice`; bounce after deposit → FAILED (balance unchanged, second bounce 200); return from RECEIVED → CANCELLED, from DEPOSITED 403; illegal RECEIVED→clear + CHEQUE→bounce 403 `INVALID_STATE`; over-clear 400 `PAYMENT_EXCEEDS_BALANCE` with PDC not rewritten; statement pending→cleared mapping + totals; bounced/returned omitted from statement; MEMBER 403 `INSUFFICIENT_PERMISSIONS` on PDC action (can still post a PDC); cross-workspace 404.
+- Full suite **314 passed** (299 + 15 new in ~7.5 min); ruff + black clean; `alembic check` clean.
+
 ## 2026-09-07 — Wave 23: Purchase Returns + Supplier Debit Notes (AP, Phase 4)
 
 **Spec:** `architecture/wave-purchase-returns-addendum.md`. Completes the AP half of MASTER_PLAN_V3 Wave 25 (purchase returns / supplier debit notes). Backend only. **Alembic YES** (migration `b4a2c6e8f10d`). Committed (`e256772`).
