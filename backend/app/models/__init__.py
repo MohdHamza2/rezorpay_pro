@@ -122,6 +122,13 @@ from app.models.email_log import (
     EmailIdempotencyKey,
     EmailStatus,
 )
+from app.models.whatsapp_message import (
+    WhatsAppMessage,
+    WhatsAppMessageStatus,
+    WhatsAppMessageType,
+    WhatsAppDirection,
+    WhatsAppIdempotencyKey,
+)
 
 __all__ = [
     "Workspace",
@@ -232,4 +239,9 @@ __all__ = [
     "EmailLog",
     "EmailIdempotencyKey",
     "EmailStatus",
+    "WhatsAppMessage",
+    "WhatsAppMessageStatus",
+    "WhatsAppMessageType",
+    "WhatsAppDirection",
+    "WhatsAppIdempotencyKey",
 ]

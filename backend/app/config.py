@@ -49,6 +49,21 @@ class Settings(BaseSettings):
     RESEND_WEBHOOK_SECRET: str = ""
     COMMS_DRY_RUN: bool = True
 
+    # WhatsApp Business Platform (Wave 27 — Meta Cloud API). One business
+    # phone/account per deployment => one inbound workspace. COMMS_DRY_RUN
+    # gates WhatsappProvider the same way it gates ResendProvider.
+    # WHATSAPP_GRAPH_VERSION verified at implementation (2026-09-07): latest
+    # Meta Graph API is v26.0 (Jul 2026); v25.0 is the current stable release
+    # (Feb 18 2026, supported to Jul 2028) — chosen default.
+    WHATSAPP_ACCESS_TOKEN: str = ""
+    WHATSAPP_PHONE_NUMBER_ID: str = ""
+    WHATSAPP_BUSINESS_ACCOUNT_ID: str = ""
+    WHATSAPP_APP_SECRET: str = ""
+    WHATSAPP_WEBHOOK_VERIFY_TOKEN: str = ""
+    WHATSAPP_GRAPH_VERSION: str = "v25.0"
+    WHATSAPP_INBOUND_WORKSPACE_ID: str = ""
+    WHATSAPP_WEBHOOK_MAX_BODY_BYTES: int = 1_000_000
+
     model_config = {"env_file": ".env", "case_sensitive": True, "extra": "ignore"}
 
     @model_validator(mode="after")
