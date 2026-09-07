@@ -117,6 +117,11 @@ from app.models.supplier_debit_note import (
     SupplierDebitNoteStatus,
     SupplierDebitNoteCounter,
 )
+from app.models.email_log import (
+    EmailLog,
+    EmailIdempotencyKey,
+    EmailStatus,
+)
 
 __all__ = [
     "Workspace",
@@ -224,4 +229,7 @@ __all__ = [
     "SupplierDebitNote",
     "SupplierDebitNoteStatus",
     "SupplierDebitNoteCounter",
+    "EmailLog",
+    "EmailIdempotencyKey",
+    "EmailStatus",
 ]

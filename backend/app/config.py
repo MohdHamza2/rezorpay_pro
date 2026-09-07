@@ -42,6 +42,13 @@ class Settings(BaseSettings):
     # Redis (for future rate limiting backend + task queues)
     REDIS_URL: str = "redis://localhost:6379/0"
 
+    # Email Engine (Wave 26 — Resend provider). COMMS_DRY_RUN keeps the
+    # platform from ever dialing a provider unless deliberately enabled.
+    RESEND_API_KEY: str = ""
+    RESEND_FROM_EMAIL: str = "InvoiceSaaS <noreply@invoicesaas.example>"
+    RESEND_WEBHOOK_SECRET: str = ""
+    COMMS_DRY_RUN: bool = True
+
     model_config = {"env_file": ".env", "case_sensitive": True, "extra": "ignore"}
 
     @model_validator(mode="after")

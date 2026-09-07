@@ -3,6 +3,21 @@
 
 ---
 
+## 2026-09-07 — Wave 26: Email Engine via Resend API (implementation) — COMPLETE ✅
+
+Implemented `architecture/wave-email-engine-addendum.md` report-first:
+- **Model + Alembic:** `EmailLog` (`email_log` table) + `emailstatus` PG ENUM (QUEUED|SENT|DELIVERED|BOUNCED|FAILED) + `simulated` bool; migration `3d3f24d6ee00_add_email_log` (down_revision `234d5639ef8c`, new head) incl. `email_idempotency_keys` (48h TTL), composite indexes `ix_email_log_workspace_id_created_at` / `ix_email_log_workspace_linked`, unique `uq_email_log_resend_message_id`. Top-of-tree round-trip verified (`upgrade → downgrade -1 → upgrade`) + `alembic check` clean.
+- **Config:** `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `RESEND_WEBHOOK_SECRET`, `COMMS_DRY_RUN` (default true) in `app/config.py` + `backend/.env.example`.
+- **Adapter:** `app/services/providers.py` → `ProviderResult` + `ResendProvider` (httpx) — dry-run simulator returns `simulated=True`, `resend_message_id=None`.
+- **Service:** `app/services/email_service.py` — send/list/get/resend/webhook + linked-entity resolver (workspace-validated; **AR_STATEMENT/SUPPLIER_STATEMENT reference-only, no physical FK**); provider failure commits row as FAILED then 502 `PROVIDER_ERROR` so resend is possible; never logs secrets/PII/bodies.
+- **Schemas:** `app/schemas/email_comms.py` — `EmailSendRequest` (to_email, subject, body_html, bcc?, linked_entity*), `EmailResponse` (datetime timestamps + `EmailStatus` enum), `EmailWebhookRequest`. `ErrorCode.PROVIDER_ERROR` added to `app/schemas/common.py`.
+- **Router:** `app/routers/comms_emails.py` — POST `/api/v1/comms/emails` (OWNER/ADMIN, 30/min, Idempotency-Key), GET list (member, workspace-scoped, paginated), GET `{id}` (member), POST `{id}/resend` (OWNER/ADMIN, FAILED/QUEUED only), POST `/api/v1/webhooks/email` (Bearer `RESEND_WEBHOOK_SECRET`, no limiter). Wired in `main.py`; models + enum exported in `app/models/__init__.py`.
+- **Tests:** `tests/test_email_comms.py` — **11 passed** (§6 of addendum; fake providers via class-attr swap, dry-run uses real provider, idempotency, resend gating, linked-entity valid/bad-ref/cross-workspace, MEMBER RBAC, webhook secret+events+idempotency). Guardian pins in `test_pdc.py` / `test_pricing.py` re-pointed to `3d3f24d6ee00`.
+- **Fix notes:** `EmailResponse` timestamps retyped `str`→`datetime` (pydantic v2 rejects datetime input on `str` fields); fakes set on `EmailService` **class** attr (send path is a classmethod reading `cls.provider`); `_FakeSuccess` returns unique message ids to satisfy the unique constraint.
+- **Verify:** full suite **333 passed** (+11), ruff clean, black clean on touched files, `alembic check` clean. Pre-existing black drift noted in `tests/test_enquiries.py` / `tests/test_ar_statement.py` (unrelated to this wave, excluded from this commit). Next: `STATE.md` + commit.
+
+---
+
 ## 2026-09-07 — Phase 5 planning v1 review — 12 locks applied + Wave 26 addendum (NO CODE)
 
 **Planning only.** Review verdict v1 approved the Phase 5 plan with 12 architecture locks; all applied:
