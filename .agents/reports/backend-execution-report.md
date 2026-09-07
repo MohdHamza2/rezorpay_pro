@@ -3,6 +3,37 @@
 
 ---
 
+## 2026-09-07 — Phase 5 planning v1 review — 12 locks applied + Wave 26 addendum (NO CODE)
+
+**Planning only.** Review verdict v1 approved the Phase 5 plan with 12 architecture locks; all applied:
+
+1. **ROADMAP supersession recorded** — `.planning/ROADMAP.md` (26=Email, 27=WhatsApp+PDF, 28=UAE VAT) is authoritative over MASTER_PLAN_V3 (26=WhatsApp, 27=Reports/Dashboard, 28=India). India-market rules (`business-rules.md` Cat.11) noted as deferred, not Phase 5.
+2. **PDF formalized** — server-side `DocumentRenderer` (reportlab) = canonical outbound-comms primitive; reconciles `wave-bilingual-pdf-addendum.md` client-side `@react-pdf` (which stays the interactive UI path); single canonical doc representation, no dual systems; future email attachments reuse the renderer.
+3. **WhatsApp inbound → Enquiry**: webhook → HMAC → dedupe by `wa_message_id` → persist → link known Client only → create Enquiry status NEW; **no LLM**; unknown contacts → `client_id` nullable, never auto-Client.
+4. **WhatsApp idempotency**: `wa_message_id` is the provider dedup id; webhook retries can't duplicate message or Enquiry; repeated DELIVERED/READ idempotent.
+5. **Dry-run**: default true, CI never hits Resend/Meta; simulated sends record `simulated=True` + log, no new lifecycle state.
+6. **Email/`/send` decoupled** — `POST /invoices/{id}/send` untouched.
+7. **Linked-entity + workspace validation**; AR_STATEMENT no physical FK (documented); `body_text` optional (OUT of MVP).
+8. **Security**: env-keyed creds; never log tokens/keys/secrets/bodies/full PII; webhooks public but secret-authenticated.
+9. **VAT = read-only** export, not FTA submission/e-invoicing/XML/EDI; business-date filter (invoice_date etc., never `created_at`); lifecycle-based inclusion; never exclude overdue-only (payment vs tax-document status separate).
+10. **VAT content approved** incl. input+output, ZIP+JSON; org TRN optional, never blocking.
+11. **Synchronous infra** — no Celery/Redis queues/scheduled/bulk/retry workers per-workspace encrypted creds; manual resend only.
+12. **Governance** — unchanged lifecycle; no implementation until lock recorded.
+
+Locked `architecture/phase-5-comms-integrations-planning.md` (v1) + Wave 26 implementation addendum `architecture/wave-email-engine-addendum.md` (email_log + emailstatus + simulated, Alembic moves HEAD, bearer webhook, OWNER/ADMIN sends, Idempotency-Key, AR_STATEMENT no FK, tests §6). **No code/tests/migrations written.** Full suite remains **322 passed** @ `1a38655`; `alembic check` clean. Next: implement Wave 26 report-first.
+
+---
+
+## 2026-09-07 — Phase 5 planning (Communications & Integrations) — NO CODE
+
+**Planning only** (lifecycle rule: nothing implemented without planning). Locked `architecture/phase-5-comms-integrations-planning.md` after researching live runtime truth — no comms tables (domain model was aspirational), no PDF generator/object-storage, Redis unwired, `/send` endpoints only "mark as sent" (no provider call), VAT fields exist across invoice/invoice_item/credit_note/tax_debit_note/supplier_invoice + `client.tax_id`/`supplier.trn`.
+
+**Locked phase decisions:** Waves 26→27→28 (Email via Resend / WhatsApp+PDF / VAT pack). Shared locks: in-process `reportlab` PDF `DocumentRenderer` (INVOICE/QUOTATION/AR_STATEMENT in W27); `providers.py` async adapter layer + `COMMS_DRY_RUN` (CI never hits the network); env-keyed single provider account (per-workspace profiles OUT — encrypted-at-rest later); sends OWNER/ADMIN + `Idempotency-Key`; webhooks signature-gated & not IP-rate-limited (email bearer-secret, WhatsApp GET-challenge + X-Hub-Signature-256); email channel decoupled from document `/send`; §6 phase-gate confirmations needed before Wave 26 implementation. Alembic on 26/27 (new `emailstatus`/`whatsappdirection`/`whatsappmessagestatus` enums), none on 28.
+
+**Verification:** planning doc only; no code/tests/migrations written. Full suite remains **322 passed** at HEAD `1a38655` (Wave 25); `alembic check` clean. Next: resolve §6 gates with the user, then implement Wave 26 report-first + per-wave commit.
+
+---
+
 ## 2026-09-07 — Wave 25: AP payment reversal (bank-bounce recovery, Phase 4 — last leftover)
 
 **Spec:** `architecture/wave-ap-payment-reversal-addendum.md`. Closes the last Phase 4 leftover (Wave 24 §13 deferred "reversal of an already-SUCCESS CASH/BANK/CHEQUE after bank bounce"). Backend only. **Alembic NO** — HEAD stays `234d5639ef8c`; `alembic check` clean; no new columns/enums; guardian pins unchanged.
