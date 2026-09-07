@@ -3,6 +3,30 @@
 
 ---
 
+## 2026-09-07 — Wave 25: AP payment reversal (bank-bounce recovery, Phase 4 — last leftover)
+
+**Spec:** `architecture/wave-ap-payment-reversal-addendum.md`. Closes the last Phase 4 leftover (Wave 24 §13 deferred "reversal of an already-SUCCESS CASH/BANK/CHEQUE after bank bounce"). Backend only. **Alembic NO** — HEAD stays `234d5639ef8c`; `alembic check` clean; no new columns/enums; guardian pins unchanged.
+
+### Locked (addendum)
+
+- Eligible target: a payment that is **SUCCESS today**, CASH / BANK_TRANSFER / CHEQUE. MVP records these SUCCESS-on-receipt; if the bank bounces the cheque or recalls the transfer, the consumed AP must be restored. **PDC is excluded** — it uses its own machine and a CLEARED PDC is terminal (mirror AR "reopen with a credit note"); PENDING/BOUNCED/RETURNED PDC → 403.
+- Effect: `status -> FAILED` + `_reverse_settlement` inside the row lock (exact inverse of `_settle_invoice`: `amount_paid -= amount; balance_due += amount`; PAID → PARTIALLY_PAID → APPROVED when paid hits 0; `paid_at` cleared when balance_due > 0). Amount/method/dates **never** rewritten (immutable money identity).
+- Statement / `ap-balance` / `ap-aging`: read live stored columns, omit FAILED (existing `PAYMENT_STATUSES`), so a reversed payment silently re-enters open AP and `closing_running == amount_due_now` identity holds. **Zero statement/aging code change.**
+
+### Delivered
+
+- `backend/app/services/supplier_payment_reversal_service.py` — new `SupplierPaymentReversalService` (dedicated file; keeps `supplier_payment_service.py` <500 via the Wave 24 split valve): `reverse_payment` locks invoice (FOR UPDATE, id+workspace → 404) then payment (FOR UPDATE, id+invoice_id → 404); OWNER/ADMIN only; ordering is **PDC guard first** so a BOUNCED PDC (already FAILED) gets 403, not the idempotent 200; non-PDC + SUCCESS-only (already-FAILED → 200 no-op); open-invoice guard (APPROVED/PARTIALLY_PAID/PAID, else 403 `INVALID_STATE`); defensive `amount <= amount_paid` → 400 `PAYMENT_EXCEEDS_BALANCE` (unreachable via API — `amount_paid` is exactly Σ SUCCESS amounts); `_reverse_settlement`.
+- `backend/app/schemas/supplier_payments.py` — `SupplierPaymentReversalRequest` (empty body, `extra="forbid"`, 422 on stray keys) mirroring `PdcActionRequest`.
+- `backend/app/routers/supplier_payments.py` — `POST /api/v1/supplier-invoices/{invoice_id}/payments/{payment_id}/reverse` (OWNER/ADMIN, `10/minute`, no Idempotency-Key); reuses `_pdc_response` commit+serialize helper; router docstring updated.
+
+### Verified
+
+- New `tests/test_supplier_payment_reversal.py` — 8 tests (full reversal on PARTIALLY_PAID invoice; full reversal of a PAID invoice → APPROVED + `paid_at` cleared; partial reversal keeps immutability; statement mapping with `paid` drop + `closing_running == amount_due_now` identity; ap-aging re-entry + bucket sum == balance; illegal reversals — CLEARED/PENDING/BOUNCED/RETURNED PDC + CANCELLED invoice all 403; MEMBER 403 `INSUFFICIENT_PERMISSIONS`; cross-workspace 404). The defensive over-reverse 400 is unreachable via the API by construction (documented in addendum §2.9).
+- Targeted regression (supplier_payments / supplier_statement / supplier_pdc / pricing): **46 passed**.
+- Full backend suite: **322 passed** (314 + 8 new) in 7:43. ruff + black clean. `alembic check` clean. Not committed yet (commit is the wave-final step).
+
+---
+
 ## 2026-09-07 — Wave 24: PDC-to-supplier (AP post-dated cheque issued, Phase 4)
 
 **Spec:** `architecture/wave-pdc-to-supplier-addendum.md`. Clears the Wave 22 "Out" item "PDC-to-supplier + cheque bounce/reversal" by generalizing the AR PDC machine to the payable side. The **PDC** machine ships; reversal of an already-SUCCESS CASH/BANK/CHEQUE after bank bounce stays deferred (SDN route, mirror of AR "CLEARED is terminal"). Backend only. **Alembic YES** (migration `234d5639ef8c`). Committed.

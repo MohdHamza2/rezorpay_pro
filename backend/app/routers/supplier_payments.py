@@ -14,6 +14,7 @@ Endpoints:
 - POST /supplier-invoices/{id}/payments/{id}/pdc/clear      PDC DEPOSITED→CLEARED (SUCCESS)
 - POST /supplier-invoices/{id}/payments/{id}/pdc/bounce     PDC DEPOSITED→BOUNCED (FAILED)
 - POST /supplier-invoices/{id}/payments/{id}/pdc/return     PDC RECEIVED→RETURNED (CANCELLED)
+- POST /supplier-invoices/{id}/payments/{id}/reverse        SUCCESS → FAILED (bank bounce)
 """
 
 from typing import Optional
@@ -54,11 +55,15 @@ from app.schemas.common import (
 from app.schemas.supplier_payments import (
     SupplierApBalanceResponse,
     SupplierPaymentCreate,
+    SupplierPaymentReversalRequest,
     SupplierPaymentResponse,
 )
 from app.schemas.payments import PdcActionRequest
 from app.schemas.supplier_statements import SupplierStatementResponse
 from app.services.customer_po_support import raise_error
+from app.services.supplier_payment_reversal_service import (
+    supplier_payment_reversal_service,
+)
 from app.services.supplier_payment_service import supplier_payment_service
 from app.services.supplier_pdc_service import supplier_pdc_service
 from app.services.supplier_statement_service import supplier_statement_service
@@ -437,6 +442,35 @@ async def return_supplier_pdc(
 ):
     """RECEIVED → RETURNED (CANCELLED). Illegal from DEPOSITED."""
     payment = await supplier_pdc_service.return_cheque(
+        session, workspace_id, invoice_id, payment_id, user
+    )
+    return await _pdc_response(session, payment)
+
+
+@router.post(
+    "/supplier-invoices/{invoice_id}/payments/{payment_id}/reverse",
+    response_model=SuccessResponse[SupplierPaymentResponse],
+)
+@limiter.limit("10/minute")
+async def reverse_supplier_payment(
+    request: Request,
+    invoice_id: UUID,
+    payment_id: UUID,
+    _body: SupplierPaymentReversalRequest = Body(
+        default_factory=SupplierPaymentReversalRequest
+    ),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+    workspace_id: UUID = Depends(get_current_workspace_id),
+):
+    """Reverse a SUCCESS CHEQUE/CASH/BANK payment after a bank bounce.
+
+    Restores the AP the payment consumed (`status -> FAILED`; `amount_paid`
+    and `balance_due` are rewritten to the exact inverse of settlement).
+    Already-reversed payments are a 200 no-op. PDC payments use the PDC
+    lifecycle — a CLEARED PDC is terminal.
+    """
+    payment = await supplier_payment_reversal_service.reverse_payment(
         session, workspace_id, invoice_id, payment_id, user
     )
     return await _pdc_response(session, payment)

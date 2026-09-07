@@ -80,3 +80,9 @@ class SupplierApBalanceResponse(BaseModel):
     amount_paid: Decimal
     balance_due: Decimal
     currency: str
+
+
+class SupplierPaymentReversalRequest(BaseModel):
+    """Empty payment-reversal body. Extra keys → 422."""
+
+    model_config = ConfigDict(extra="forbid")
