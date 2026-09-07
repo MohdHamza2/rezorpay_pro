@@ -13,6 +13,17 @@ Locked `architecture/wave-vat-compliance-pack-addendum.md` per parent plan §5. 
 
 ---
 
+## 2026-09-07 — Wave 28 (planning) — REVIEW VERDICT RESOLVED (rev 2) — NREV-2, NO CODE
+
+Peer verdict applied to `architecture/wave-vat-compliance-pack-addendum.md` (three decisions re-confirmed). Resolutions against live code:
+- **Currency (reviewer's biggest concern, resolved):** sales invoices are **AED-enforced** at create/PUT/send (`invoice_service._assert_aed` → 422; send → 400 `FTA_SEND_BLOCKED`; `Currency` enum AED-only); CN/TDN derive `currency = invoice.currency` → AED. Supplier invoices are **unrestricted** (`str(max_length=3)`; match engine `FAILED_CURRENCY` proves multi-currency input is designed). **No FX mechanism exists** — `RFQ.exchange_rate` (Numeric(12,6), default 1.0) is never read anywhere; no conversion field on supplier invoices. Locked: `vat_summary` **input buckets aggregate AED supplier invoices only**; non-AED supplier invoices remain in `purchase_invoices.csv` (currency preserved) and are enumerated in `manifest.warnings.non_aed_supplier_invoices` — never silently mixed. No conversion invented (§2.4/§4.2).
+- **Supplier `invoice_date` timezone (resolved):** `DateTime(timezone=True)` + asyncpg UTC rendering makes `.date()` give the UTC calendar date (shifts a `00:30 +04:00` document to the previous day). Locked: the pack uses the **GST business date** (`astimezone(timezone(timedelta(hours=4)))`, fixed UTC+4 no DST, stdlib, no tzdata) for supplier invoices; whole window consistent on the Gulf business calendar. This is a documented, deliberate divergence from the live statement/AP-aging UTC `.date()` convention (unchanged) (§2.1/§9).
+- **Alembic HEAD verified live:** `alembic heads` → `c5b7a3e9f21d` (Wave 27's head); the `3d3f24d6ee00` the reviewer saw was Wave 26's head — superseded by Wave 27. Guardian pins unchanged; `alembic check` stays clean (no migration this wave).
+- **Wording hardened:** supplier inclusion = "exists in the accounting system and not cancelled" ≠ input-tax recoverability (§2.3); explicit no-netting-engine boundary (§4.4); `manifest.currency` = aggregation currency only.
+- **Verify:** planning only. Full suite remains **384 passed** @ `be912b1`. Next: implement Wave 28 report-first.
+
+---
+
 ## 2026-09-07 — Wave 27: WhatsApp Business API + PDF delivery + inbound→Enquiry (implementation) — IN PROGRESS
 
 Implementing `architecture/wave-whatsapp-pdf-addendum.md` (rev 3, coordinator-locked) report-first:
