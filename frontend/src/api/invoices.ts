@@ -95,6 +95,13 @@ export const getInvoices = async (): Promise<InvoiceListItem[]> => {
   return response.data.data;
 };
 
+export const getRecentInvoices = async (): Promise<InvoiceListItem[]> => {
+  const response = await apiClient.get<PaginatedResponse<InvoiceListItem>>('/api/v1/invoices', {
+    params: { page: 1, per_page: 5 },
+  });
+  return response.data.data;
+};
+
 export const getInvoice = async (id: string): Promise<Invoice> => {
   const response = await apiClient.get<SuccessResponse<Invoice>>('/api/v1/invoices/' + id);
   return response.data.data;

@@ -3,6 +3,34 @@
 
 ---
 
+## 2026-09-07 — Wave 29: Reporting & Dashboard (frontend) — IMPLEMENTED
+
+Implementing `architecture/wave-reports-dashboard-addendum.md` (rev 2, coordinator-locked) — frontend portion (AR/AP aging UI, VAT compliance export UI, Dashboard enhancements):
+
+### New files created
+- **`frontend/src/api/reports.ts`** — Types (`CreditBuckets`, `ArAgingSummary/Detail/ByCustomer`, `ApAgingSummary/Detail/BySupplier`, `VatComplianceJson`) + fetchers (`getArAgingSummary`, `getArAgingDetail`, `getArAgingByCustomer`, `getApAgingSummary`, `getApAgingDetail`, `getApAgingBySupplier`, `downloadVatComplianceZip`, `getVatComplianceJson`); shared helpers `BUCKET_LABELS`, `formatAed`.
+- **`frontend/src/pages/Reports.tsx`** + **`Reports.module.css`** — 3-tab reports page (AR Aging, AP Aging, VAT Compliance). AR/AP tabs: as-of date picker (future blocked client-side), summary stat cards, recharts bar chart of bucket distribution, by-customer/by-supplier aggregation table with lazy detail loading on row click or "All detail" toggle. VAT tab: from/to date inputs with validation (from≤to, both≤today, span≤366); MEMBER role sees "OWNER/ADMIN only" notice with no requests fired and downloads disabled; OWNER/ADMIN sees on-demand JSON preview + Download JSON + Download CSV ZIP buttons.
+- **`frontend/src/api/invoices.ts`** — Added `getRecentInvoices` (zero-arg, fetches `page=1&per_page=5`) alongside existing `getInvoices` to avoid breaking existing callers that pass the function directly to `useQuery`.
+
+### Modified files
+- **`frontend/src/pages/Dashboard.tsx`** — "Recent Activities" placeholder replaced with "Recent Invoices" widget (uses `getRecentInvoices`, shows invoice number/date/status/balance with link to `/invoices`). New "Open AR / AP" snapshot widget (links to `/reports`, shows total outstanding + counts from `getArAgingSummary`/`getApAgingSummary`). Quick Actions wired to `/invoices/new`, `/procurement`, `/grn`.
+- **`frontend/src/pages/Dashboard.module.css`** — Added styles: `.invoiceList`, `.invoiceRow`, `.invoiceMain/Meta/Number/Date/Status/Balance`, `.viewAllLink`, `.snapshotGrid/Item/Label/Value/Count`, `.actionsGrid`, `.muted`.
+- **`frontend/src/components/Layout.tsx`** — Sidebar "Overview" group now includes Reports nav item (BarChart3 icon, path `/reports`).
+- **`frontend/src/App.tsx`** — Added route `path="reports" element={<Reports />}` in authenticated layout.
+
+### Verification
+- **`npm run build`** (tsc -b && vite build): clean, zero errors. Build size 2,424 kB (chunk size warning pre-existing, not from this change).
+- **`npx oxlint`**: clean — zero new warnings from modified/new files. All warnings are pre-existing in unrelated files.
+- **Backend**: AR aging endpoints + 11 tests previously verified passing (full suite 408 passed); no backend files touched in this session.
+
+### Key implementation decisions (from locked addendum rev 2)
+- React-query explicit generic type parameters (`useQuery<ArAgingSummary | ApAgingSummary>`) required because union return types from ternary query functions aren't inferable by react-query.
+- `getRecentInvoices` kept as separate zero-arg function (not `getInvoices(perPage)`) because existing callers pass `getInvoices` directly to `useQuery` `queryFn` — adding a parameter would break the `QueryFunction` signature (react-query passes a context object, not a number).
+- `Users` icon (lucide-react) used for customer rows, `Building2` for supplier rows, matching existing codebase conventions.
+- CSS follows existing Dashboard.module.css conventions: white card backgrounds, 12px border-radius, `box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1)`, `#f3f4f6` borders, Tailwind color palette (`#111827`, `#6b7280`, `#2563eb`).
+
+---
+
 ## 2026-09-07 — Wave 28: UAE VAT Compliance Pack export (implementation) — IMPLEMENTED
 
 Implementing `architecture/wave-vat-compliance-pack-addendum.md` (rev 2, coordinator-locked) report-first:

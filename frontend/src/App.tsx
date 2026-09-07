@@ -39,6 +39,7 @@ import { GoodsReceiptNotes } from './pages/GRN';
 import { GRNDetail } from './pages/GRNDetail';
 import { SupplierInvoices } from './pages/SupplierInvoices';
 import { SupplierInvoiceDetail } from './pages/SupplierInvoiceDetail';
+import { Reports } from './pages/Reports';
 import { Toaster } from 'react-hot-toast';
 
 const queryClient = new QueryClient();
@@ -64,6 +65,7 @@ function App() {
               }
             >
               <Route index element={<Dashboard />} />
+              <Route path="reports" element={<Reports />} />
               <Route path="clients" element={<Clients />} />
               <Route path="clients/:id/statement" element={<ArStatement />} />
               <Route path="enquiries" element={<Enquiries />} />
