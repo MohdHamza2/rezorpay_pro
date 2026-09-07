@@ -3,6 +3,16 @@
 
 ---
 
+## 2026-09-07 — Wave 28: UAE VAT Compliance Pack export (planning) — ADDENDUM LOCKED, NO CODE
+
+Locked `architecture/wave-vat-compliance-pack-addendum.md` per parent plan §5. **No Alembic** (head stays `c5b7a3e9f21d`, guardian pins unchanged); only config addition `VAT_ORG_TRN` (optional — never blocks generation, LOCK #10).
+- **Runtime truth verified against live code:** `invoice.issue_date` (not the parent plan's `invoice.invoice_date`) + `supply_date`/`due_date`; FTA snapshots; `credit_note`/`tax_debit_note` `issue_date` + ISSUED; `supplier_invoice.invoice_date` DateTime(TZ)→UTC-date + `vat_amount`/`vat_rate`; `invoice_items.line_net`/`tax_amount`; CN/TDN items; `client.tax_id`; `workspace.trn`/`address`; `supplier.name`/`trn`; reuse `ar_statement_service` period guards (366-day cap / from≤to) + `line_money.money` + `_require_owner_admin`; `_member_token` test pattern.
+- **Locked scope:** `GET /api/v1/reports/vat-compliance?from&to&format=csv|json` — OWNER/ADMIN, `10/minute`, `to−from > 366` → 422. ZIP of 7 entries: `sales_invoices.csv`, `invoice_lines.csv`, `credit_notes.csv`, `tax_debit_notes.csv`, `purchase_invoices.csv`, `vat_summary.csv`, `manifest.json` (org name/TRN/address, period, output/input/net tax). `format=json` → same aggregates in `SuccessResponse` wrapper; CSV → raw `StreamingResponse` zip (`response_model=None`).
+- **Burned decisions (review-confirmed 2026-09-07):** supplier invoices = all statuses except CANCELLED; `vat_summary` nets CN/TDN **item-level** into per-rate output buckets (CN −, TDN +); JSON wrapped; business-date filtering only (never `created_at`); OVERDUE never excluded; snapshot-preferred seller/buyer identity for issued docs.
+- **Verification:** planning only — no code/tests/migrations written. Full suite remains **384 passed** @ `be912b1`; `alembic check` clean. Next: implement Wave 28 report-first.
+
+---
+
 ## 2026-09-07 — Wave 27: WhatsApp Business API + PDF delivery + inbound→Enquiry (implementation) — IN PROGRESS
 
 Implementing `architecture/wave-whatsapp-pdf-addendum.md` (rev 3, coordinator-locked) report-first:
