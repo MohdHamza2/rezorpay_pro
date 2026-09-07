@@ -3,6 +3,16 @@
 
 ---
 
+## 2026-09-07 — Wave 28: UAE VAT Compliance Pack export (implementation) — IMPLEMENTED
+
+Implementing `architecture/wave-vat-compliance-pack-addendum.md` (rev 2, coordinator-locked) report-first:
+- **Scope (rev 2):** `GET /api/v1/reports/vat-compliance?from&to&format=csv|json` — OWNER/ADMIN, `10/minute`, 366-day cap + from≤to guards (reuse `ar_statement_service`). ZIP of 7 entries (`sales_invoices.csv`, `invoice_lines.csv`, `credit_notes.csv`, `tax_debit_notes.csv`, `purchase_invoices.csv`, `vat_summary.csv`, `manifest.json`); `format=json` → same aggregates wrapped in `SuccessResponse`. **No Alembic, no model edits** (HEAD `c5b7a3e9f21d` re-verified); config-only `VAT_ORG_TRN` (optional, never blocks).
+- **Locked rules:** business dates only (`issue_date`; supplier `invoice_date` → **GST business date** via stdlib `timezone(timedelta(hours=4))`, NOT driver-UTC `.date()`); inclusion SENT/PARTIALLY_PAID/PAID/OVERDUE sales, ISSUED CN/TDN, supplier all-except-CANCELLED (≠ input-tax recoverability); `vat_summary` line-level per-rate buckets, CN − / TDN + net into output, input = **AED supplier invoices only** — non-AED stay in `purchase_invoices.csv` (currency preserved) + `manifest.warnings.non_aed_supplier_invoices`; **no FX/conversion invented**; snapshot-preferred seller/buyer identity; `manifest.currency = "AED"` is the aggregation currency.
+- **Module plan:** `app/config.py`+`.env.example` (`VAT_ORG_TRN`) → `app/schemas/vat_compliance.py` → `app/services/vat_compliance_service.py` (all reads) → `app/routers/reports.py` → wired `main.py` → `tests/test_vat_compliance.py` (13 cases, addendum §7).
+- **Result:** All implemented. Config `VAT_ORG_TRN: str = ""` added to `app/config.py` + `backend/.env.example`. Created `app/schemas/vat_compliance.py` (8 models). Created `app/services/vat_compliance_service.py` (business_date GST helper, build_report, csv_text, build_zip). Created `app/routers/reports.py` (single endpoint with limiter + RBAC). Wired `reports_router` into `main.py` at `/api/v1`. **13 tests passing** (`tests/test_vat_compliance.py`). Full suite **397 passed**, ruff clean, alembic check clean (no Alembic). StreamingResponse `iter([bytes])` fix applied.
+
+---
+
 ## 2026-09-07 — Wave 28: UAE VAT Compliance Pack export (planning) — ADDENDUM LOCKED, NO CODE
 
 Locked `architecture/wave-vat-compliance-pack-addendum.md` per parent plan §5. **No Alembic** (head stays `c5b7a3e9f21d`, guardian pins unchanged); only config addition `VAT_ORG_TRN` (optional — never blocks generation, LOCK #10).

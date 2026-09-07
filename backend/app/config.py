@@ -64,6 +64,10 @@ class Settings(BaseSettings):
     WHATSAPP_INBOUND_WORKSPACE_ID: str = ""
     WHATSAPP_WEBHOOK_MAX_BODY_BYTES: int = 1_000_000
 
+    # VAT Compliance Report (Wave 28). Optional organization TRN shown in the
+    # pack manifest; falls back to workspace.trn, then "". Never blocks export.
+    VAT_ORG_TRN: str = ""
+
     model_config = {"env_file": ".env", "case_sensitive": True, "extra": "ignore"}
 
     @model_validator(mode="after")
