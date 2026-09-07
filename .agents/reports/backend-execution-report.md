@@ -3,6 +3,15 @@
 
 ---
 
+## 2026-09-07 — Wave 27: WhatsApp Business API + PDF delivery + inbound→Enquiry (implementation) — IN PROGRESS
+
+Implementing `architecture/wave-whatsapp-pdf-addendum.md` (rev 3, coordinator-locked) report-first:
+- **Review passed:** "APPROVE WITH REQUIRED CHANGES" (rev 1 reviewer verdict) → all 18 corrective locks applied (rev 2); final 3 mandates applied (rev 3): `received_at` + formal inbound/outbound timestamp semantics; `message_type=MEDIA` = inbound media/non-text transport record only (no download/inspection/storage/processing); exact idempotency reservation (request fingerprint, `409 IDEMPOTENCY_CONFLICT` on key+different-request, global unique `whatsapp_message_id`, `QUEUED` = interrupted synchronous send not a queue).
+- **Scope (rev 3):** `WhatsAppMessage` + `whatsappdirection`/`whatsappmessagestatus`(incl. **RECEIVED**)/`whatsappmessagetype` PG enums + `whatsapp_idempotency_keys` (PK `(workspace_id,key)` + fingerprint); `providers.py` → `WhatsappProvider` (Media upload + Messages document/text, normalized error triples); `pdf_service.py` → `DocumentRenderer` (INVOICE/QUOTATION/AR_STATEMENT; `build_sections` seam + no-recompute rule; EN-only, bilingual deferred — no legal claim); `utils/phones.py` `normalize_phone_to_e164` (no country guessing); `whatsapp_service.py` (two-txn outbound, provider call OUTSIDE DB session; recipient derived from linked Client's canonical phone — no `to_number` override; lifecycle gates from live enums; AR_STATEMENT uses `linked_entity_id`+`statement_from/to`, resend regenerates with current data); webhook GET challenge + POST HMAC + `metadata.phone_number_id` verification + body-size cap + response-precision matrix; inbound→Enquiry single transaction (EnquiryService session-injection, no self-commit), dedup = DB unique constraints (race→idempotent 200); one-workspace-per-deployment explicit MVP limitation. `ErrorCode.UNSUPPORTED_DOCUMENT` + `IDEMPOTENCY_CONFLICT`.
+- **Verify:** full suite green + ruff + black + `alembic check`; then `STATE.md` + commit.
+
+---
+
 ## 2026-09-07 — Wave 26: Email Engine via Resend API (implementation) — COMPLETE ✅
 
 Implemented `architecture/wave-email-engine-addendum.md` report-first:
