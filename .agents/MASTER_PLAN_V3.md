@@ -1202,10 +1202,17 @@ Documents to produce:
 | **Wave 23** | Delivery Order + Inventory Connect | DO linked to reservations, stock movement on dispatch, quantity reconciliation |
 | **Wave 24** | Customer Statement + AR Aging | Statement PDF, aging report, send via WA/Email |
 | **Wave 25** | Returns + Credit/Debit Notes | Sales return, purchase return, credit note, debit note, ledger adjustments |
-| **Wave 26** | WhatsApp Full Integration | Meta webhook, inbound→Enquiry, outbound PDF sending, message history |
+| **Wave 26** | WhatsApp Full Integration | Meta webhook, inbound�+'Enquiry, outbound PDF sending, message history |
 | **Wave 27** | Reports + Dashboard V2 | Inventory, procurement, AR, AP, PDC, VAT, cash flow forecast |
 | **Wave 28** | India Market | CGST/SGST/IGST, GSTIN, HSN codes, multi-market workspace |
 | **Wave 29** | Production Deployment | Docker hardening, CI/CD, SSL, domain, monitoring, go-live |
+
+> **Superseded.** This wave table is historical. `.planning/ROADMAP.md` is the
+> authoritative numbering: Waves 21-25 = Phase 4 (AP), 26-28 = Phase 5 (Email/WhatsApp/UAE
+> VAT), 29 = Phase 6 (Reporting & Dashboard). MASTER_PLAN_V3's "Wave 26 = WhatsApp, 28 =
+> India, 29 = production hardening" no longer applies (see
+> `architecture/phase-5-comms-integrations-planning.md` §0.1). Keep this file as reference
+> only; do not re-adopt its numbering.
 
 ---
 

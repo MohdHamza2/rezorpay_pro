@@ -107,7 +107,7 @@
 - Hosting platform: Not detected (no Terraform, Fly, Railway, ECS, k8s manifests)
 - SSL/domain/monitoring: Not detected
 - Frontend production hosting: Not detected (`npm run build` emits `frontend/dist/` only)
-- Wave 29 in `.agents/MASTER_PLAN_V3.md` is the planned production-hardening wave; not implemented
+- Wave 29 in `.planning/ROADMAP.md` is Reporting & Dashboard (implemented). The `.agents/MASTER_PLAN_V3.md` "Wave 29 = production hardening" is superseded numbering; production hardening remains un-implemented as a separate wave
 
 ## Locked vs Actual Divergence
 

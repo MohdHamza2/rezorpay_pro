@@ -667,7 +667,7 @@ logger.info("User logged in", extra={"user_id": user.id, "workspace_id": user.wo
 
 ---
 
-## Category 11: India Market Rules (Wave 28)
+## Category 11: India Market Rules (deferred market wave — not numbered per `.planning/ROADMAP.md`, which sets Wave 28 = UAE VAT)
 
 ### Rule 11.1: GST Tax Calculation
 **Rule:** India market uses CGST + SGST (intra-state) or IGST (inter-state).
