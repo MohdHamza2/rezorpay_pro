@@ -31,12 +31,22 @@ async def ar_aging_summary(
     request: Request,
     as_of: Optional[date] = Query(None),
     client_id: Optional[UUID] = Query(None),
+    historical: bool = Query(False),
     session: AsyncSession = Depends(get_session),
     workspace_id: uuid.UUID = Depends(get_current_workspace_id),
 ):
-    """AR aging report (default view=summary)."""
+    """AR aging report (default view=summary).
+
+    `historical=true` reconstructs balances from ledger history as of `as_of`
+    (Wave 30 item 1.2), instead of the live-balance snapshot.
+    """
     payload = await ar_aging(
-        session, workspace_id, as_of=as_of, client_id=client_id, view="summary"
+        session,
+        workspace_id,
+        as_of=as_of,
+        client_id=client_id,
+        view="summary",
+        historical=historical,
     )
     return SuccessResponse(data=payload)
 
@@ -46,12 +56,22 @@ async def ar_aging_detail(
     request: Request,
     as_of: Optional[date] = Query(None),
     client_id: Optional[UUID] = Query(None),
+    historical: bool = Query(False),
     session: AsyncSession = Depends(get_session),
     workspace_id: uuid.UUID = Depends(get_current_workspace_id),
 ):
-    """AR aging, invoice-level detail."""
+    """AR aging, invoice-level detail.
+
+    `historical=true` reconstructs balances from ledger history as of `as_of`
+    (Wave 30 item 1.2), instead of the live-balance snapshot.
+    """
     payload = await ar_aging(
-        session, workspace_id, as_of=as_of, client_id=client_id, view="detail"
+        session,
+        workspace_id,
+        as_of=as_of,
+        client_id=client_id,
+        view="detail",
+        historical=historical,
     )
     return SuccessResponse(data=payload)
 
@@ -63,15 +83,21 @@ async def ar_aging_by_customer(
     request: Request,
     as_of: Optional[date] = Query(None),
     client_id: Optional[UUID] = Query(None),
+    historical: bool = Query(False),
     session: AsyncSession = Depends(get_session),
     workspace_id: uuid.UUID = Depends(get_current_workspace_id),
 ):
-    """AR aging, per-client breakdown."""
+    """AR aging, per-client breakdown.
+
+    `historical=true` reconstructs balances from ledger history as of `as_of`
+    (Wave 30 item 1.2), instead of the live-balance snapshot.
+    """
     payload = await ar_aging(
         session,
         workspace_id,
         as_of=as_of,
         client_id=client_id,
         view="by_customer",
+        historical=historical,
     )
     return SuccessResponse(data=payload)

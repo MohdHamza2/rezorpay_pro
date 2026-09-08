@@ -86,6 +86,28 @@
   color: #111827;
 }
 
+.checkField {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #374151;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.checkField input {
+  width: 16px;
+  height: 16px;
+  accent-color: #2563eb;
+  cursor: pointer;
+}
+
+.checkField:hover {
+  color: #111827;
+}
+
 .errorText {
   color: #dc2626;
   font-size: 0.85rem;

@@ -103,9 +103,12 @@ def seed_invoice(
     status="SENT",
     credited=None,
     deleted_at=None,
+    issue_date=None,
+    due_date=None,
 ):
     wrt = datetime.now(timezone.utc).date()
-    due = wrt + timedelta(days=due_shift_days)
+    issue = issue_date if issue_date is not None else wrt
+    due = due_date if due_date is not None else issue + timedelta(days=due_shift_days)
 
     async def insert():
         async with TestingSessionLocal() as session:
@@ -121,8 +124,8 @@ def seed_invoice(
                 total_amount=Decimal(str(total)),
                 amount_credited=credited if credited is not None else Decimal("0.00"),
                 status=status,
-                issue_date=wrt,
-                supply_date=wrt,
+                issue_date=issue,
+                supply_date=issue,
                 due_date=due,
                 deleted_at=deleted_at,
             )
@@ -328,3 +331,307 @@ def test_aging_past_as_of_honored_no_clamping():
         headers={"Authorization": f"Bearer {token}"},
     )
     assert r.status_code == 422, r.json()
+
+
+def seed_payment(
+    workspace_id, invoice_id, number, amount, payment_date, status="SUCCESS"
+):
+    async def insert():
+        async with TestingSessionLocal() as session:
+            from app.models.payment import Payment, PaymentMethod
+
+            payment = Payment(
+                invoice_id=invoice_id,
+                amount=Decimal(str(amount)),
+                payment_date=payment_date,
+                payment_method=PaymentMethod.BANK_TRANSFER,
+                status=status,
+                reference_number=number,
+            )
+            session.add(payment)
+            await session.commit()
+            await session.refresh(payment)
+            return payment.id
+
+    return asyncio.run(insert())
+
+
+def seed_credit_note(
+    workspace_id, client_id, invoice_id, number, total, issue_date, status="ISSUED"
+):
+    async def insert():
+        async with TestingSessionLocal() as session:
+            from app.models.credit_note import (
+                CreditNote,
+                CreditNoteReason,
+                CreditNoteStatus,
+            )
+
+            note = CreditNote(
+                workspace_id=workspace_id,
+                client_id=client_id,
+                invoice_id=invoice_id,
+                credit_note_number=number,
+                status=CreditNoteStatus(status),
+                issue_date=issue_date,
+                reason=CreditNoteReason.OTHER,
+                subtotal=Decimal(str(total)),
+                tax_amount=Decimal("0.00"),
+                total_amount=Decimal(str(total)),
+            )
+            session.add(note)
+            await session.commit()
+            await session.refresh(note)
+            return note.id
+
+    return asyncio.run(insert())
+
+
+def seed_debit_note(
+    workspace_id, client_id, invoice_id, number, total, issue_date, status="ISSUED"
+):
+    async def insert():
+        async with TestingSessionLocal() as session:
+            from app.models.tax_debit_note import (
+                TaxDebitNote,
+                TaxDebitNoteReason,
+                TaxDebitNoteStatus,
+            )
+
+            note = TaxDebitNote(
+                workspace_id=workspace_id,
+                client_id=client_id,
+                invoice_id=invoice_id,
+                debit_note_number=number,
+                status=TaxDebitNoteStatus(status),
+                issue_date=issue_date,
+                reason=TaxDebitNoteReason.OTHER,
+                subtotal=Decimal(str(total)),
+                tax_amount=Decimal("0.00"),
+                total_amount=Decimal(str(total)),
+            )
+            session.add(note)
+            await session.commit()
+            await session.refresh(note)
+            return note.id
+
+    return asyncio.run(insert())
+
+
+def test_historical_reconstructs_paid_invoice_at_past_as_of():
+    token, workspace_id = register_and_token()
+    client_id = create_client(token, "H Recon Co")
+    today = date.today()
+    inv_id = seed_invoice(
+        workspace_id,
+        client_id,
+        "RECON-INV-1",
+        1000,
+        0,
+        issue_date=today - timedelta(days=40),
+    )
+
+    paid_on = datetime.now(timezone.utc)
+    seed_payment(workspace_id, inv_id, "PAY-RECON-1", 1000, paid_on)
+
+    past = (today - timedelta(days=10)).isoformat()
+    live = client.get("/api/v1/ar-aging", headers={"Authorization": f"Bearer {token}"})
+    assert live.status_code == 200, live.json()
+    assert live.json()["data"]["invoice_count"] == 0
+
+    r = client.get(
+        f"/api/v1/ar-aging?historical=true&as_of={past}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200, r.json()
+    data = r.json()["data"]
+    assert data["invoice_count"] == 1
+    assert float(data["total_outstanding"]) == 1000.0
+    assert float(data["buckets"]["days_1_30"]) == 1000.0
+
+
+def test_historical_reconstructs_ignores_payment_after_as_of():
+    token, workspace_id = register_and_token()
+    client_id = create_client(token, "H After Co")
+    today = date.today()
+    inv_id = seed_invoice(
+        workspace_id,
+        client_id,
+        "AFTER-INV-1",
+        1000,
+        5,
+        issue_date=today - timedelta(days=60),
+    )
+
+    past = (today - timedelta(days=5)).isoformat()
+    paid_later = datetime.combine(
+        today, datetime.min.time(), tzinfo=timezone.utc
+    ) + timedelta(hours=12)
+    seed_payment(workspace_id, inv_id, "PAY-AFTER-1", 300, paid_later)
+
+    r = client.get(
+        f"/api/v1/ar-aging/detail?historical=true&as_of={past}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200, r.json()
+    data = r.json()["data"]
+    assert len(data["invoices"]) == 1
+    assert float(data["invoices"][0]["balance_due"]) == 1000.0
+
+    today_iso = today.isoformat()
+    r2 = client.get(
+        f"/api/v1/ar-aging/detail?historical=true&as_of={today_iso}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r2.status_code == 200, r2.json()
+    assert float(r2.json()["data"]["invoices"][0]["balance_due"]) == 700.0
+
+
+def test_historical_credit_and_debit_notes_respect_as_of():
+    token, workspace_id = register_and_token()
+    client_id = create_client(token, "H Notes Co")
+    today = date.today()
+    inv_id = seed_invoice(
+        workspace_id,
+        client_id,
+        "NOTES-INV-1",
+        1000,
+        10,
+        issue_date=today - timedelta(days=90),
+    )
+
+    backing_day = today - timedelta(days=3)
+    cred_on = backing_day - timedelta(days=1)
+    debit_on = backing_day + timedelta(days=1)
+    seed_credit_note(workspace_id, client_id, inv_id, "CN-H-1", 200, cred_on)
+    seed_debit_note(workspace_id, client_id, inv_id, "TDN-H-1", 50, debit_on)
+
+    snapshot = backing_day.isoformat()
+    r = client.get(
+        f"/api/v1/ar-aging/detail?historical=true&as_of={snapshot}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200, r.json()
+    rows = r.json()["data"]["invoices"]
+    assert len(rows) == 1
+    assert float(rows[0]["balance_due"]) == 800.0
+
+    later = (backing_day + timedelta(days=2)).isoformat()
+    r2 = client.get(
+        f"/api/v1/ar-aging/detail?historical=true&as_of={later}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r2.status_code == 200, r2.json()
+    assert float(r2.json()["data"]["invoices"][0]["balance_due"]) == 850.0
+
+
+def test_historical_excludes_invoice_issued_after_as_of():
+    token, workspace_id = register_and_token()
+    client_id = create_client(token, "H Issued Co")
+    seed_invoice(workspace_id, client_id, "LATE-INV-1", 1000, -5)
+
+    today = date.today()
+    past = (today - timedelta(days=2)).isoformat()
+    r = client.get(
+        f"/api/v1/ar-aging?historical=true&as_of={past}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200, r.json()
+    data = r.json()["data"]
+    assert data["invoice_count"] == 0
+    assert float(data["total_outstanding"]) == 0.0
+
+
+def test_historical_as_of_today_matches_live_set():
+    token, workspace_id = register_and_token()
+    client_id = create_client(token, "H Match Co")
+    seed_invoice(workspace_id, client_id, "MATCH-A", 1000, -5)
+    seed_invoice(workspace_id, client_id, "MATCH-B", 2000, -40)
+    seed_invoice(workspace_id, client_id, "MATCH-DRAFT", 500, -5, status="DRAFT")
+
+    today = date.today()
+
+    live = client.get("/api/v1/ar-aging", headers={"Authorization": f"Bearer {token}"})
+    hist = client.get(
+        f"/api/v1/ar-aging?historical=true&as_of={today.isoformat()}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert live.status_code == 200 and hist.status_code == 200
+    live_data, hist_data = live.json()["data"], hist.json()["data"]
+    assert hist_data["invoice_count"] == live_data["invoice_count"] == 2
+    assert (
+        float(hist_data["total_outstanding"])
+        == float(live_data["total_outstanding"])
+        == 3000.0
+    )
+
+
+def test_historical_detail_rows_and_buckets():
+    token, workspace_id = register_and_token()
+    client_id = create_client(token, "H Detail Co")
+    today = date.today()
+    inv_id = seed_invoice(
+        workspace_id,
+        client_id,
+        "HD-INV-1",
+        1000,
+        5,
+        issue_date=today - timedelta(days=40),
+    )
+
+    past = (today - timedelta(days=20)).isoformat()
+    seed_payment(
+        workspace_id,
+        inv_id,
+        "PAY-HD",
+        400,
+        datetime.combine(today, datetime.min.time(), tzinfo=timezone.utc),
+    )
+
+    r = client.get(
+        f"/api/v1/ar-aging/detail?historical=true&as_of={past}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200, r.json()
+    data = r.json()["data"]
+    assert data["as_of"] == past
+    assert float(data["total_outstanding"]) == 1000.0
+    row = data["invoices"][0]
+    assert row["client_name"] == "H Detail Co"
+    assert row["invoice_number"] == "HD-INV-1"
+    assert row["days_overdue"] == 15
+    assert row["bucket"] == "days_1_30"
+    assert float(row["balance_due"]) == 1000.0
+
+
+def test_historical_client_filter():
+    token, workspace_id = register_and_token()
+    c_a = create_client(token, "H Filt A")
+    c_b = create_client(token, "H Filt B")
+    today = date.today()
+    seed_invoice(
+        workspace_id,
+        c_a,
+        "HF-A-1",
+        1000,
+        -5,
+        issue_date=today - timedelta(days=30),
+    )
+    seed_invoice(
+        workspace_id,
+        c_b,
+        "HF-B-1",
+        4000,
+        -5,
+        issue_date=today - timedelta(days=30),
+    )
+
+    past = (today - timedelta(days=1)).isoformat()
+    r = client.get(
+        f"/api/v1/ar-aging?historical=true&as_of={past}&client_id={c_a}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200, r.json()
+    data = r.json()["data"]
+    assert data["invoice_count"] == 1
+    assert float(data["total_outstanding"]) == 1000.0

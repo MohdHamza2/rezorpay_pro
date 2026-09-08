@@ -121,23 +121,30 @@ interface AgingTabProps {
 const AgingTab = ({ side }: AgingTabProps) => {
   const isAr = side === 'ar';
   const [asOf, setAsOf] = useState<string>(toLocalIso());
+  const [historical, setHistorical] = useState(false);
   const [selectedRow, setSelectedRow] = useState<{ id: string; name: string } | null>(null);
   const [showAllDetail, setShowAllDetail] = useState(false);
 
   const summary = useQuery<ArAgingSummary | ApAgingSummary>({
-    queryKey: ['reports', side, 'summary', asOf],
-    queryFn: async () => (isAr ? getArAgingSummary(asOf) : getApAgingSummary(asOf)),
+    queryKey: ['reports', side, 'summary', asOf, historical],
+    queryFn: async () =>
+      isAr ? getArAgingSummary(asOf, undefined, historical) : getApAgingSummary(asOf),
   });
 
   const byEntity = useQuery<ArAgingByCustomer | ApAgingBySupplier>({
-    queryKey: ['reports', side, 'by-entity', asOf],
-    queryFn: async () => (isAr ? getArAgingByCustomer(asOf) : getApAgingBySupplier(asOf)),
+    queryKey: ['reports', side, 'by-entity', asOf, historical],
+    queryFn: async () =>
+      isAr
+        ? getArAgingByCustomer(asOf, historical)
+        : getApAgingBySupplier(asOf),
   });
 
   const detail = useQuery<ArAgingDetail | ApAgingDetail>({
-    queryKey: ['reports', side, 'detail', asOf, selectedRow?.id, showAllDetail],
+    queryKey: ['reports', side, 'detail', asOf, historical, selectedRow?.id, showAllDetail],
     queryFn: async () =>
-      isAr ? getArAgingDetail(asOf, selectedRow?.id) : getApAgingDetail(asOf, selectedRow?.id),
+      isAr
+        ? getArAgingDetail(asOf, selectedRow?.id, historical)
+        : getApAgingDetail(asOf, selectedRow?.id),
     enabled: showAllDetail || selectedRow !== null,
   });
 
@@ -194,6 +201,16 @@ const AgingTab = ({ side }: AgingTabProps) => {
             />
           </label>
           {asOfInvalid && <span className={styles.errorText}>As-of cannot be in the future.</span>}
+          {isAr && (
+            <label className={styles.checkField} title="Reconstruct balances from payment history as of the selected date">
+              <input
+                type="checkbox"
+                checked={historical}
+                onChange={(e) => setHistorical(e.target.checked)}
+              />
+              <span>Historical snapshot</span>
+            </label>
+          )}
           <button
             className={styles.linkBtn}
             onClick={() => (showAllDetail ? closeDetail() : setShowAllDetail(true))}

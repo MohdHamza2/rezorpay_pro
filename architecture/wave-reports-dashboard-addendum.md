@@ -113,6 +113,25 @@ This is intentional symmetry, not an omission. No historical-payment or
 historical-status reconstruction is introduced in Wave 29 (future BI wave
 scope, out of boundary).
 
+**Wave 30 item 1.2 addendum (historical mode):** the historical engine that
+Wave 29 deferred is implemented as an **opt-in** mode on the same AR endpoints:
+`GET /ar-aging?historical=true&as_of=<past>` (also `/detail`, `/by-customer`).
+- Scope guard: `as_of` is resolved/rejected exactly as in the live mode
+  (future → 422); the default `historical=false` behavior is **unchanged** and
+  keeps all locked Wave 29 semantics above.
+- Row set (reconstructed, not live): invoices `issue_date <= as_of`, status in
+  `HISTORICAL_STATUSES` (SENT / PARTIALLY_PAID / PAID / OVERDUE — DRAFT and
+  CANCELLED excluded, since no cancellation timestamp exists to date the
+  snapshot), and not deleted before `as_of`.
+- `balance_as_of = max(0, total_amount − Σ ISSUED credit notes (issue_date ≤
+  as_of) + Σ ISSUED tax debit notes (issue_date ≤ as_of) − Σ SUCCESS payments
+  (payment_date ≤ as_of))`, floored at 0 and kept only when `> 0` — mirroring
+  the live `balance_due > 0` open-set guard. This naturally includes invoices
+  paid today that were outstanding at the past `as_of`, and excludes invoices
+  created after `as_of`.
+- Bucketing / totals / client names reuse the exact same helpers as live mode;
+  the same response schemas are returned (no new wiring).
+
 ### 2.4 Code layout (locked)
 
 - `services/ar_aging.py` — one `ar_aging(session, workspace_id, as_of=None, client_id=None, view="summary")` function mirroring `supplier_payment_service.ap_aging` (imports `aging_buckets`, `_bucket_key`, `utc_today`, `AR_STATUSES` from `credit_control_service`). Keeps `credit_control_service.py` under the 500-line valve and mirrors `schemas/ar_aging.py` / `routers/ar_aging.py` 1:1 with AP.
@@ -250,9 +269,10 @@ Cases:
   (would require **new** backend queries/invented report definitions — out of
   scope; candidate for a later BI wave).
 - **Historical point-in-time aging** (reconstructing balances/status from
-  payment history for a past `as_of`) — explicitly **deferred**. Wave 29
-  inherits the live AP behavior: `as_of` moves bucket boundaries only
-  (§2.3). A true historical-aging engine is future BI scope.
+  payment history for a past `as_of`) — shipped as **Wave 30 item 1.2** on the
+  AR endpoints as the opt-in `historical=true` mode (§2.3 addendum). The AP
+  side intentionally keeps the live bucket-shift behavior; an AP historical
+  mirror remains future scope paired with the B4 aging-logic dedup.
 - Aligning `frontend/src/types/api.ts` `DashboardMetricsResponse`
   (`revenue_overview`, `invoice_status_distribution`) — **aspirational only**;
   `/dashboard/stats` does not return them and this wave does not touch

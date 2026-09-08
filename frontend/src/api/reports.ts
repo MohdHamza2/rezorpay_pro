@@ -91,11 +91,13 @@ export interface ApAgingBySupplier {
 
 export const getArAgingSummary = async (
   asOf?: string,
-  clientId?: string
+  clientId?: string,
+  historical = false
 ): Promise<ArAgingSummary> => {
   const params: Record<string, string> = {};
   if (asOf) params.as_of = asOf;
   if (clientId) params.client_id = clientId;
+  if (historical) params.historical = 'true';
   const response = await apiClient.get<SuccessResponse<ArAgingSummary>>(
     '/api/v1/ar-aging',
     { params }
@@ -105,11 +107,13 @@ export const getArAgingSummary = async (
 
 export const getArAgingDetail = async (
   asOf?: string,
-  clientId?: string
+  clientId?: string,
+  historical = false
 ): Promise<ArAgingDetail> => {
   const params: Record<string, string> = {};
   if (asOf) params.as_of = asOf;
   if (clientId) params.client_id = clientId;
+  if (historical) params.historical = 'true';
   const response = await apiClient.get<SuccessResponse<ArAgingDetail>>(
     '/api/v1/ar-aging/detail',
     { params }
@@ -118,10 +122,12 @@ export const getArAgingDetail = async (
 };
 
 export const getArAgingByCustomer = async (
-  asOf?: string
+  asOf?: string,
+  historical = false
 ): Promise<ArAgingByCustomer> => {
   const params: Record<string, string> = {};
   if (asOf) params.as_of = asOf;
+  if (historical) params.historical = 'true';
   const response = await apiClient.get<SuccessResponse<ArAgingByCustomer>>(
     '/api/v1/ar-aging/by-customer',
     { params }
