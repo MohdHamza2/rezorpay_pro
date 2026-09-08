@@ -47,6 +47,7 @@ test_results.txt
 .pytest_cache/
 htmlcov/
 .coverage
+backend/*.log*
 
 # =========================
 # Ad-hoc Scripts (legacy)
