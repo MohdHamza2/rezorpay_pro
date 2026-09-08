@@ -177,7 +177,7 @@ export const Dashboard = () => {
         <div className={styles.widget}>
           <h3>Quick Actions</h3>
           <div className={styles.actionsGrid}>
-            <Link to="/invoices/new" className={styles.quickActionBtn}>
+            <Link to="/invoices?new=1" className={styles.quickActionBtn}>
               <FileText size={16} /> Create Invoice
             </Link>
             <Link to="/procurement" className={styles.quickActionBtn}>

@@ -23,9 +23,6 @@ export const SupplierInvoices = () => {
     <div className={styles.container}>
       <div className={styles.header}>
         <h2>Supplier Invoices (AP)</h2>
-        <button className={styles.primaryBtn} onClick={() => navigate('/supplier-invoices/new')}>
-          + New Supplier Invoice
-        </button>
       </div>
 
       <div className={styles.card}>

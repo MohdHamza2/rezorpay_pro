@@ -199,8 +199,8 @@ export const EnquiryDetail = () => {
                 <strong style={{ display: 'block', fontSize: '0.75rem', color: '#6b7280', textTransform: 'uppercase' }}>
                   Client / Contact Name
                 </strong>
-                {enquiry.client_id ? (
-                  <Link to={`/clients/${enquiry.client_id}`} style={{ color: '#3b82f6', textDecoration: 'none' }}>
+{enquiry.client_id ? (
+                  <Link to={`/clients/${enquiry.client_id}/statement`} style={{ color: '#3b82f6', textDecoration: 'none' }}>
                     {clientName}
                   </Link>
                 ) : (

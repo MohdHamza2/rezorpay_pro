@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getInvoices,
@@ -231,6 +231,7 @@ function buildUpdatePayload(data: InvoiceFormValues): InvoiceUpdatePayload {
 
 export const Invoices = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
@@ -360,6 +361,15 @@ export const Invoices = () => {
     setIsModalOpen(false);
     setEditingInvoice(null);
   };
+
+  useEffect(() => {
+    if (searchParams.get('new') === '1') {
+      setEditingInvoice(null);
+      reset(blankInvoiceForm());
+      setIsModalOpen(true);
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams, reset]);
 
   const onSubmit = (data: InvoiceFormValues) => {
     if (editingInvoice) {
