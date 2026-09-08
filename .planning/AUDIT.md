@@ -200,6 +200,9 @@ consistency fixes bundled with the surface they touch.
 | Date | Item | Status |
 |---|---|---|
 | 2026-09-08 | Audit created (4 parallel agents + manual verification) | done |
+| 2026-09-08 | Cleanup: deleted 88 hang-probe log artifacts; `.gitignore` `backend/*.log*` | done |
+| 2026-09-08 | A2/A3: enquiries envelope `{items,total,page,size}` + `search` (or_/ilike) + test | done |
+| 2026-09-08 | A1: TDN item schema parity — `uom_id`, `sku_snapshot`, `discount_amount`, `line_net`, timestamps; discount-aware `apply_line_money`; migration `a1b2c3d4e5f6` | done |
 | | | |
 
 ---

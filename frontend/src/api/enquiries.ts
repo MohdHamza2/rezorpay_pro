@@ -65,8 +65,8 @@ export interface EnquiryRead {
 export interface EnquiryListResponse {
   items: EnquiryRead[];
   total: number;
-  skip: number;
-  limit: number;
+  page: number;
+  size: number;
 }
 
 export interface EnquiryListQuery {

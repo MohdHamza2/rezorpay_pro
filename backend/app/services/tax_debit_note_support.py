@@ -22,7 +22,7 @@ from app.services.invoice_service import (
     _load_send_context,
     _resolve_kind,
 )
-from app.services.line_money import money
+from app.services.line_money import apply_line_money, money
 
 ZERO = Decimal("0.00")
 MONEY_FIELDS = ("unit_price", "discount_amount")
@@ -78,25 +78,27 @@ def build_item(
         tax_debit_note_id=tdn_id,
         invoice_item_id=invoice_item.id,
         product_id=invoice_item.product_id,
-        internal_sku=invoice_item.sku_snapshot,
+        uom_id=invoice_item.uom_id,
+        sku_snapshot=invoice_item.sku_snapshot,
         description=invoice_item.description,
         quantity=quantity,
         unit_price=invoice_item.unit_price,
         tax_rate=invoice_item.tax_rate,
         discount_percent=invoice_item.discount_percent,
+        discount_amount=invoice_item.discount_amount,
+        line_net=ZERO,
         tax_amount=ZERO,
         total_price=ZERO,
+        created_at=now(),
+        updated_at=now(),
     )
     # Apply money logic (same as credit notes & invoices)
-    item.tax_amount = money(
-        quantity * item.unit_price * (item.tax_rate / Decimal("100"))
-    )
-    item.total_price = money((quantity * item.unit_price) + item.tax_amount)
+    apply_line_money(item)
     return item
 
 
 def apply_totals(tdn: TaxDebitNote, items: Sequence[TaxDebitNoteItem]) -> None:
-    subtotal = sum((money(item.quantity * item.unit_price) for item in items), ZERO)
+    subtotal = sum((money(item.line_net) for item in items), ZERO)
     tax_amount = sum((item.tax_amount for item in items), ZERO)
     tdn.subtotal = money(subtotal)
     tdn.tax_amount = money(tax_amount)

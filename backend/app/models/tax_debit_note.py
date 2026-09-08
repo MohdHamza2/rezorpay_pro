@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from app.models.invoice import Invoice
     from app.models.invoice_item import InvoiceItem
 
-from sqlalchemy import Column, String
+from sqlalchemy import Column, DateTime, String
 from sqlmodel import Field, Relationship, SQLModel
 
 
@@ -87,12 +87,15 @@ class TaxDebitNote(TaxDebitNoteBase, table=True):
 
 class TaxDebitNoteItemBase(SQLModel):
     product_id: Optional[UUID] = Field(default=None, foreign_key="products.id")
-    internal_sku: Optional[str] = None
+    uom_id: Optional[UUID] = Field(default=None, foreign_key="units_of_measure.id")
+    sku_snapshot: Optional[str] = Field(default=None, max_length=100)
     description: str
     quantity: Decimal = Field(max_digits=10, decimal_places=2)
     unit_price: Decimal = Field(max_digits=12, decimal_places=2)
     tax_rate: Decimal = Field(max_digits=5, decimal_places=2)
     discount_percent: Decimal = Field(default=0, max_digits=5, decimal_places=2)
+    discount_amount: Decimal = Field(default=0, max_digits=12, decimal_places=2)
+    line_net: Decimal = Field(default=0, max_digits=12, decimal_places=2)
     tax_amount: Decimal = Field(max_digits=12, decimal_places=2)
     total_price: Decimal = Field(max_digits=12, decimal_places=2)
 
@@ -103,6 +106,15 @@ class TaxDebitNoteItem(TaxDebitNoteItemBase, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     tax_debit_note_id: UUID = Field(foreign_key="tax_debit_notes.id", index=True)
     invoice_item_id: UUID = Field(foreign_key="invoice_items.id")
+
+    created_at: datetime.datetime = Field(
+        default_factory=datetime.datetime.utcnow,
+        sa_column=Column(DateTime, nullable=False),
+    )
+    updated_at: datetime.datetime = Field(
+        default_factory=datetime.datetime.utcnow,
+        sa_column=Column(DateTime, nullable=False),
+    )
 
     debit_note: TaxDebitNote = Relationship(back_populates="items")
     invoice_item: "InvoiceItem" = Relationship()  # type: ignore

@@ -33,8 +33,10 @@ async def override_get_session():
     async with TestingSessionLocal() as session:
         yield session
 
+
 app.dependency_overrides[get_session] = override_get_session
 client = TestClient(app)
+
 
 @pytest.fixture(scope="module", autouse=True)
 def setup_database():
@@ -73,8 +75,10 @@ def _register(prefix: str, workspace_name: str) -> tuple[str, str]:
 def _headers(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
+
 def _dec(value: Any) -> Decimal:
     return Decimal(str(value))
+
 
 def _create_client(headers: dict, name: str = "Dealer", **extra) -> str:
     payload = {
@@ -86,6 +90,7 @@ def _create_client(headers: dict, name: str = "Dealer", **extra) -> str:
     assert r.status_code == 201, r.text
     return r.json()["data"]["id"]
 
+
 def _create_uom(headers: dict) -> str:
     r = client.post(
         "/api/v1/products/uom",
@@ -94,6 +99,7 @@ def _create_uom(headers: dict) -> str:
     )
     assert r.status_code == 201, r.text
     return r.json()["data"]["id"]
+
 
 def _create_catalog_product(headers: dict) -> dict:
     uom_id = _create_uom(headers)
@@ -120,7 +126,7 @@ def test_create_enquiry():
     token, _ = _register("enq_create", "Enq WS")
     headers = _headers(token)
     product = _create_catalog_product(headers)
-    
+
     payload = {
         "source": EnquirySource.MANUAL.value,
         "contact_name": "Test Contact",
@@ -133,9 +139,9 @@ def test_create_enquiry():
                 "quantity_requested": "10",
                 "uom_id": product["uom_id"],
             }
-        ]
+        ],
     }
-    
+
     response = client.post("/api/v1/enquiries", json=payload, headers=headers)
     assert response.status_code == 201
     data = response.json()
@@ -150,21 +156,23 @@ def test_create_enquiry():
 def test_update_enquiry():
     token, _ = _register("enq_update", "Enq Upd WS")
     headers = _headers(token)
-    
+
     payload = {
         "source": EnquirySource.MANUAL.value,
         "contact_name": "Old Contact",
-        "items": []
+        "items": [],
     }
     create_response = client.post("/api/v1/enquiries", json=payload, headers=headers)
     enquiry_id = create_response.json()["id"]
 
     update_payload = {
         "contact_name": "Updated Contact",
-        "notes": "Some notes added later"
+        "notes": "Some notes added later",
     }
-    
-    response = client.put(f"/api/v1/enquiries/{enquiry_id}", json=update_payload, headers=headers)
+
+    response = client.put(
+        f"/api/v1/enquiries/{enquiry_id}", json=update_payload, headers=headers
+    )
     assert response.status_code == 200
     data = response.json()
     assert data["contact_name"] == "Updated Contact"
@@ -174,19 +182,19 @@ def test_update_enquiry():
 def test_update_enquiry_status():
     token, _ = _register("enq_stat", "Enq Status WS")
     headers = _headers(token)
-    
+
     payload = {
         "source": EnquirySource.MANUAL.value,
         "contact_name": "Test Contact",
-        "items": []
+        "items": [],
     }
     create_response = client.post("/api/v1/enquiries", json=payload, headers=headers)
     enquiry_id = create_response.json()["id"]
 
     response = client.post(
-        f"/api/v1/enquiries/{enquiry_id}/status", 
+        f"/api/v1/enquiries/{enquiry_id}/status",
         json={"status": EnquiryStatus.IN_PROGRESS.value},
-        headers=headers
+        headers=headers,
     )
     assert response.status_code == 200
     data = response.json()
@@ -197,25 +205,27 @@ def test_convert_enquiry_to_quotation():
     token, _ = _register("enq_conv", "Enq Conv WS")
     headers = _headers(token)
     client_id = _create_client(headers)
-    
+
     payload = {
         "client_id": client_id,
         "source": EnquirySource.MANUAL.value,
         "items_description": "We need some products",
-        "items": []
+        "items": [],
     }
-    
+
     create_response = client.post("/api/v1/enquiries", json=payload, headers=headers)
     enquiry_id = create_response.json()["id"]
 
-    convert_response = client.post(f"/api/v1/enquiries/{enquiry_id}/convert", headers=headers)
+    convert_response = client.post(
+        f"/api/v1/enquiries/{enquiry_id}/convert", headers=headers
+    )
     assert convert_response.status_code == 200
-    
+
     quotation = convert_response.json()
     assert quotation["quotation_number"].startswith("QUO-")
     assert len(quotation["items"]) == 1
     assert quotation["items"][0]["description"] == "FROM ENQUIRY: We need some products"
-    
+
     enq_response = client.get(f"/api/v1/enquiries/{enquiry_id}", headers=headers)
     assert enq_response.status_code == 200
     assert enq_response.json()["status"] == EnquiryStatus.QUOTED.value
@@ -224,16 +234,18 @@ def test_convert_enquiry_to_quotation():
 def test_convert_enquiry_without_client_fails():
     token, _ = _register("enq_fail", "Enq Fail WS")
     headers = _headers(token)
-    
+
     payload = {
         "source": EnquirySource.MANUAL.value,
         "items_description": "We need some products",
-        "items": []
+        "items": [],
     }
     create_response = client.post("/api/v1/enquiries", json=payload, headers=headers)
     enquiry_id = create_response.json()["id"]
 
-    convert_response = client.post(f"/api/v1/enquiries/{enquiry_id}/convert", headers=headers)
+    convert_response = client.post(
+        f"/api/v1/enquiries/{enquiry_id}/convert", headers=headers
+    )
     assert convert_response.status_code == 400
     assert convert_response.json()["error"]["code"] == "VALIDATION_ERROR"
 
@@ -241,17 +253,61 @@ def test_convert_enquiry_without_client_fails():
 def test_whatsapp_deduplication():
     token, _ = _register("enq_wa", "Enq WA WS")
     headers = _headers(token)
-    
+
     payload = {
         "source": EnquirySource.WHATSAPP.value,
         "whatsapp_message_id": "wamid.HBgL",
-        "items": []
+        "items": [],
     }
-    
+
     response1 = client.post("/api/v1/enquiries", json=payload, headers=headers)
     assert response1.status_code == 201
-    
+
     response2 = client.post("/api/v1/enquiries", json=payload, headers=headers)
     assert response2.status_code == 201
-    
+
     assert response1.json()["id"] == response2.json()["id"]
+
+
+def test_list_enquiries_search_and_envelope():
+    token, _ = _register("enq_list", "Enq List WS")
+    headers = _headers(token)
+
+    for i, name in enumerate(["Zeta Traders", "Acme Electrical"]):
+        payload = {
+            "source": EnquirySource.MANUAL.value,
+            "contact_name": name,
+            "contact_email": f"lead{i}@example.com",
+            "items_description": f"Request batch {i}",
+            "items": [],
+        }
+        r = client.post("/api/v1/enquiries", json=payload, headers=headers)
+        assert r.status_code == 201, r.text
+
+    r = client.get("/api/v1/enquiries", headers=headers)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["total"] == 2
+    assert body["page"] == 1
+    assert body["size"] == 20
+    assert len(body["items"]) == 2
+
+    hit = client.get("/api/v1/enquiries", params={"search": "Acme"}, headers=headers)
+    assert hit.status_code == 200, hit.text
+    hit_body = hit.json()
+    assert hit_body["total"] == 1
+    assert len(hit_body["items"]) == 1
+    assert hit_body["items"][0]["contact_name"] == "Acme Electrical"
+
+    scratch = client.get(
+        "/api/v1/enquiries", params={"search": "nomatchzzz"}, headers=headers
+    )
+    assert scratch.status_code == 200, scratch.text
+    assert scratch.json()["total"] == 0
+
+    email_hit = client.get(
+        "/api/v1/enquiries", params={"search": "lead0@"}, headers=headers
+    )
+    assert email_hit.status_code == 200, email_hit.text
+    assert email_hit.json()["total"] == 1
+    assert email_hit.json()["items"][0]["contact_name"] == "Zeta Traders"

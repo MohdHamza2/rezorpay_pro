@@ -350,3 +350,46 @@ def test_issue_paid_invoice_unparks_credit_balance():
     # Check that credit balance is reduced by 300.00 -> remaining 200.00
     dealer_after = client.get(f"/api/v1/clients/{client_id}", headers=headers)
     assert _dec(dealer_after.json()["data"]["credit_balance"]) == Decimal("200.00")
+
+
+def test_item_response_exposes_snapshot_fields_and_line_money():
+    """A1: TDN item response must mirror credit-note item shape.
+
+    Frontend expects uom_id, sku_snapshot, discount_amount, line_net,
+    created_at/updated_at on each item.
+    """
+    token, _ = _register("tdn_parity", "TDN Parity WS")
+    headers = _headers(token)
+    _set_workspace(headers)
+    client_id = _create_client(headers)
+    invoice = _sent_invoice(
+        headers,
+        client_id,
+        [_line(qty="10", price="100.00", discount_percent="5")],
+    )
+    assert _dec(invoice["items"][0]["discount_percent"]) == Decimal("5.00")
+    assert _dec(invoice["items"][0]["line_net"]) == Decimal("950.00")
+
+    tdn = _create_tdn(
+        headers,
+        invoice,
+        [{"invoice_item_id": invoice["items"][0]["id"], "quantity": "2"}],
+    )
+
+    got = client.get(f"/api/v1/debit-notes/{tdn['id']}", headers=headers)
+    assert got.status_code == 200, got.text
+    item = got.json()["data"]["items"][0]
+
+    inv_item = invoice["items"][0]
+    assert item["uom_id"] == inv_item["uom_id"]
+    assert item["sku_snapshot"] == inv_item["sku_snapshot"]
+    assert _dec(item["discount_percent"]) == _dec(inv_item["discount_percent"])
+    assert _dec(item["discount_amount"]) == _dec(inv_item["discount_amount"])
+    # Per-line money mirrors credit-note math: extended - discount, then tax
+    assert _dec(item["line_net"]) == Decimal("190.00")  # 2 * 100.00 - 10.00
+    assert _dec(item["tax_amount"]) == Decimal("0.00")
+    assert _dec(item["total_price"]) == Decimal("190.00")
+    assert _dec(tdn["subtotal"]) == Decimal("190.00")
+    assert _dec(tdn["total_amount"]) == Decimal("190.00")
+    assert item["created_at"] is not None
+    assert item["updated_at"] is not None

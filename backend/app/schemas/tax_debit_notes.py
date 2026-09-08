@@ -38,14 +38,19 @@ class TaxDebitNoteItemResponse(BaseModel):
     tax_debit_note_id: UUID
     invoice_item_id: UUID
     product_id: Optional[UUID] = None
-    internal_sku: Optional[str] = None
+    uom_id: Optional[UUID] = None
+    sku_snapshot: Optional[str] = None
     description: str
     quantity: Decimal
     unit_price: Decimal
     tax_rate: Decimal
     discount_percent: Decimal
+    discount_amount: Decimal
+    line_net: Decimal
     tax_amount: Decimal
     total_price: Decimal
+    created_at: datetime
+    updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 

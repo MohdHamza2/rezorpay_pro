@@ -4,7 +4,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func
 from sqlalchemy.orm import selectinload
-from sqlmodel import select
+from sqlmodel import or_, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.auth.dependencies import get_current_user
@@ -33,6 +33,7 @@ async def get_enquiries(
     limit: int = Query(20, ge=1, le=100),
     status: Optional[str] = None,
     client_id: Optional[uuid.UUID] = None,
+    search: Optional[str] = None,
 ):
     query = select(Enquiry).where(
         Enquiry.workspace_id == user.workspace_id, Enquiry.deleted_at.is_(None)
@@ -41,6 +42,18 @@ async def get_enquiries(
         query = query.where(Enquiry.status == status)
     if client_id:
         query = query.where(Enquiry.client_id == client_id)
+    if search:
+        term = f"%{search.strip()}%"
+        query = query.where(
+            or_(
+                Enquiry.enquiry_number.ilike(term),
+                Enquiry.contact_name.ilike(term),
+                Enquiry.contact_email.ilike(term),
+                Enquiry.contact_phone.ilike(term),
+                Enquiry.items_description.ilike(term),
+                Enquiry.notes.ilike(term),
+            )
+        )
 
     total_query = select(func.count()).select_from(query.subquery())
     total = (await session.execute(total_query)).scalar_one()
