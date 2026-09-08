@@ -36,10 +36,10 @@ import {
   getSalesByProduct,
   getCashflow,
   type AnalyticsInterval,
+  type CashflowReport,
   type RevenueRow,
   type SalesByCustomerRow,
   type SalesByProductRow,
-  type CashflowRow,
 } from '../api/analytics';
 import { useAuth } from '../contexts/AuthContext';
 import { Skeleton } from '../components/Skeleton';
@@ -202,13 +202,16 @@ const AgingTab = ({ side }: AgingTabProps) => {
           </label>
           {asOfInvalid && <span className={styles.errorText}>As-of cannot be in the future.</span>}
           {isAr && (
-            <label className={styles.checkField} title="Reconstruct balances from payment history as of the selected date">
+            <label
+              className={styles.checkField}
+              title="Historical balance reconstruction: rebuilds balances from payment/credit-note history as of the selected date. Balances only — lifecycle status is not reconstructed."
+            >
               <input
                 type="checkbox"
                 checked={historical}
                 onChange={(e) => setHistorical(e.target.checked)}
               />
-              <span>Historical snapshot</span>
+              <span>Historical balance reconstruction</span>
             </label>
           )}
           <button
@@ -588,12 +591,9 @@ const AnalyticsTab = () => {
     enabled: ready,
   });
 
-  const cashflow = useQuery<CashflowRow[]>({
+  const cashflow = useQuery<CashflowReport>({
     queryKey: ['analytics', 'cashflow', from, to, interval],
-    queryFn: async () => {
-      const data = await getCashflow(from, to, interval);
-      return data.rows;
-    },
+    queryFn: () => getCashflow(from, to, interval),
     enabled: ready,
   });
 
@@ -660,8 +660,15 @@ const AnalyticsTab = () => {
         <ChartSection
           loading={cashflow.isLoading}
           error={cashflow.isError}
-          data={barData(cashflow.data, (r) => r.net)}
+          data={barData(cashflow.data?.rows, (r) => r.net)}
         />
+        {!!cashflow.data && cashflow.data.non_aed_payments_excluded > 0 && (
+          <p className={styles.warningText}>
+            {cashflow.data.non_aed_payments_excluded} non-AED supplier payment
+            {cashflow.data.non_aed_payments_excluded === 1 ? '' : 's'} excluded from AED
+            cashflow.
+          </p>
+        )}
       </div>
 
       <div className={styles.entityTable}>

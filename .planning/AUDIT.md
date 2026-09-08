@@ -38,8 +38,8 @@ localhost/127.0.0.1 ports 5173/5174/5175.
 ### 2.1 Reporting / BI (candidate "Wave 30" — Phase 6 continuation)
 | # | Item | Status |
 |---|---|---|
-| 1.1 | Sales-by-customer / sales-by-product / revenue / cashflow aggregations | completed |
-| 1.2 | Historical point-in-time aging engine (`as_of` reconstructed from payment history) — AR `historical=true` mode: balances rebuilt from payment/credit/debit ledger as of `as_of` (commit `bdebb32`-era Wave 30 item 1.2) | completed |
+| 1.1 | Sales-by-customer / sales-by-product / revenue / cashflow aggregations — financially hardened: AED-only cashflow. AR receipts AED by construction (+ `Invoice.currency = AED` runtime guard); AP payments join their `supplier_invoice` and aggregate AED only, non-AED surfaced as `non_aed_payments_excluded` (no silent currency mixing) | completed |
+| 1.2 | Historical balance-reconstruction aging mode (Wave 30 item 1.2, commit `bdebb32`-era): AR `historical=true` — balances rebuilt from payment/credit/debit ledger as of `as_of`. Terminology locked as **historical balance reconstruction, NOT a point-in-time lifecycle snapshot**: uses today's status eligibility; historical status transitions are not reconstructed (documented in service/router docstrings + addendum §2.3 + UI tooltip) | completed |
 | 1.3 | Reports-page statement export (PDF/CSV) — today only per-client/per-supplier pages | partial |
 | 1.4 | Playwright E2E for Reports/Dashboard | not started |
 | 1.5 | `pdc_outstanding` + workspace-wide AR aging dashboard field pack | not started |

@@ -14,6 +14,18 @@ Locked semantics (see `architecture/wave-reports-dashboard-addendum.md` §5 and
   minus successful AP payments (`supplier_payments`, status=SUCCESS), bucketed
   by `payment_date` (GST business date). Net = inflows − outflows.
 
+**Currency invariant (AED-only aggregation).** All four reports are AED.
+- AR receipts are AED by construction: `invoice_service` rejects non-AED
+  invoices (`_assert_aed`) and blocks sending non-AED tax invoices; `Payment`
+  has no currency column (inherits the invoice's AED). The receipt query still
+  filters `Invoice.currency = AED` as an explicit runtime guard.
+- AP payments carry no currency column, but `supplier_invoice` may be non-AED
+  (AP is not AED-gated). The cashflow report therefore joins `supplier_payments`
+  to their `supplier_invoice` and aggregates **only payments on AED supplier
+  invoices**, mirroring the VAT pack's `aed_supplier_ids` guard. Non-AED
+  payments are excluded from the AED totals and surfaced as
+  `non_aed_payments_excluded` so mixed-currency summation can never happen.
+
 Reading model only (GET, rate-limited, OWNER/ADMIN) — mirrors `reports.py`.
 """
 
@@ -31,6 +43,7 @@ from app.models.invoice import Invoice
 from app.models.invoice_item import InvoiceItem
 from app.models.payment import Payment, PaymentStatus
 from app.models.product import Product
+from app.models.supplier_invoice import SupplierInvoice
 from app.models.supplier_payment import SupplierPayment
 from app.services.ar_statement_service import (
     assert_from_not_after_to,
@@ -40,6 +53,7 @@ from app.services.line_money import money
 from app.services.vat_compliance_service import OUTPUT_INVOICE_STATUSES, business_date
 
 ZERO = Decimal("0.00")
+AED = "AED"
 Interval = Literal["day", "week", "month"]
 
 
@@ -279,13 +293,18 @@ async def sales_by_product(
 async def _ar_receipts(
     session: AsyncSession, workspace_id: uuid.UUID, period_from: date, period_to: date
 ) -> dict[str, Decimal]:
-    """Successful AR receipts (Payments JOIN invoices), keyed by GST business date."""
+    """Successful AR receipts (Payments JOIN invoices), keyed by GST business date.
+
+    AED-only by construction (invoice creation rejects non-AED) and filtered to
+    `Invoice.currency = AED` as an explicit runtime guard.
+    """
     result = await session.execute(
         select(Payment, Invoice)
         .join(Invoice, Payment.invoice_id == Invoice.id)
         .where(
             Invoice.workspace_id == workspace_id,
             Invoice.deleted_at.is_(None),
+            Invoice.currency == AED,
             Payment.status == PaymentStatus.SUCCESS,
         )
     )
@@ -304,25 +323,44 @@ async def _ar_receipts(
 
 async def _ap_payments(
     session: AsyncSession, workspace_id: uuid.UUID, period_from: date, period_to: date
-) -> dict[str, Decimal]:
-    """Successful AP payments, keyed by GST business date."""
+) -> tuple[dict[str, Decimal], int]:
+    """Successful AP payments, keyed by GST business date.
+
+    `SupplierPayment` has no currency column, so currency is inherited from the
+    parent `supplier_invoice`. Non-AED supplier invoices are NOT AED-gated at
+    creation/approval, so this function joins to `SupplierInvoice` and aggregates
+    **only payments on AED invoices** (mirrors `vat_compliance_service`'s
+    `aed_supplier_ids` guard). Payments on non-AED supplier invoices are excluded
+    from the AED totals and counted in the returned `non_aed` value so the report
+    can surface them instead of silently mixing currencies.
+    """
     result = await session.execute(
-        select(SupplierPayment).where(
+        select(SupplierPayment, SupplierInvoice)
+        .join(
+            SupplierInvoice,
+            SupplierPayment.supplier_invoice_id == SupplierInvoice.id,
+        )
+        .where(
             SupplierPayment.workspace_id == workspace_id,
             SupplierPayment.status == PaymentStatus.SUCCESS,
         )
     )
     totals: dict[str, Decimal] = {}
-    for payment in result.scalars().all():
+    non_aed: int = 0
+    for payment, invoice in result.all():
         when = (
             payment.payment_date
             if isinstance(payment.payment_date, datetime)
             else datetime.combine(payment.payment_date, datetime.min.time())
         )
         day = business_date(when)
-        if period_from <= day <= period_to:
-            totals[day.isoformat()] = totals.get(day.isoformat(), ZERO) + payment.amount
-    return totals
+        if not (period_from <= day <= period_to):
+            continue
+        if invoice.currency != AED:
+            non_aed += 1
+            continue
+        totals[day.isoformat()] = totals.get(day.isoformat(), ZERO) + payment.amount
+    return totals, non_aed
 
 
 async def cashflow(
@@ -332,10 +370,17 @@ async def cashflow(
     period_to: date,
     interval: Interval = "day",
 ) -> dict:
-    """Cash inflow (AR receipts) vs outflow (AP payments) by period."""
+    """Cash inflow (AR receipts) vs outflow (AP payments) by period.
+
+    AED-only aggregation (see module docstring). AP payments on non-AED supplier
+    invoices are excluded from the totals and surfaced as
+    `non_aed_payments_excluded` in the payload.
+    """
     resolve_period(period_from, period_to)
     receipts = await _ar_receipts(session, workspace_id, period_from, period_to)
-    payments = await _ap_payments(session, workspace_id, period_from, period_to)
+    payments, non_aed = await _ap_payments(
+        session, workspace_id, period_from, period_to
+    )
 
     inflow_buckets = {
         key: ZERO for key in _bucket_windows(period_from, period_to, interval)
@@ -362,5 +407,6 @@ async def cashflow(
         "to": period_to,
         "interval": interval,
         "currency": "AED",
+        "non_aed_payments_excluded": non_aed,
         "rows": rows,
     }

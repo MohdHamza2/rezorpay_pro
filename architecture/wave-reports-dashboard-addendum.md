@@ -113,16 +113,25 @@ This is intentional symmetry, not an omission. No historical-payment or
 historical-status reconstruction is introduced in Wave 29 (future BI wave
 scope, out of boundary).
 
-**Wave 30 item 1.2 addendum (historical mode):** the historical engine that
-Wave 29 deferred is implemented as an **opt-in** mode on the same AR endpoints:
+**Wave 30 item 1.2 addendum (historical balance-reconstruction mode):** the
+historical engine that Wave 29 deferred is implemented as an **opt-in** mode on
+the same AR endpoints:
 `GET /ar-aging?historical=true&as_of=<past>` (also `/detail`, `/by-customer`).
 - Scope guard: `as_of` is resolved/rejected exactly as in the live mode
   (future → 422); the default `historical=false` behavior is **unchanged** and
   keeps all locked Wave 29 semantics above.
+- Terminology (locked): this mode is a **historical balance reconstruction**,
+  NOT an authoritative point-in-time accounting/lifecycle snapshot. It
+  reconstructs outstanding *balances* from the ledger available today; it does
+  **not** reconstruct historical *status* transitions.
 - Row set (reconstructed, not live): invoices `issue_date <= as_of`, status in
   `HISTORICAL_STATUSES` (SENT / PARTIALLY_PAID / PAID / OVERDUE — DRAFT and
   CANCELLED excluded, since no cancellation timestamp exists to date the
-  snapshot), and not deleted before `as_of`.
+  snapshot), and not deleted before `as_of`. Status eligibility is evaluated on
+  the **current** row, i.e. with today's statuses: an invoice that was DRAFT on
+  `as_of` but is SENT today can be included, and an invoice that was SENT on
+  `as_of` but is CANCELLED today is excluded. Historical lifecycle/payment
+  status is not reconstructed.
 - `balance_as_of = max(0, total_amount − Σ ISSUED credit notes (issue_date ≤
   as_of) + Σ ISSUED tax debit notes (issue_date ≤ as_of) − Σ SUCCESS payments
   (payment_date ≤ as_of))`, floored at 0 and kept only when `> 0` — mirroring
@@ -131,6 +140,10 @@ Wave 29 deferred is implemented as an **opt-in** mode on the same AR endpoints:
   created after `as_of`.
 - Bucketing / totals / client names reuse the exact same helpers as live mode;
   the same response schemas are returned (no new wiring).
+- UI wording (locked): the Reports page labels the toggle "Historical balance
+  reconstruction" and the tooltip states it rebuilds balances from
+  payment/credit-note history as of the selected date — balances only, lifecycle
+  status is not reconstructed. Router/API docstrings carry the same caveat.
 
 ### 2.4 Code layout (locked)
 
@@ -265,9 +278,16 @@ Cases:
 
 ## 5. NOT in this slice (deferred, flagged not silent)
 
-- Sales-by-customer / sales-by-product / revenue / cashflow aggregations
-  (would require **new** backend queries/invented report definitions — out of
-  scope; candidate for a later BI wave).
+- Sales-by-customer / sales-by-product / revenue / cashflow aggregations —
+  **shipped as Wave 30 item 1.1** on `GET /reports/analytics/*`
+  (`OL`/`admin` auth). Currency invariant locked: reports are AED-only;
+  `Payment` has no currency column, and AR receipts are AED by construction
+  (`invoice_service._assert_aed` + FTA send gate), while AP payments inherit
+  their `supplier_invoice` currency, so `cashflow` joins to the supplier invoice
+  and aggregates **only payments on AED supplier invoices** — non-AED payments
+  are excluded from the totals and surfaced as `non_aed_payments_excluded` in
+  the payload (no silent currency mixing, mirroring the VAT pack's
+  `aed_supplier_ids` guard).
 - **Historical point-in-time aging** (reconstructing balances/status from
   payment history for a past `as_of`) — shipped as **Wave 30 item 1.2** on the
   AR endpoints as the opt-in `historical=true` mode (§2.3 addendum). The AP

@@ -86,6 +86,7 @@ class CashflowReport(BaseModel):
     to_date: date = Field(alias="to")
     interval: Interval
     currency: str
+    non_aed_payments_excluded: int = 0
     rows: list[CashflowRow]
 
     model_config = {"populate_by_name": True}

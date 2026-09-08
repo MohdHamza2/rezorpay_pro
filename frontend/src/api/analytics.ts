@@ -64,6 +64,7 @@ export interface CashflowReport {
   to: string;
   interval: AnalyticsInterval;
   currency: string;
+  non_aed_payments_excluded: number;
   rows: CashflowRow[];
 }
 

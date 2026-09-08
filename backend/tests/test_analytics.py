@@ -275,6 +275,7 @@ def seed_ap_payment(
     payment_date,
     supplier_id,
     status=PaymentStatus.SUCCESS,
+    currency="AED",
 ):
     async def _insert():
         async with TestingSessionLocal() as session:
@@ -296,7 +297,7 @@ def seed_ap_payment(
                 supplier_invoice_number=f"AP-{uuid.uuid4().hex[:6].upper()}",
                 invoice_date=payment_date.date(),
                 due_date=payment_date.date() + timedelta(days=30),
-                currency="AED",
+                currency=currency,
                 subtotal=Decimal(str(amount)),
                 tax_amount=ZERO,
                 total_amount=Decimal(str(amount)),
@@ -474,15 +475,63 @@ def test_cashflow_inflows_outflows_net():
         headers=_headers(token),
     )
     assert r.status_code == 200, r.json()
-    rows = {row["period"]: row for row in r.json()["data"]["rows"]}
+    data = r.json()["data"]
+    assert data["non_aed_payments_excluded"] == 0
+    rows = {row["period"]: row for row in data["rows"]}
     assert _dec(rows["2026-09-05"]["inflows"]) == _dec(300.00)
     assert _dec(rows["2026-09-10"]["outflows"]) == _dec(700.00)
     assert _dec(rows["2026-09-14"]["inflows"]) == _dec(200.00)
     assert _dec(rows["2026-09-05"]["net"]) == _dec(300.00)
-    total_in = sum(_dec(row["inflows"]) for row in r.json()["data"]["rows"])
-    total_out = sum(_dec(row["outflows"]) for row in r.json()["data"]["rows"])
+    total_in = sum(_dec(row["inflows"]) for row in data["rows"])
+    total_out = sum(_dec(row["outflows"]) for row in data["rows"])
     assert _dec(total_in) == _dec(500.00)  # FAILED payment excluded
     assert _dec(total_out) == _dec(700.00)
+
+
+def test_cashflow_excludes_non_aed_supplier_payments():
+    """Non-AED supplier payments must not be summed into the AED cashflow."""
+    token, workspace_id = register_and_token()
+    client_id = seed_client(workspace_id, "Mixed Client")
+    supplier_id = seed_supplier(workspace_id, "Mixed Supplier")
+    line = _line("Widget", 1, 1000.00)
+    inv_id = seed_invoice(workspace_id, client_id, "MIX-1", date(2026, 9, 1), [line])
+    seed_ar_payment(
+        inv_id,
+        1000.00,
+        datetime(2026, 9, 5, tzinfo=timezone.utc),
+        status=PaymentStatus.SUCCESS,
+    )
+    seed_ap_payment(
+        workspace_id,
+        300.00,
+        datetime(2026, 9, 8, tzinfo=timezone.utc),
+        supplier_id,
+        status=PaymentStatus.SUCCESS,
+        currency="AED",
+    )
+    seed_ap_payment(
+        workspace_id,
+        500.00,
+        datetime(2026, 9, 10, tzinfo=timezone.utc),
+        supplier_id,
+        status=PaymentStatus.SUCCESS,
+        currency="USD",
+    )
+
+    r = client.get(
+        "/api/v1/reports/analytics/cashflow",
+        params={"from": "2026-09-01", "to": "2026-09-30"},
+        headers=_headers(token),
+    )
+    assert r.status_code == 200, r.json()
+    data = r.json()["data"]
+    rows = {row["period"]: row for row in data["rows"]}
+    assert data["non_aed_payments_excluded"] == 1
+    assert _dec(rows["2026-09-08"]["outflows"]) == _dec(300.00)
+    assert rows["2026-09-10"]["outflows"] == "0.00"  # USD supplier payment excluded
+    total_out = sum(_dec(row["outflows"]) for row in data["rows"])
+    assert _dec(total_out) == _dec(300.00)
+    assert _dec(rows["2026-09-08"]["net"]) == _dec(-300.00)
 
 
 def test_period_guards():

@@ -38,7 +38,10 @@ async def ar_aging_summary(
     """AR aging report (default view=summary).
 
     `historical=true` reconstructs balances from ledger history as of `as_of`
-    (Wave 30 item 1.2), instead of the live-balance snapshot.
+    (Wave 30 item 1.2) instead of using the live `balance_due`. This is a
+    **balance reconstruction, not a point-in-time lifecycle snapshot**: it
+    uses today's status eligibility, so historical status transitions (e.g.
+    DRAFT on `as_of`, voided after) are not reconstructed.
     """
     payload = await ar_aging(
         session,
@@ -63,7 +66,9 @@ async def ar_aging_detail(
     """AR aging, invoice-level detail.
 
     `historical=true` reconstructs balances from ledger history as of `as_of`
-    (Wave 30 item 1.2), instead of the live-balance snapshot.
+    (Wave 30 item 1.2) instead of using the live `balance_due`. This is a
+    **balance reconstruction, not a point-in-time lifecycle snapshot**:
+    historical status transitions are not reconstructed.
     """
     payload = await ar_aging(
         session,
@@ -90,7 +95,9 @@ async def ar_aging_by_customer(
     """AR aging, per-client breakdown.
 
     `historical=true` reconstructs balances from ledger history as of `as_of`
-    (Wave 30 item 1.2), instead of the live-balance snapshot.
+    (Wave 30 item 1.2) instead of using the live `balance_due`. This is a
+    **balance reconstruction, not a point-in-time lifecycle snapshot**:
+    historical status transitions are not reconstructed.
     """
     payload = await ar_aging(
         session,

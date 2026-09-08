@@ -14,11 +14,16 @@ Locked semantics (see `architecture/wave-reports-dashboard-addendum.md` §2.3):
 - Bucketing reuses the live `aging_buckets` / `_bucket_key` helpers from
   `credit_control_service` — no second implementation of the aging rules.
 
-Historical engine (Wave 30 item 1.2, `historical=True`):
+Historical balance-reconstruction mode (Wave 30 item 1.2, `historical=True`):
 - `as_of` reconstructs the outstanding balance from payment / credit-note /
   tax-debit-note history instead of using the live `balance_due`.
+- This is a *balance reconstruction*, NOT a point-in-time lifecycle snapshot:
+  it uses today's status (current-history eligibility), not the invoice's status
+  on `as_of`. An invoice that was DRAFT on `as_of` but SENT today can be included;
+  an invoice that was SENT on `as_of` but voided today is excluded. The app has
+  no cancellation/lifecycle timestamp, so historical status cannot be dated.
 - Reconstruction scope: invoices issued on/before `as_of` (`issue_date <= as_of`),
-  not deleted before `as_of`, and in a billing lifecycle that can be open
+  not deleted before `as_of`, and in a billing lifecycle that can be open today
   (SENT / PARTIALLY_PAID / PAID / OVERDUE). DRAFT and CANCELLED are excluded
   because there is no cancellation timestamp to date the historical snapshot.
 - balance_as_of = max(0, total_amount − Σ SUCCESS payments `<= as_of`
