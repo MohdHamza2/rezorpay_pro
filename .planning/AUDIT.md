@@ -205,6 +205,7 @@ consistency fixes bundled with the surface they touch.
 | 2026-09-08 | A1: TDN item schema parity — `uom_id`, `sku_snapshot`, `discount_amount`, `line_net`, timestamps; discount-aware `apply_line_money`; migration `a1b2c3d4e5f6` | done |
 | 2026-09-08 | A8+F3: removed dead types `ApiResponse`, `RevenueData`, `InvoiceStatusData`, `DashboardMetricsResponse` | done |
 | 2026-09-08 | F1: fixed 3 dead links — Dashboard Create Invoice→`/invoices?new=1` (+auto-open), SupplierInvoices dead New btn removed, EnquiryDetail client→`/clients/:id/statement` | done |
+| 2026-09-08 | E1: migration `e1f0aabb01aa` adds missing `check_amount_debited_nonneg` on invoices (model declared since Wave 28, never migrated) | done |
 | | | |
 
 ---
