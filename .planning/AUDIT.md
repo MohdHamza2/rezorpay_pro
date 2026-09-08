@@ -206,6 +206,7 @@ consistency fixes bundled with the surface they touch.
 | 2026-09-08 | A8+F3: removed dead types `ApiResponse`, `RevenueData`, `InvoiceStatusData`, `DashboardMetricsResponse` | done |
 | 2026-09-08 | F1: fixed 3 dead links — Dashboard Create Invoice→`/invoices?new=1` (+auto-open), SupplierInvoices dead New btn removed, EnquiryDetail client→`/clients/:id/statement` | done |
 | 2026-09-08 | E1: migration `e1f0aabb01aa` adds missing `check_amount_debited_nonneg` on invoices (model declared since Wave 28, never migrated) | done |
+| 2026-09-08 | E2-E5: docs-only — ROADMAP=authoritative numbering (AP 21-25/comm 26-28/reporting 29), MASTER_PLAN_V3 table marked superseded, STATE Wave 29 committed + Wave 27 implemented, STACK Wave 29 = reporting, India Category 11 = deferred market wave | done |
 | | | |
 
 ---
