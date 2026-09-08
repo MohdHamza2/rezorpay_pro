@@ -7,15 +7,17 @@ Endpoints:
 - GET /clients/{id} - Get client
 - GET /clients/{id}/credit - Aging JSON
 - GET /clients/{id}/ar-statement - Generated Account Statement
+- GET /clients/{id}/statement/export - Account Statement PDF/CSV (same numbers)
 - PUT /clients/{id} - Update client
 - DELETE /clients/{id} - Soft delete client
 """
 
 from datetime import date, datetime, timezone
-from typing import Optional
+from typing import Literal, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -41,6 +43,7 @@ from app.schemas.common import (
 )
 from app.services.ar_statement_service import ArStatementService
 from app.services.credit_control_service import CreditControlService
+from app.services.statement_export_service import export_statement
 
 router = APIRouter(prefix="/clients", tags=["Clients"])
 
@@ -227,6 +230,39 @@ async def get_client_ar_statement(
         actor_id=user.id,
     )
     return SuccessResponse(data=ArStatementResponse.model_validate(payload))
+
+
+@router.get("/{client_id}/statement/export")
+async def export_client_statement(
+    request: Request,
+    client_id: UUID,
+    period_from: date = Query(..., alias="from"),
+    period_to: date = Query(..., alias="to"),
+    as_of: Optional[date] = Query(None),
+    format: Literal["pdf", "csv"] = Query(...),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+    workspace_id: UUID = Depends(get_current_workspace_id),
+):
+    """Account Statement PDF/CSV — same get_statement() result as the JSON
+    endpoint, no recalculation. Workspace-isolated 404. No role gate (mirrors
+    the JSON statement route)."""
+    workspace = await _workspace(session, workspace_id)
+    payload = await ArStatementService.get_statement(
+        session,
+        workspace,
+        client_id,
+        period_from,
+        period_to,
+        as_of,
+        actor_id=user.id,
+    )
+    export = export_statement("ar", payload, format)
+    return StreamingResponse(
+        iter([export.data]),
+        media_type=export.media_type,
+        headers={"Content-Disposition": f'attachment; filename="{export.filename}"'},
+    )
 
 
 @router.put("/{client_id}", response_model=SuccessResponse[ClientResponse])

@@ -158,6 +158,143 @@ the same AR endpoints:
   consumption pattern: initial load fetches only summary + by-customer; detail
   is fetched on demand (§3.2). This mirrors AP's existing UI-facing contract.
 
+### 2.5 Wave 30 item 1.3 addendum — Statement export (PDF / CSV) (LOCKED)
+
+Coordinator review locked the design. These are **hard locks**; the coder must
+not infer beyond them.
+
+- **Endpoints (exact paths, locked):**
+  - `GET /api/v1/clients/{client_id}/statement/export`
+  - `GET /api/v1/suppliers/{supplier_id}/statement/export`
+  - Query params: `from` (required, alias), `to` (required, alias),
+    `as_of` (optional date), `format` (required: `pdf` | `csv`).
+  - Intentional naming note (locked): the AR JSON resource stays
+    `/clients/{id}/ar-statement`; the export path is `/statement/export` per the
+    coordinator review lock. Not a bug; do not "fix" it to `/ar-statement/export`.
+- **RBAC (inherited, no new boundary):** each export handler uses
+  `get_current_user` + `get_current_workspace_id` exactly like its statement
+  sibling. **No role guard** — MEMBER can export (MEMBER can GET both statement
+  JSON endpoints; verified in `test_ar_statement.py`). Do NOT copy the
+  analytics OWNER/ADMIN gate.
+- **Rate limiting (inherited, none):** both statement endpoints are
+  **not** rate-limited. Export adds **no** `@limiter.limit(...)`. Both export
+  handlers still declare `request: Request` as the first parameter (matches the
+  supplier statement handler's signature shape and the project's slowapi
+  convention — a `Request` param is always present even when unlimited).
+- **Workspace isolation (inherited):** resolution is workspace-scoped through
+  the same `_require_client(session, id, workspace.id)` /
+  `_require_supplier(session, id, workspace.id)` helpers → a client/supplier of
+  another workspace 404s. Vendor UI `as_of` validation identical: `from > to`
+  → 422; future `as_of` → 422; range capped at 366 days + 2000 activity lines
+  (all delegated, see below).
+- **Single source of truth / no recalculation (locked):** the export layer calls
+  `ar_statement_service.get_statement(...)` or
+  `supplier_statement_service.get_statement(...)` **exactly once** and reuses
+  that one dict for the response. It **never** re-queries invoices/payments/
+  notes and **never** recomputes opening/closing/totals/aging/amount-due. All
+  date/range validation, the activity cap, and `as_of` resolution happen inside
+  `get_statement` — the export layer must not re-implement or shadow any of
+  them. JSON, PDF, and CSV are therefore the same numbers for the same inputs
+  by construction.
+- **Content negotiation / response (locked):** mirror the VAT-compliance
+  pattern → `StreamingResponse` over the precomputed bytes/file with a
+  `Content-Disposition: attachment; filename="<filename>"` header. Media types:
+  `csv` → `text/csv; charset=utf-8`; `pdf` → `application/pdf`.
+- **Filename (locked, deterministic, no PII):** only the resource id + period.
+  - AR: `ar-statement-{client_id}-{from}_to_{to}.{pdf|csv}`
+  - AP: `ap-statement-{supplier_id}-{from}_to_{to}.{pdf|csv}`
+  - `{client_id}` / `{supplier_id}` is the str(UUID); `{from}`/`{to}` are the
+    resolved period in `YYYY-MM-DD`. The `DocumentRenderer.filename_for`
+    default (`Account-Statement-…`) is **ignored** — the export layer sets the
+    locked Content-Disposition filename.
+- **PDF — one renderer, extended (locked):**
+  - `pdf_service.SUPPORTED_DOCUMENTS` becomes
+    `("INVOICE", "QUOTATION", "AR_STATEMENT", "AP_STATEMENT")`.
+  - No second PDF implementation. `_statement_sections` becomes AP-aware in the
+    **presentational** sense only (no number computed):
+    - AR: party section "Client" with `tax_id`/`address` (already present).
+    - AP: party section "Supplier" built from the supplier dict's
+      `name`/`supplier_code`; supplier has no TRN/address in the dict → render
+      blank (never fabricated).
+    - Totals rows: AR keeps "Period Debit Notes" (`totals.debited`) and
+      "Credit Balance" (`credit_balance`); AP omits both (those keys are absent
+      from the AP computation — they are not computed as zero).
+  - A small **view adapter** (rename/passthrough only) maps the supplier
+    statement dict onto the renderer's expected shape. This adapter must not
+    derive any figure.
+  - JSON path (AR + AP) is unchanged; only PDF gains the `AP_STATEMENT` branch.
+- **CSV schema (locked, deterministic flatten of the statement dict):**
+  - New `services/statement_export_service.py` exposes
+    `to_csv(statement: dict) -> str`; encoding/IO mirrors `vat_compliance_service`
+    (`utf-8-sig` BOM, `\r\n`, csv module, QUOTE_MINIMAL). Money values are read
+    verbatim from the dict strings (already `money()`-formatted); nothing is
+    summed in the exporter.
+  - **Block 0 — metadata** (key,value rows, this exact order):
+    ```text
+    Statement Type,AR_STATEMENT|AP_STATEMENT
+    Entity ID,<client_id|supplier_id>
+    Entity Name,<name>
+    Workspace,<workspace name>
+    Workspace TRN,<workspace trn>
+    Currency,<currency>
+    Period From,<from YYYY-MM-DD>
+    Period To,<to YYYY-MM-DD>
+    As Of,<as_of YYYY-MM-DD>
+    ```
+    followed by a blank line.
+  - **Block 1 — activity table** (header + one row per `lines[]` entry, order
+    preserved; the first entry is the OPENING row that `assemble_lines` already
+    emits):
+    ```text
+    Date,Type,Number,Reference,Payment Method,Payment Status,Pending,Debit,Credit,Balance
+    <date>,<doc_type_label>,<number>,<reference>,<payment_method>,<payment_status>,<pending_amount>,<debit>,<credit>,<running_balance>
+    ```
+    Columns map 1:1 to the shared line dict keys verified in both statement
+    services (`date`, `doc_type_label`, `number`, `reference`, `payment_method`,
+    `payment_status`, `pending_amount`, `debit`, `credit`, `running_balance`).
+    Blank cell when a key is absent/null.
+  - **Block 2 — totals** (label,amount rows in this exact order, AR-only rows
+    omitted for AP when the key is absent):
+    ```text
+    Total Billed,<billed>
+    Total Paid,<paid>
+    Total Credited,<credited>
+    Total Debited,<debited>          [AR only]
+    Total Pending,<pending>
+    Closing Balance,<closing_running>
+    Amount Due Now,<amount_due_now>
+    Credit Balance,<credit_balance>  [AR only]
+    ```
+  - **Block 3 — aging** (fixed bucket order, labels exactly as follows):
+    ```text
+    Aging Current,<current>
+    Aging 1-30 Days,<days_1_30>
+    Aging 31-60 Days,<days_31_60>
+    Aging 61-90 Days,<days_61_90>
+    Aging 90+ Days,<days_90_plus>
+    ```
+- **Router / files (locked):** handlers live next to their JSON siblings —
+  AR export in `routers/clients.py`, AP export in `routers/supplier_payments.py`;
+  shared logic in `services/statement_export_service.py`
+  (`export_statement(kind, statement: dict, format: str) -> tuple[bytes, filename, media_type]`
+  and `to_csv`). `format` not in `{pdf, csv}` → 422 `VALIDATION_ERROR`
+  field=`format`. **No Alembic**, no schema/enum/model changes.
+- **Backend tests — `tests/test_statement_export.py`:**
+  1. AR CSV: 200, `text/csv`, BOM present, exact `Content-Disposition` filename
+     `ar-statement-<id>-<from>_to_<to>.csv`, Block 0 rows, header row exact,
+     first line = OPENING row, Block 2 includes `Credit Balance`,
+     Block 3 bucket rows, closing balance row matches last line's
+     `running_balance`.
+  2. AR PDF: 200, `application/pdf`, `%PDF-` magic bytes, locked filename.
+  3. AP CSV/PDF: same assertions with `ap-statement-<supplier_id>-...`;
+     Block 2 omits `Total Debited`/`Credit Balance`; Block 3 present.
+  4. Cross-workspace client/supplier → 404 (isolation via `_require_*`).
+  5. MEMBER can call both export endpoints (200, no 403) — mirrors statement tests.
+  6. `format=pizza` → 422; `from > to` → 422; future `as_of` → 422.
+  7. Determinism: two calls with identical inputs → identical CSV bytes.
+  8. PDF/CSV equality: export CSV `Closing Balance` equals the JSON
+     `totals.closing_running` from the statement endpoint (same numbers).
+
 ## 3. Frontend — Reports page (locked)
 
 ### 3.1 New `api/reports.ts`
@@ -242,6 +379,31 @@ Mirror existing pages: CSS Modules, `lucide-react` icons, `react-hot-toast`
 via `extractApiError`, react-query keys namespaced (`reports.ar_aging.*`,
 `reports.ap_aging.*`, `reports.vat_*`), `Skeleton` during loading.
 
+### 3.6 Wave 30 item 1.3 addendum — Reports page Statement export UX (LOCKED)
+
+- **Fetcher** (`api/reports.ts`): `exportStatementBlob(kind: 'ar' | 'ap', id: string, from: string, to: string, as_of: string, format: 'pdf' | 'csv'): Promise<Blob>`
+  via the authenticated `apiClient` (axios) `GET /api/v1/clients/{id}/statement/export`
+  (AR) or `/api/v1/suppliers/{id}/statement/export` (AP) with `responseType: 'blob'`.
+  **No `window.open`.** Download uses the existing `saveBlob` helper already in
+  `Reports.tsx` (anchor-with-URL.createObjectURL pattern, same as VAT). The
+  client builds the deterministic filename locally with the same §2.5 rule; the
+  server still sets Content-Disposition for non-browser consumers.
+- **Controls (locked):** on the AR Aging by-customer table and the AP Aging
+  by-supplier table, the last cell gains a **Statement ▾** dropdown next to
+  "View detail", with two actions: **PDF** and **CSV**. One dropdown state at a
+  time (the other closes on open). The item is disabled while a download is in
+  flight (single in-flight guard); errors surface through the existing axios
+  toast interceptor.
+- **Defaults (reused, no new inputs):** `defaultStatementRange()`
+  (`statementHelpers.ts:25-28`) → `from = first of current month`,
+  `to = today`, `as_of = today`. The Reports page's own `as_of` input is **not**
+  wired into the export — the export always uses the statement page's defaults.
+- **Permission (inherited, none):** no role gate — statement JSON endpoints are
+  MEMBER-capable, so the Statement dropdown is rendered for every role.
+- **Verification:** `npm run build` and `npx oxlint` clean. No Playwright E2E in
+  this item (deferred per §8); manual browser check that both PDF and CSV
+  download for AR and AP rows.
+
 ## 4. Tests (locked)
 
 ### 4.1 Backend — `tests/test_ar_aging.py` (mirror `test_ap_aging.py`)
@@ -297,8 +459,13 @@ Cases:
   (`revenue_overview`, `invoice_status_distribution`) — **aspirational only**;
   `/dashboard/stats` does not return them and this wave does not touch
   `/dashboard/stats`. Noted (drift, not fixed here).
-- Statement export (PDF/CSV) on the Reports page — existing statements stay on
-  their per-client / per-supplier pages.
+- Statement export (PDF/CSV) — **shipped as Wave 30 item 1.3** (addendum §2.5 +
+  §3.6): `GET /clients/{id}/statement/export` and
+  `GET /suppliers/{id}/statement/export`, `format=pdf|csv`, single
+  `get_statement()` source, `DocumentRenderer` extended with `AP_STATEMENT`
+  (no second PDF implementation), locked PII-free filenames, no role gate
+  (MEMBER-capable like the JSON statements), no rate limiter, axios-blob
+  downloads on the AR/AP aging tables.
 - Playwright E2E for reports/dashboard.
 
 ## 6. Coder checklist

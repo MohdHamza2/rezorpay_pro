@@ -222,6 +222,25 @@ export const getVatComplianceJson = async (
   return response.data.data;
 };
 
+export const exportStatementBlob = async (
+  kind: 'ar' | 'ap',
+  id: string,
+  from: string,
+  to: string,
+  as_of: string,
+  format: 'pdf' | 'csv'
+): Promise<Blob> => {
+  const path =
+    kind === 'ar'
+      ? `/api/v1/clients/${id}/statement/export`
+      : `/api/v1/suppliers/${id}/statement/export`;
+  const response = await apiClient.get(path, {
+    params: { from, to, as_of, format },
+    responseType: 'blob',
+  });
+  return response.data as Blob;
+};
+
 export const BUCKET_LABELS: ReadonlyArray<{ key: keyof CreditBuckets; label: string }> = [
   { key: 'current', label: 'Current' },
   { key: 'days_1_30', label: '1-30 days' },

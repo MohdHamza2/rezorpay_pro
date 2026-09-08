@@ -10,6 +10,7 @@ Endpoints:
 - GET /supplier-invoices/{id}/payments    paginated payments for an invoice
 - GET /ap-aging                      AP aging report (summary/detail/by_supplier)
 - GET /suppliers/{id}/statement      supplier statement = AP ledger
+- GET /suppliers/{id}/statement/export  supplier statement PDF/CSV (same numbers)
 - POST /supplier-invoices/{id}/payments/{id}/pdc/deposit    PDC RECEIVED→DEPOSITED
 - POST /supplier-invoices/{id}/payments/{id}/pdc/clear      PDC DEPOSITED→CLEARED (SUCCESS)
 - POST /supplier-invoices/{id}/payments/{id}/pdc/bounce     PDC DEPOSITED→BOUNCED (FAILED)
@@ -17,7 +18,7 @@ Endpoints:
 - POST /supplier-invoices/{id}/payments/{id}/reverse        SUCCESS → FAILED (bank bounce)
 """
 
-from typing import Optional
+from typing import Literal, Optional
 from datetime import date
 from uuid import UUID
 
@@ -30,6 +31,7 @@ from fastapi import (
     Request,
     status,
 )
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -67,6 +69,7 @@ from app.services.supplier_payment_reversal_service import (
 from app.services.supplier_payment_service import supplier_payment_service
 from app.services.supplier_pdc_service import supplier_pdc_service
 from app.services.supplier_statement_service import supplier_statement_service
+from app.services.statement_export_service import export_statement
 
 router = APIRouter(tags=["Supplier AP Payments"])
 
@@ -354,6 +357,39 @@ async def get_supplier_statement(
         actor_id=user.id,
     )
     return SuccessResponse(data=SupplierStatementResponse.model_validate(payload))
+
+
+@router.get("/suppliers/{supplier_id}/statement/export")
+async def export_supplier_statement(
+    request: Request,
+    supplier_id: UUID,
+    period_from: date = Query(..., alias="from"),
+    period_to: date = Query(..., alias="to"),
+    as_of: Optional[date] = Query(None),
+    format: Literal["pdf", "csv"] = Query(...),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+    workspace_id: UUID = Depends(get_current_workspace_id),
+):
+    """Supplier statement PDF/CSV — same get_statement() result as the JSON
+    endpoint, no recalculation. Workspace-isolated 404. No role gate (mirrors
+    the JSON statement route)."""
+    workspace = await session.get(Workspace, workspace_id)
+    payload = await supplier_statement_service.get_statement(
+        session,
+        workspace,
+        supplier_id,
+        period_from,
+        period_to,
+        as_of,
+        actor_id=user.id,
+    )
+    export = export_statement("ap", payload, format)
+    return StreamingResponse(
+        iter([export.data]),
+        media_type=export.media_type,
+        headers={"Content-Disposition": f'attachment; filename="{export.filename}"'},
+    )
 
 
 async def _pdc_response(

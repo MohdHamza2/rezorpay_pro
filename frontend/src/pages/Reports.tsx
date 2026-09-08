@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   BarChart,
@@ -18,6 +18,7 @@ import {
   getApAgingBySupplier,
   downloadVatComplianceZip,
   getVatComplianceJson,
+  exportStatementBlob,
   type ArAgingSummary,
   type ArAgingByCustomer,
   type ArAgingDetail,
@@ -43,6 +44,7 @@ import {
 } from '../api/analytics';
 import { useAuth } from '../contexts/AuthContext';
 import { Skeleton } from '../components/Skeleton';
+import { defaultStatementRange } from './statementHelpers';
 import {
   Download,
   FileJson,
@@ -52,6 +54,9 @@ import {
   Users,
   User,
   BarChart3,
+  FileText,
+  FileSpreadsheet,
+  ChevronDown,
 } from 'lucide-react';
 import styles from './Reports.module.css';
 
@@ -124,6 +129,8 @@ const AgingTab = ({ side }: AgingTabProps) => {
   const [historical, setHistorical] = useState(false);
   const [selectedRow, setSelectedRow] = useState<{ id: string; name: string } | null>(null);
   const [showAllDetail, setShowAllDetail] = useState(false);
+  const [openStmtFor, setOpenStmtFor] = useState<string | null>(null);
+  const [exportingFmt, setExportingFmt] = useState<'pdf' | 'csv' | null>(null);
 
   const summary = useQuery<ArAgingSummary | ApAgingSummary>({
     queryKey: ['reports', side, 'summary', asOf, historical],
@@ -172,6 +179,38 @@ const AgingTab = ({ side }: AgingTabProps) => {
   const closeDetail = () => {
     setSelectedRow(null);
     setShowAllDetail(false);
+  };
+
+  useEffect(() => {
+    if (!openStmtFor) return;
+    const close = () => setOpenStmtFor(null);
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [openStmtFor]);
+
+  const handleExport = async (id: string, fmt: 'pdf' | 'csv') => {
+    if (exportingFmt) return;
+    const range = defaultStatementRange();
+    setExportingFmt(fmt);
+    try {
+      const blob = await exportStatementBlob(
+        isAr ? 'ar' : 'ap',
+        id,
+        range.from,
+        range.to,
+        range.as_of,
+        fmt
+      );
+      saveBlob(
+        blob,
+        `${isAr ? 'ar-statement' : 'ap-statement'}-${id}-${range.from}_to_${range.to}.${fmt}`
+      );
+      setOpenStmtFor(null);
+    } catch {
+      // interceptor already surfaces the error toast
+    } finally {
+      setExportingFmt(null);
+    }
   };
 
   if (summary.isLoading || byEntity.isLoading) {
@@ -284,7 +323,7 @@ const AgingTab = ({ side }: AgingTabProps) => {
                     {formatAed(row.buckets[key])}
                   </td>
                 ))}
-                <td>
+                <td className={styles.entityCells}>
                   <button
                     className={styles.linkBtn}
                     onClick={() =>
@@ -295,6 +334,44 @@ const AgingTab = ({ side }: AgingTabProps) => {
                   >
                     {selectedRow?.id === row.id ? 'Hide detail' : 'View detail'}
                   </button>
+                  <div className={styles.stmtWrap} onClick={(e) => e.stopPropagation()}>
+                    {openStmtFor === row.id ? (
+                      <div className={styles.stmtMenu}>
+                        <button
+                          className={styles.stmtMenuItem}
+                          disabled={exportingFmt !== null}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handleExport(row.id, 'pdf');
+                          }}
+                        >
+                          <FileText size={14} />
+                          {exportingFmt === 'pdf' ? 'Downloading…' : 'Statement PDF'}
+                        </button>
+                        <button
+                          className={styles.stmtMenuItem}
+                          disabled={exportingFmt !== null}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handleExport(row.id, 'csv');
+                          }}
+                        >
+                          <FileSpreadsheet size={14} />
+                          {exportingFmt === 'csv' ? 'Downloading…' : 'Statement CSV'}
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        className={styles.linkBtn}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpenStmtFor(row.id);
+                        }}
+                      >
+                        Statement <ChevronDown size={14} />
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}

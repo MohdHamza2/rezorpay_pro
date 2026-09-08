@@ -32,7 +32,7 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 from app.schemas.common import ErrorCode
 from app.services.customer_po_support import raise_error
 
-SUPPORTED_DOCUMENTS = ("INVOICE", "QUOTATION", "AR_STATEMENT")
+SUPPORTED_DOCUMENTS = ("INVOICE", "QUOTATION", "AR_STATEMENT", "AP_STATEMENT")
 
 
 def _text(value: object) -> str:
@@ -101,7 +101,9 @@ class DocumentRenderer:
             return DocumentRenderer._invoice_sections(data)
         if document == "QUOTATION":
             return DocumentRenderer._quotation_sections(data)
-        return DocumentRenderer._statement_sections(data)
+        return DocumentRenderer._statement_sections(
+            data, is_ap=(document == "AP_STATEMENT")
+        )
 
     @classmethod
     def render(cls, document: str, data: dict) -> RenderedDocument:
@@ -288,11 +290,37 @@ class DocumentRenderer:
         return sections
 
     @staticmethod
-    def _statement_sections(data: dict) -> list[Section]:
-        client = data.get("client") or {}
+    def _statement_sections(data: dict, is_ap: bool = False) -> list[Section]:
         workspace = data.get("workspace") or {}
         lines = data.get("lines") or []
         totals = data.get("totals") or {}
+        if is_ap:
+            party_title = "Supplier"
+            party = data.get("supplier") or {}
+            party_fields = (
+                ("Name", _text(party.get("name"))),
+                ("Code", _text(party.get("supplier_code"))),
+            )
+        else:
+            party_title = "Client"
+            party = data.get("client") or {}
+            party_fields = (
+                ("Name", _text(party.get("name"))),
+                ("TRN", _text(party.get("tax_id"))),
+                ("Address", _text(party.get("address"))),
+            )
+        totals_fields = [
+            ("Period Invoiced", _money(totals.get("billed"))),
+            ("Period Payments", _money(totals.get("paid"))),
+            ("Period Credit Notes", _money(totals.get("credited"))),
+        ]
+        if "debited" in totals:
+            totals_fields.append(("Period Debit Notes", _money(totals.get("debited"))))
+        totals_fields.append(("Pending Payments", _money(totals.get("pending"))))
+        totals_fields.append(("Closing Balance", _money(totals.get("closing_running"))))
+        totals_fields.append(("Amount Due Now", _money(data.get("amount_due_now"))))
+        if "credit_balance" in data:
+            totals_fields.append(("Credit Balance", _money(data.get("credit_balance"))))
         sections = [
             Section("title", "ACCOUNT STATEMENT"),
             Section(
@@ -304,15 +332,7 @@ class DocumentRenderer:
                     ("Address", _text(workspace.get("address"))),
                 ),
             ),
-            Section(
-                "party",
-                "Client",
-                (
-                    ("Name", _text(client.get("name"))),
-                    ("TRN", _text(client.get("tax_id"))),
-                    ("Address", _text(client.get("address"))),
-                ),
-            ),
+            Section("party", party_title, party_fields),
             Section(
                 "meta",
                 "Period",
@@ -358,22 +378,7 @@ class DocumentRenderer:
                 rows,
             )
         )
-        sections.append(
-            Section(
-                "totals",
-                "Totals",
-                (
-                    ("Period Invoiced", _money(totals.get("billed"))),
-                    ("Period Payments", _money(totals.get("paid"))),
-                    ("Period Credit Notes", _money(totals.get("credited"))),
-                    ("Period Debit Notes", _money(totals.get("debited"))),
-                    ("Pending Payments", _money(totals.get("pending"))),
-                    ("Closing Balance", _money(totals.get("closing_running"))),
-                    ("Amount Due Now", _money(data.get("amount_due_now"))),
-                    ("Credit Balance", _money(data.get("credit_balance"))),
-                ),
-            )
-        )
+        sections.append(Section("totals", "Totals", tuple(totals_fields)))
         return sections
 
     # ---------- reportlab mapping ----------
