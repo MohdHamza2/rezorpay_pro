@@ -48,6 +48,7 @@ from app.routers.comms_emails import router as comms_emails_router
 from app.routers.comms_whatsapp import router as comms_whatsapp_router
 from app.routers.reports import router as reports_router
 from app.routers.ar_aging import router as ar_aging_router
+from app.routers.analytics import router as analytics_router
 
 settings = get_settings()
 logger = logging.getLogger("uvicorn.error")
@@ -193,6 +194,7 @@ app.include_router(comms_emails_router, prefix="/api/v1")
 app.include_router(comms_whatsapp_router, prefix="/api/v1")
 app.include_router(reports_router, prefix="/api/v1")
 app.include_router(ar_aging_router, prefix="/api/v1")
+app.include_router(analytics_router, prefix="/api/v1")
 
 
 @app.get("/")

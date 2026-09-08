@@ -30,6 +30,17 @@ import {
   BUCKET_LABELS,
   formatAed,
 } from '../api/reports';
+import {
+  getRevenue,
+  getSalesByCustomer,
+  getSalesByProduct,
+  getCashflow,
+  type AnalyticsInterval,
+  type RevenueRow,
+  type SalesByCustomerRow,
+  type SalesByProductRow,
+  type CashflowRow,
+} from '../api/analytics';
 import { useAuth } from '../contexts/AuthContext';
 import { Skeleton } from '../components/Skeleton';
 import {
@@ -40,6 +51,7 @@ import {
   Copy,
   Users,
   User,
+  BarChart3,
 } from 'lucide-react';
 import styles from './Reports.module.css';
 
@@ -472,8 +484,255 @@ const VatTab = () => {
   );
 };
 
+const INTERVALS: ReadonlyArray<{ value: AnalyticsInterval; label: string }> = [
+  { value: 'day', label: 'Daily' },
+  { value: 'week', label: 'Weekly' },
+  { value: 'month', label: 'Monthly' },
+];
+
+interface BarDatum {
+  name: string;
+  [key: string]: string | number;
+}
+
+const barData = <T extends { period: string }>(
+  rows: T[] | undefined,
+  key: (row: T) => number
+): BarDatum[] =>
+  (rows ?? []).map((row) => ({ name: row.period, value: key(row) }));
+
+const BarChartBox = ({ data }: { data: BarDatum[] }) =>
+  data.length === 0 ? (
+    <div className={styles.emptyCell}>No data for this period.</div>
+  ) : (
+    <ResponsiveContainer width="100%" height={260}>
+      <BarChart data={data}>
+        <CartesianGrid strokeDasharray="3 3" />
+        <XAxis dataKey="name" />
+        <YAxis />
+        <Tooltip formatter={(value) => `AED ${formatAed(Number(value))}`} />
+        <Bar dataKey="value" fill="#2563eb" radius={[4, 4, 0, 0]} />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+
+const ChartSection = ({
+  loading,
+  error,
+  data,
+}: {
+  loading: boolean;
+  error: boolean;
+  data: BarDatum[];
+}) =>
+  loading ? (
+    <Skeleton height="260px" />
+  ) : error ? (
+    <div className={styles.errorText}>Failed to load analytics. Try again.</div>
+  ) : (
+    <BarChartBox data={data} />
+  );
+
+const AnalyticsTab = () => {
+  const { user } = useAuth();
+  const canView = user?.role === 'OWNER' || user?.role === 'ADMIN';
+  const today = toLocalIso();
+  const [from, setFrom] = useState<string>(toLocalIso());
+  const [to, setTo] = useState<string>(today);
+  const [interval, setInterval] = useState<AnalyticsInterval>('month');
+
+  const periodInvalid = from !== '' && to !== '' && (from > to || from > today || to > today);
+  const ready = canView && from !== '' && to !== '' && !periodInvalid;
+
+  const revenue = useQuery<RevenueRow[]>({
+    queryKey: ['analytics', 'revenue', from, to, interval],
+    queryFn: async () => {
+      const data = await getRevenue(from, to, interval);
+      return data.rows;
+    },
+    enabled: ready,
+  });
+
+  const byCustomer = useQuery<SalesByCustomerRow[]>({
+    queryKey: ['analytics', 'by-customer', from, to],
+    queryFn: async () => {
+      const data = await getSalesByCustomer(from, to);
+      return data.rows;
+    },
+    enabled: ready,
+  });
+
+  const byProduct = useQuery<SalesByProductRow[]>({
+    queryKey: ['analytics', 'by-product', from, to],
+    queryFn: async () => {
+      const data = await getSalesByProduct(from, to);
+      return data.rows;
+    },
+    enabled: ready,
+  });
+
+  const cashflow = useQuery<CashflowRow[]>({
+    queryKey: ['analytics', 'cashflow', from, to, interval],
+    queryFn: async () => {
+      const data = await getCashflow(from, to, interval);
+      return data.rows;
+    },
+    enabled: ready,
+  });
+
+  if (!periodInvalid && !canView) {
+    return (
+      <div className={styles.tabBody}>
+        <div className={styles.notice}>
+          <h3>OWNER/ADMIN only</h3>
+          <p>
+            Analytics reports (revenue, cashflow, sales by customer/product) are restricted to
+            workspace owners and admins.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.tabBody}>
+      <div className={styles.reportHeader}>
+        <h2>Analytics</h2>
+        <div className={styles.filterRow}>
+          <label className={styles.field}>
+            <span>From</span>
+            <input type="date" value={from} max={today} onChange={(e) => setFrom(e.target.value)} />
+          </label>
+          <label className={styles.field}>
+            <span>To</span>
+            <input type="date" value={to} max={today} onChange={(e) => setTo(e.target.value)} />
+          </label>
+          <label className={styles.field}>
+            <span>Interval</span>
+            <select
+              value={interval}
+              onChange={(e) => setInterval(e.target.value as AnalyticsInterval)}
+            >
+              {INTERVALS.map(({ value, label }) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </div>
+
+      {periodInvalid && (
+        <p className={styles.errorText}>
+          Period must be within today and satisfy from ≤ to.
+        </p>
+      )}
+
+      <div className={styles.chartCard}>
+        <h3>Revenue</h3>
+        <ChartSection
+          loading={revenue.isLoading}
+          error={revenue.isError}
+          data={barData(revenue.data, (r) => r.total_amount)}
+        />
+      </div>
+
+      <div className={styles.chartCard}>
+        <h3>Cashflow (net)</h3>
+        <ChartSection
+          loading={cashflow.isLoading}
+          error={cashflow.isError}
+          data={barData(cashflow.data, (r) => r.net)}
+        />
+      </div>
+
+      <div className={styles.entityTable}>
+        <h3>Sales by customer</h3>
+        {byCustomer.isLoading ? (
+          <Skeleton height="160px" />
+        ) : (
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th>Customer</th>
+                <th className={styles.num}>Invoices</th>
+                <th className={styles.num}>Subtotal</th>
+                <th className={styles.num}>Tax</th>
+                <th className={styles.num}>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {byCustomer.data?.map((row) => (
+                <tr key={row.client_id}>
+                  <td>
+                    <Users size={16} />
+                    <span className={styles.entityName}>{row.client_name}</span>
+                  </td>
+                  <td className={styles.num}>{row.invoice_count}</td>
+                  <td className={styles.num}>{formatAed(row.subtotal)}</td>
+                  <td className={styles.num}>{formatAed(row.tax_amount)}</td>
+                  <td className={styles.num}>{formatAed(row.total_amount)}</td>
+                </tr>
+              ))}
+              {byCustomer.data?.length === 0 && (
+                <tr>
+                  <td colSpan={5} className={styles.emptyCell}>
+                    No invoiced sales in this period.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className={styles.entityTable}>
+        <h3>Sales by product</h3>
+        {byProduct.isLoading ? (
+          <Skeleton height="160px" />
+        ) : (
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th>SKU</th>
+                <th className={styles.num}>Qty</th>
+                <th className={styles.num}>Net</th>
+                <th className={styles.num}>Tax</th>
+                <th className={styles.num}>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {byProduct.data?.map((row) => (
+                <tr key={row.sku}>
+                  <td>
+                    <span className={styles.entityName}>{row.product_name}</span>
+                  </td>
+                  <td>{row.sku}</td>
+                  <td className={styles.num}>{row.quantity}</td>
+                  <td className={styles.num}>{formatAed(row.line_net)}</td>
+                  <td className={styles.num}>{formatAed(row.tax_amount)}</td>
+                  <td className={styles.num}>{formatAed(row.total_price)}</td>
+                </tr>
+              ))}
+              {byProduct.data?.length === 0 && (
+                <tr>
+                  <td colSpan={6} className={styles.emptyCell}>
+                    No invoiced line items in this period.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+};
+
 export const Reports = () => {
-  const [tab, setTab] = useState<'ar' | 'ap' | 'vat'>('ar');
+  const [tab, setTab] = useState<'ar' | 'ap' | 'vat' | 'analytics'>('ar');
 
   return (
     <div className={styles.container}>
@@ -497,11 +756,18 @@ export const Reports = () => {
         >
           <FileArchive size={16} /> VAT Compliance
         </button>
+        <button
+          className={`${styles.tab} ${tab === 'analytics' ? styles.activeTab : ''}`}
+          onClick={() => setTab('analytics')}
+        >
+          <BarChart3 size={16} /> Analytics
+        </button>
       </div>
 
       {tab === 'ar' && <AgingTab side="ar" />}
       {tab === 'ap' && <AgingTab side="ap" />}
       {tab === 'vat' && <VatTab />}
+      {tab === 'analytics' && <AnalyticsTab />}
     </div>
   );
 };
