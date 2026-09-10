@@ -40,8 +40,8 @@ localhost/127.0.0.1 ports 5173/5174/5175.
 |---|---|---|
 | 1.1 | Sales-by-customer / sales-by-product / revenue / cashflow aggregations — financially hardened: AED-only cashflow. AR receipts AED by construction (+ `Invoice.currency = AED` runtime guard); AP payments join their `supplier_invoice` and aggregate AED only, non-AED surfaced as `non_aed_payments_excluded` (no silent currency mixing) | completed |
 | 1.2 | Historical balance-reconstruction aging mode (Wave 30 item 1.2, commit `bdebb32`-era): AR `historical=true` — balances rebuilt from payment/credit/debit ledger as of `as_of`. Terminology locked as **historical balance reconstruction, NOT a point-in-time lifecycle snapshot**: uses today's status eligibility; historical status transitions are not reconstructed (documented in service/router docstrings + addendum §2.3 + UI tooltip) | completed |
-| 1.3 | Reports-page statement export (PDF/CSV) — today only per-client/per-supplier pages | partial |
-| 1.4 | Playwright E2E for Reports/Dashboard | not started |
+| 1.3 | Reports-page statement export (PDF/CSV) — today only per-client/per-supplier pages | completed (`6eb7309`) |
+| 1.4 | Playwright E2E for Reports/Dashboard | completed |
 | 1.5 | `pdc_outstanding` + workspace-wide AR aging dashboard field pack | not started |
 
 ### 2.2 Purchasing / GRN (candidate "Wave 31")
@@ -207,6 +207,8 @@ consistency fixes bundled with the surface they touch.
 | 2026-09-08 | F1: fixed 3 dead links — Dashboard Create Invoice→`/invoices?new=1` (+auto-open), SupplierInvoices dead New btn removed, EnquiryDetail client→`/clients/:id/statement` | done |
 | 2026-09-08 | E1: migration `e1f0aabb01aa` adds missing `check_amount_debited_nonneg` on invoices (model declared since Wave 28, never migrated) | done |
 | 2026-09-08 | E2-E5: docs-only — ROADMAP=authoritative numbering (AP 21-25/comm 26-28/reporting 29), MASTER_PLAN_V3 table marked superseded, STATE Wave 29 committed + Wave 27 implemented, STACK Wave 29 = reporting, India Category 11 = deferred market wave | done |
+| 2026-09-08 | 1.3: statement export PDF/CSV (`GET /clients/{id}/statement/export`, `/suppliers/{id}/statement/export`; `statement_export_service` CSV+PDF, pdf_service `AP_STATEMENT`; Reports page Statement dropdown; 10 tests; commit `6eb7309`) | done |
+| 2026-09-09 | 1.4: Playwright E2E for Reports/Dashboard — 11 tests (`dashboard.spec.ts`: 3, `reports.spec.ts`: 6, `reports-isolation.spec.ts`: 1, `member-gating.spec.ts`: 1); helpers: `seedArInvoice`, `seedApApprovedChain`, `recordArPayment`, `recordApPayment`, `seedDbMember`, `setAuthToken`; fixed `toLocalIso` timezone bug; added semantic `data-testid` to Dashboard/Reports | done |
 | | | |
 
 ---

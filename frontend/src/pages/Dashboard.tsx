@@ -67,7 +67,7 @@ export const Dashboard = () => {
             <span className={styles.statLabel}>Total Receivables (AED)</span>
             <DollarSign className={styles.statIcon} style={{ color: '#059669' }} size={20} />
           </div>
-          <div className={styles.statValue}>
+          <div className={styles.statValue} data-testid="dash-total-receivables">
             AED {formatAed(stats?.outstanding_balance ?? 0)}
           </div>
           <div className={styles.statTrend}>
@@ -81,7 +81,7 @@ export const Dashboard = () => {
             <span className={styles.statLabel}>Pending Internal Demand</span>
             <ShoppingCart className={styles.statIcon} style={{ color: '#2563eb' }} size={20} />
           </div>
-          <div className={styles.statValue}>{stats?.pending_prs} PRs</div>
+          <div className={styles.statValue} data-testid="dash-pending-prs">{stats?.pending_prs} PRs</div>
           <div className={styles.statTrend} style={{ color: '#4b5563' }}>
             Awaiting review &amp; approval
           </div>
@@ -92,7 +92,7 @@ export const Dashboard = () => {
             <span className={styles.statLabel}>Active Market Sourcing</span>
             <SendToBack className={styles.statIcon} style={{ color: '#d97706' }} size={20} />
           </div>
-          <div className={styles.statValue}>{stats?.active_rfqs} RFQs</div>
+          <div className={styles.statValue} data-testid="dash-active-rfqs">{stats?.active_rfqs} RFQs</div>
           <div className={styles.statTrend} style={{ color: '#4b5563' }}>
             Awaiting supplier quotes
           </div>
@@ -103,7 +103,7 @@ export const Dashboard = () => {
             <span className={styles.statLabel}>Pending Inbound QA</span>
             <ClipboardCheck className={styles.statIcon} style={{ color: '#dc2626' }} size={20} />
           </div>
-          <div className={styles.statValue}>{stats?.unposted_grns} GRNs</div>
+          <div className={styles.statValue} data-testid="dash-pending-grns">{stats?.unposted_grns} GRNs</div>
           <div className={styles.statTrend} style={{ color: '#4b5563' }}>
             Stock awaiting inspection &amp; posting
           </div>
@@ -121,9 +121,13 @@ export const Dashboard = () => {
           ) : (recentInvoices ?? []).length === 0 ? (
             <p className={styles.muted}>No invoices yet.</p>
           ) : (
-            <ul className={styles.invoiceList}>
+            <ul className={styles.invoiceList} data-testid="dash-recent-invoices">
               {recentInvoices!.map((inv) => (
-                <li key={inv.id} className={styles.invoiceRow}>
+                <li
+                  key={inv.id}
+                  className={styles.invoiceRow}
+                  data-testid={`dash-recent-invoice-${inv.id}`}
+                >
                   <div className={styles.invoiceMain}>
                     <span className={styles.invoiceNumber}>{inv.invoice_number}</span>
                     <span className={styles.invoiceDate}>{inv.issue_date}</span>
@@ -151,7 +155,7 @@ export const Dashboard = () => {
               <span className={styles.snapshotLabel}>
                 <User size={16} /> AR (receivables)
               </span>
-              <span className={styles.snapshotValue}>
+              <span className={styles.snapshotValue} data-testid="dash-ar-snapshot">
                 AED {formatAed(arSummary?.total_outstanding ?? 0)}
               </span>
               <span className={styles.snapshotCount}>
@@ -162,7 +166,7 @@ export const Dashboard = () => {
               <span className={styles.snapshotLabel}>
                 <Building2 size={16} /> AP (payables)
               </span>
-              <span className={styles.snapshotValue}>
+              <span className={styles.snapshotValue} data-testid="dash-ap-snapshot">
                 AED {formatAed(apSummary?.total_outstanding ?? 0)}
               </span>
               <span className={styles.snapshotCount}>

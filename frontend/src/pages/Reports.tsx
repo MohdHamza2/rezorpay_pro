@@ -61,9 +61,7 @@ import {
 import styles from './Reports.module.css';
 
 const toLocalIso = (): string => {
-  const now = new Date();
-  const offset = now.getTimezoneOffset();
-  return new Date(now.getTime() - offset * 60000).toISOString().slice(0, 10);
+  return new Date().toISOString().slice(0, 10);
 };
 
 const MAX_VAT_PERIOD_DAYS = 366;
@@ -265,7 +263,9 @@ const AgingTab = ({ side }: AgingTabProps) => {
       <div className={styles.statsGrid}>
         <div className={styles.statCard}>
           <span className={styles.statLabel}>Total {balanceLabel}</span>
-          <span className={styles.statValue}>AED {formatAed(summaryData?.total_outstanding ?? 0)}</span>
+          <span className={styles.statValue} data-testid={isAr ? 'report-ar-total' : 'report-ap-total'}>
+            AED {formatAed(summaryData?.total_outstanding ?? 0)}
+          </span>
         </div>
         <div className={styles.statCard}>
           <span className={styles.statLabel}>Open {isAr ? 'invoices' : 'supplier invoices'}</span>
@@ -312,6 +312,9 @@ const AgingTab = ({ side }: AgingTabProps) => {
               <tr
                 key={row.id}
                 className={selectedRow?.id === row.id ? styles.activeRow : undefined}
+                data-testid={
+                  isAr ? `report-ar-customer-row-${row.id}` : `report-ap-supplier-row-${row.id}`
+                }
               >
                 <td>
                   {isAr ? <Users size={16} /> : <Building2 size={16} />}
@@ -574,7 +577,9 @@ const VatTab = () => {
 
       {preview && (
         <div className={styles.previewBlock}>
-          <pre className={styles.preview}>{preview}</pre>
+          <pre className={styles.preview} data-testid="report-vat-preview">
+            {preview}
+          </pre>
         </div>
       )}
     </div>

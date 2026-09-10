@@ -1,4 +1,5 @@
 import { expect, type APIRequestContext, type APIResponse, type Page } from '@playwright/test';
+import { Client } from 'pg';
 
 export const API_URL = process.env.VITE_API_URL || 'http://localhost:8000';
 export const E2E_PASSWORD = 'Passw0rd1';
@@ -7,6 +8,8 @@ export const PRODUCT_NAME = 'NYA 4mm2 cable';
 export const FTA_TRN = '100123456789003';
 export const FTA_SELLER_ADDRESS = 'Warehouse 12, Al Quoz, Dubai';
 export const FTA_BUYER_ADDRESS = 'Plot 4, Mussafah, Abu Dhabi';
+export const MEMBER_PASSWORD_HASH =
+  '$2b$12$mHasnv6hO2rJj2yr9OAmX.8gaiNKjQ3xKQ0.S9/s17FGCVdHusFR2';
 
 export function uniqueSuffix(): string {
   return `${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
@@ -328,6 +331,7 @@ export async function seedCatalogOpeningStock(
 ): Promise<{
   productId: string;
   sku: string;
+  uomId: string;
   warehouseId: string;
   warehouseCode: string;
   binId: string;
@@ -360,7 +364,7 @@ export async function seedCatalogOpeningStock(
     }),
     200,
   );
-  return { productId: product.id, sku, ...loc };
+  return { productId: product.id, sku, uomId: uom.id, ...loc };
 }
 
 export async function inventoryOnHand(
@@ -437,4 +441,266 @@ export async function createCatalogLpoViaUi(
   await page.getByTestId('lpo-item-0-price').fill(input.price);
   await page.getByTestId('lpo-form-submit').click();
   await expect(page.getByTestId('lpo-detail')).toBeVisible();
+}
+
+export async function loginViaUi(
+  page: Page,
+  email: string,
+  password: string,
+): Promise<void> {
+  await page.goto('/login');
+  await page.locator('#email').fill(email);
+  await page.locator('#password').fill(password);
+  await page.getByRole('button', { name: 'Login' }).click();
+  await expect(page.getByTestId('app-layout')).toBeVisible({ timeout: 20_000 });
+}
+
+export async function seedArInvoice(
+  request: APIRequestContext,
+  token: string,
+  input: { clientName: string; issueDate?: string; price?: string; quantity?: string },
+): Promise<{ clientId: string; invoiceId: string }> {
+  const client = await expectApiData<{ id: string }>(
+    await authJson(request, 'POST', '/api/v1/clients', token, {
+      name: input.clientName,
+      email: uniqueEmail('ar-seed'),
+      address: FTA_BUYER_ADDRESS,
+    }),
+    201,
+  );
+  const today = input.issueDate ?? isoDate();
+  const created = await expectApiData<{ id: string }>(
+    await authJson(request, 'POST', '/api/v1/invoices', token, {
+      client_id: client.id,
+      issue_date: today,
+      due_date: today,
+      supply_date: today,
+      items: [
+        {
+          description: 'NYA 4mm cable',
+          quantity: input.quantity ?? '2',
+          unit_price: input.price ?? '100.00',
+        },
+      ],
+    }),
+    201,
+  );
+  const sent = await expectApiData<{ id: string; status: string; balance_due: string }>(
+    await authJson(request, 'POST', `/api/v1/invoices/${created.id}/send`, token, {}),
+    200,
+  );
+  console.log(`[seedArInvoice] Invoice ${sent.id} status: ${sent.status}, balance_due: ${sent.balance_due}`);
+  return { clientId: client.id, invoiceId: sent.id };
+}
+
+export async function recordArPayment(
+  request: APIRequestContext,
+  token: string,
+  invoiceId: string,
+  amount: string,
+  paymentDate?: string,
+): Promise<void> {
+  await expectApiData(
+    await authJson(
+      request,
+      'POST',
+      `/api/v1/invoices/${invoiceId}/payments`,
+      token,
+      {
+        amount,
+        payment_method: 'CASH',
+        payment_date: paymentDate ?? isoDate(),
+        reference_number: `E2E-AR-${uniqueSuffix()}`,
+      },
+      { 'Idempotency-Key': `e2e-ar-${uniqueSuffix()}` },
+    ),
+    200,
+  );
+}
+
+export async function seedApApprovedChain(
+  request: APIRequestContext,
+  token: string,
+  suffix: string,
+  supplierName: string,
+): Promise<{ supplierId: string; invoiceId: string }> {
+  const supplier = await expectApiData<{ id: string }>(
+    await authJson(request, 'POST', '/api/v1/suppliers', token, {
+      supplier_code: `SUP-${suffix.slice(0, 6)}`,
+      name: supplierName,
+      payment_terms: 'CASH',
+      address: FTA_SELLER_ADDRESS,
+    }),
+    200,
+  );
+  const catalog = await seedCatalogOpeningStock(request, token, suffix);
+  const spo = await expectApiData<{ id: string; items: { id: string }[] }>(
+    await authJson(request, 'POST', '/api/v1/spos/', token, {
+      supplier_id: supplier.id,
+      warehouse_id: catalog.warehouseId,
+      procurement_method: 'DIRECT',
+      currency: 'AED',
+      items: [
+        {
+          description: 'NYA 4mm cable',
+          product_id: catalog.productId,
+          uom_id: catalog.uomId,
+          quantity_ordered: '3',
+          unit_price: '100.00',
+          vat_rate: '0',
+          discount_percent: '0',
+          line_number: 1,
+        },
+      ],
+    }),
+    200,
+  );
+  const spoItemId = spo.items[0].id;
+  const grn = await expectApiData<{ id: string }>(
+    await authJson(request, 'POST', '/api/v1/grns', token, {
+      supplier_id: supplier.id,
+      spo_id: spo.id,
+      warehouse_id: catalog.warehouseId,
+      received_date: isoDate(),
+    }),
+    [200, 201],
+  );
+  await expectApiData(
+    await authJson(request, 'POST', `/api/v1/grns/${grn.id}/start-receiving`, token, {}),
+    200,
+  );
+  const grnItems = await expectApiData<{ id: string; items: { id: string }[] }>(
+    await authJson(request, 'POST', `/api/v1/grns/${grn.id}/items`, token, {
+      spo_item_id: spoItemId,
+      product_id: catalog.productId,
+      internal_sku: catalog.sku,
+      description: 'NYA 4mm cable',
+      uom_id: catalog.uomId,
+      location_id: catalog.binId,
+      quantity_received: '3',
+    }),
+    [200, 201],
+  );
+  const grnItemId = grnItems.items[0].id;
+  await expectApiData(
+    await authJson(request, 'POST', `/api/v1/grns/${grn.id}/stage-for-inspection`, token, {}),
+    200,
+  );
+  await expectApiData(
+    await authJson(
+      request,
+      'POST',
+      `/api/v1/grns/${grn.id}/items/${grnItemId}/disposition`,
+      token,
+      { quantity_accepted: '3', quantity_damaged: '0', quantity_rejected: '0' },
+    ),
+    200,
+  );
+  const invoice = await expectApiData<{ id: string }>(
+    await authJson(request, 'POST', '/api/v1/supplier-invoices', token, {
+      supplier_id: supplier.id,
+      supplier_invoice_number: `SI-${suffix.slice(0, 8)}`,
+      invoice_date: isoDate(),
+      due_date: isoDate(30),
+      currency: 'AED',
+      subtotal: '300.00',
+      vat_amount: '0.00',
+      total_amount: '300.00',
+      items: [
+        {
+          spo_item_id: spoItemId,
+          grn_item_id: grnItemId,
+          product_id: catalog.productId,
+          description: 'NYA 4mm cable',
+          quantity: '3',
+          uom_id: catalog.uomId,
+          unit_price: '100.00',
+          discount_percent: '0',
+          vat_rate: '0',
+          vat_amount: '0.00',
+          total_price: '300.00',
+          currency: 'AED',
+        },
+      ],
+    }),
+    200,
+  );
+  await expectApiData(
+    await authJson(request, 'POST', `/api/v1/supplier-invoices/${invoice.id}/submit-matching`, token, {}),
+    200,
+  );
+  await expectApiData(
+    await authJson(request, 'POST', `/api/v1/supplier-invoices/${invoice.id}/approve`, token, {}),
+    200,
+  );
+  const approved = await expectApiData<{ status: string; balance_due: string }>(
+    await authJson(request, 'GET', `/api/v1/supplier-invoices/${invoice.id}`, token),
+    200,
+  );
+  console.log(`[seedApApprovedChain] Supplier invoice ${invoice.id} status: ${approved.status}, balance_due: ${approved.balance_due}`);
+  return { supplierId: supplier.id, invoiceId: invoice.id };
+}
+
+export async function recordApPayment(
+  request: APIRequestContext,
+  token: string,
+  invoiceId: string,
+  amount: string,
+  paymentDate?: string,
+): Promise<void> {
+  await expectApiData(
+    await authJson(
+      request,
+      'POST',
+      '/api/v1/supplier-payments',
+      token,
+      {
+        supplier_invoice_id: invoiceId,
+        amount,
+        payment_method: 'CASH',
+        payment_date: paymentDate ?? isoDate(),
+        reference_number: `E2E-AP-${uniqueSuffix()}`,
+      },
+      { 'Idempotency-Key': `e2e-ap-${uniqueSuffix()}` },
+    ),
+    200,
+  );
+}
+
+export async function workspaceId(request: APIRequestContext, token: string): Promise<string> {
+  const me = await expectApiData<{ id: string }>(
+    await authJson(request, 'GET', '/api/v1/workspaces/me', token),
+    200,
+  );
+  return me.id;
+}
+
+export async function seedDbMember(workspaceId: string): Promise<string> {
+  const email = uniqueEmail('member');
+  const client = new Client({
+    host: process.env.E2E_DB_HOST || '127.0.0.1',
+    port: Number(process.env.E2E_DB_PORT || 5434),
+    user: process.env.E2E_DB_USER || 'postgres',
+    password: process.env.E2E_DB_PASS || 'hamza',
+    database: process.env.E2E_DB_NAME || 'invoicesaas',
+  });
+  await client.connect();
+  try {
+    await client.query(
+      `INSERT INTO users (id, workspace_id, email, password_hash, name, role, is_active, created_at, updated_at)
+       VALUES (gen_random_uuid(), $1, $2, $3, 'Member', 'MEMBER', true, now(), now())`,
+      [workspaceId, email, MEMBER_PASSWORD_HASH],
+    );
+  } finally {
+    await client.end();
+  }
+  return email;
+}
+
+export async function setAuthToken(page: Page, token: string): Promise<void> {
+  await page.addInitScript((t) => {
+    localStorage.setItem('auth_tokens', JSON.stringify({ access_token: t, refresh_token: '' }));
+  }, token);
+  // If already on a page, reload to pick up the token
+  await page.reload({ waitUntil: 'domcontentloaded' });
 }
