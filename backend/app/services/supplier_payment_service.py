@@ -333,8 +333,23 @@ class SupplierPaymentService:
             )
 
         invoices = await cls.open_ap_invoices(session, workspace_id, supplier_id)
+
+        # Pre-aggregate PDC Outstanding per supplier invoice to avoid row multiplication
+        supplier_invoice_ids = [inv.id for inv in invoices]
+        pdc_by_invoice = await _pdc_outstanding_by_supplier_invoice(
+            session, workspace_id, supplier_invoice_ids
+        )
+
         buckets = ap_aging_buckets(invoices, resolved)
         outstanding = money(sum((inv.balance_due for inv in invoices), ZERO))
+
+        # Compute PDC Outstanding aggregates
+        total_pdc_count = 0
+        total_pdc_amount = ZERO
+        for inv in invoices:
+            cnt, amt = pdc_by_invoice.get(inv.id, (0, ZERO))
+            total_pdc_count += cnt
+            total_pdc_amount = money(total_pdc_amount + amt)
 
         if view == "detail":
             suppliers = await cls._supplier_names(
@@ -355,6 +370,8 @@ class SupplierPaymentService:
                     "days_overdue": max(0, (resolved - due_date_of(inv)).days),
                     "balance_due": inv.balance_due,
                     "bucket": _bucket_of(inv, resolved),
+                    "pdc_outstanding_count": pdc_by_invoice.get(inv.id, (0, ZERO))[0],
+                    "pdc_outstanding_amount": pdc_by_invoice.get(inv.id, (0, ZERO))[1],
                 }
                 for inv in invoices
             ]
@@ -363,6 +380,8 @@ class SupplierPaymentService:
                 "total_outstanding": outstanding,
                 "buckets": buckets,
                 "invoices": rows,
+                "pdc_outstanding_count": total_pdc_count,
+                "pdc_outstanding_amount": total_pdc_amount,
             }
 
         if view == "by_supplier":
@@ -375,6 +394,13 @@ class SupplierPaymentService:
             rows = []
             for sid, invs in per_supplier.items():
                 sup = suppliers.get(sid)
+                # Per-supplier PDC aggregate
+                supplier_pdc_count = 0
+                supplier_pdc_amount = ZERO
+                for inv in invs:
+                    cnt, amt = pdc_by_invoice.get(inv.id, (0, ZERO))
+                    supplier_pdc_count += cnt
+                    supplier_pdc_amount = money(supplier_pdc_amount + amt)
                 rows.append(
                     {
                         "supplier": {
@@ -386,6 +412,8 @@ class SupplierPaymentService:
                             sum((i.balance_due for i in invs), ZERO)
                         ),
                         "buckets": ap_aging_buckets(invs, resolved),
+                        "pdc_outstanding_count": supplier_pdc_count,
+                        "pdc_outstanding_amount": supplier_pdc_amount,
                     }
                 )
             rows.sort(key=lambda r: r["supplier"]["name"])
@@ -394,6 +422,8 @@ class SupplierPaymentService:
                 "total_outstanding": outstanding,
                 "buckets": buckets,
                 "suppliers": rows,
+                "pdc_outstanding_count": total_pdc_count,
+                "pdc_outstanding_amount": total_pdc_amount,
             }
 
         supplier_ids = {inv.supplier_id for inv in invoices}
@@ -403,6 +433,8 @@ class SupplierPaymentService:
             "invoice_count": len(invoices),
             "total_outstanding": outstanding,
             "buckets": buckets,
+            "pdc_outstanding_count": total_pdc_count,
+            "pdc_outstanding_amount": total_pdc_amount,
         }
 
 
@@ -417,6 +449,38 @@ def _bucket_of(inv: SupplierInvoice, as_of: date) -> str:
     if days_overdue <= 90:
         return "days_61_90"
     return "days_90_plus"
+
+
+async def _pdc_outstanding_by_supplier_invoice(
+    session: AsyncSession,
+    workspace_id: uuid.UUID,
+    supplier_invoice_ids: Sequence[uuid.UUID],
+) -> dict[uuid.UUID, tuple[int, Decimal]]:
+    """Pre-aggregate AP PDC Outstanding (RECEIVED + DEPOSITED) per supplier invoice.
+
+    Returns a mapping: supplier_invoice_id -> (count, amount) for PDC payments with
+    pdc_status IN (RECEIVED, DEPOSITED). Invoices with no PDC payments are
+    not present in the result; callers should default to (0, ZERO).
+
+    This pre-aggregation avoids row multiplication when joining to invoices.
+    """
+    if not supplier_invoice_ids:
+        return {}
+    stmt = (
+        select(
+            SupplierPayment.supplier_invoice_id,
+            func.count(SupplierPayment.id),
+            func.coalesce(func.sum(SupplierPayment.amount), ZERO),
+        )
+        .where(
+            SupplierPayment.supplier_invoice_id.in_(supplier_invoice_ids),
+            SupplierPayment.payment_method == PaymentMethod.PDC,
+            SupplierPayment.pdc_status.in_([PDCStatus.RECEIVED, PDCStatus.DEPOSITED]),
+        )
+        .group_by(SupplierPayment.supplier_invoice_id)
+    )
+    result = await session.execute(stmt)
+    return {row[0]: (row[1], row[2]) for row in result.all()}
 
 
 supplier_payment_service = SupplierPaymentService()

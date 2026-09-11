@@ -15,6 +15,9 @@ export interface ArAgingSummary {
   invoice_count: number;
   total_outstanding: number;
   buckets: CreditBuckets;
+  // AR PDC Outstanding — operational PDC instrument metric, not a balance due component
+  pdc_outstanding_count: number;
+  pdc_outstanding_amount: number;
 }
 
 export interface ArAgingDetailRow {
@@ -27,6 +30,9 @@ export interface ArAgingDetailRow {
   days_overdue: number;
   balance_due: number;
   bucket: string;
+  // Per-invoice PDC outstanding aggregate (RECEIVED + DEPOSITED only)
+  pdc_outstanding_count: number;
+  pdc_outstanding_amount: number;
 }
 
 export interface ArAgingDetail {
@@ -34,12 +40,18 @@ export interface ArAgingDetail {
   total_outstanding: number;
   buckets: CreditBuckets;
   invoices: ArAgingDetailRow[];
+  // PDC Outstanding aggregates
+  pdc_outstanding_count: number;
+  pdc_outstanding_amount: number;
 }
 
 export interface ArAgingCustomerRow {
   client: { id: string; name: string };
   total_outstanding: number;
   buckets: CreditBuckets;
+  // Per-client PDC outstanding aggregate (RECEIVED + DEPOSITED only)
+  pdc_outstanding_count: number;
+  pdc_outstanding_amount: number;
 }
 
 export interface ArAgingByCustomer {
@@ -47,6 +59,9 @@ export interface ArAgingByCustomer {
   total_outstanding: number;
   buckets: CreditBuckets;
   customers: ArAgingCustomerRow[];
+  // PDC Outstanding aggregates
+  pdc_outstanding_count: number;
+  pdc_outstanding_amount: number;
 }
 
 export interface ApAgingSummary {
@@ -55,6 +70,9 @@ export interface ApAgingSummary {
   invoice_count: number;
   total_outstanding: number;
   buckets: CreditBuckets;
+  // AP PDC Outstanding — operational PDC instrument metric, not a balance due component
+  pdc_outstanding_count: number;
+  pdc_outstanding_amount: number;
 }
 
 export interface ApAgingDetailRow {
@@ -67,6 +85,9 @@ export interface ApAgingDetailRow {
   days_overdue: number;
   balance_due: number;
   bucket: string;
+  // Per-supplier-invoice PDC outstanding aggregate (RECEIVED + DEPOSITED only)
+  pdc_outstanding_count: number;
+  pdc_outstanding_amount: number;
 }
 
 export interface ApAgingDetail {
@@ -74,12 +95,18 @@ export interface ApAgingDetail {
   total_outstanding: number;
   buckets: CreditBuckets;
   invoices: ApAgingDetailRow[];
+  // PDC Outstanding aggregates
+  pdc_outstanding_count: number;
+  pdc_outstanding_amount: number;
 }
 
 export interface ApAgingSupplierRow {
   supplier: { id: string; name: string; supplier_code: string };
   total_outstanding: number;
   buckets: CreditBuckets;
+  // Per-supplier PDC outstanding aggregate (RECEIVED + DEPOSITED only)
+  pdc_outstanding_count: number;
+  pdc_outstanding_amount: number;
 }
 
 export interface ApAgingBySupplier {
@@ -87,6 +114,9 @@ export interface ApAgingBySupplier {
   total_outstanding: number;
   buckets: CreditBuckets;
   suppliers: ApAgingSupplierRow[];
+  // PDC Outstanding aggregates
+  pdc_outstanding_count: number;
+  pdc_outstanding_amount: number;
 }
 
 export const getArAgingSummary = async (

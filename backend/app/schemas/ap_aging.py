@@ -1,4 +1,4 @@
-"""AP aging report schemas — Wave 22 (Phase 4)."""
+"""AP aging report schemas — Wave 22 (Phase 4). Wave 30 item 1.5 adds PDC aggregates."""
 
 from datetime import date
 from decimal import Decimal
@@ -15,6 +15,9 @@ class ApAgingSummaryResponse(BaseModel):
     invoice_count: int
     total_outstanding: Decimal
     buckets: CreditBuckets
+    # AP PDC Outstanding — operational PDC instrument metric, not a balance due component
+    pdc_outstanding_count: int = 0
+    pdc_outstanding_amount: Decimal = Decimal("0.00")
 
 
 class ApAgingDetailRow(BaseModel):
@@ -27,6 +30,9 @@ class ApAgingDetailRow(BaseModel):
     days_overdue: int
     balance_due: Decimal
     bucket: str
+    # Per-supplier-invoice PDC outstanding aggregate (RECEIVED + DEPOSITED only)
+    pdc_outstanding_count: int = 0
+    pdc_outstanding_amount: Decimal = Decimal("0.00")
 
 
 class ApAgingDetailResponse(BaseModel):
@@ -40,6 +46,9 @@ class ApAgingSupplierRow(BaseModel):
     supplier: dict
     total_outstanding: Decimal
     buckets: CreditBuckets
+    # Per-supplier PDC outstanding aggregate (RECEIVED + DEPOSITED only)
+    pdc_outstanding_count: int = 0
+    pdc_outstanding_amount: Decimal = Decimal("0.00")
 
 
 class ApAgingBySupplierResponse(BaseModel):

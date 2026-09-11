@@ -166,12 +166,16 @@ const AgingTab = ({ side }: AgingTabProps) => {
         name: row.client.name,
         total: row.total_outstanding,
         buckets: row.buckets,
+        pdc_outstanding_count: row.pdc_outstanding_count ?? 0,
+        pdc_outstanding_amount: row.pdc_outstanding_amount ?? 0,
       }))
     : ((byEntityData as ApAgingBySupplier | undefined)?.suppliers ?? []).map((row) => ({
         id: row.supplier.id,
         name: row.supplier.name,
         total: row.total_outstanding,
         buckets: row.buckets,
+        pdc_outstanding_count: row.pdc_outstanding_count ?? 0,
+        pdc_outstanding_amount: row.pdc_outstanding_amount ?? 0,
       }));
 
   const closeDetail = () => {
@@ -277,6 +281,16 @@ const AgingTab = ({ side }: AgingTabProps) => {
             {isAr ? summaryData?.client_count ?? 0 : summaryData?.supplier_count ?? 0}
           </span>
         </div>
+        <div className={styles.statCard}>
+          <span className={styles.statLabel}>{isAr ? 'AR PDC Outstanding' : 'AP PDC Outstanding'}</span>
+          <span className={styles.statValue}>
+            AED {formatAed(summaryData?.pdc_outstanding_amount ?? 0)}
+          </span>
+        </div>
+        <div className={styles.statCard}>
+          <span className={styles.statLabel}>PDC Instruments</span>
+          <span className={styles.statValue}>{summaryData?.pdc_outstanding_count ?? 0}</span>
+        </div>
       </div>
 
       <div className={styles.chartCard}>
@@ -304,6 +318,8 @@ const AgingTab = ({ side }: AgingTabProps) => {
                   {label}
                 </th>
               ))}
+              <th className={styles.num}>PDC Count</th>
+              <th className={styles.num}>PDC Amount</th>
               <th></th>
             </tr>
           </thead>
@@ -326,6 +342,10 @@ const AgingTab = ({ side }: AgingTabProps) => {
                     {formatAed(row.buckets[key])}
                   </td>
                 ))}
+                <td className={styles.num}>{row.pdc_outstanding_count ?? 0}</td>
+                <td className={styles.num}>
+                  AED {formatAed(row.pdc_outstanding_amount ?? 0)}
+                </td>
                 <td className={styles.entityCells}>
                   <button
                     className={styles.linkBtn}

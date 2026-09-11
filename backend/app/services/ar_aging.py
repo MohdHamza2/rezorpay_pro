@@ -47,7 +47,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.models.client import Client
 from app.models.credit_note import CreditNote, CreditNoteStatus
 from app.models.invoice import Invoice, InvoiceStatus
-from app.models.payment import Payment, PaymentStatus
+from app.models.payment import Payment, PaymentMethod, PDCStatus, PaymentStatus
 from app.models.tax_debit_note import TaxDebitNote, TaxDebitNoteStatus
 from app.schemas.common import ErrorCode
 from app.services.credit_control_service import (
@@ -129,6 +129,38 @@ def _payment_date_at_or_before(p: Payment, as_of: date) -> bool:
 def _end_of_as_of(as_of: date) -> datetime:
     """End-of-day UTC boundary for `as_of` (exclusive of the next day)."""
     return datetime.combine(as_of + timedelta(days=1), time.min, tzinfo=timezone.utc)
+
+
+async def _pdc_outstanding_by_invoice(
+    session: AsyncSession,
+    workspace_id: uuid.UUID,
+    invoice_ids: Sequence[uuid.UUID],
+) -> dict[uuid.UUID, tuple[int, Decimal]]:
+    """Pre-aggregate PDC Outstanding (RECEIVED + DEPOSITED) per invoice.
+
+    Returns a mapping: invoice_id -> (count, amount) for PDC payments with
+    pdc_status IN (RECEIVED, DEPOSITED). Invoices with no PDC payments are
+    not present in the result; callers should default to (0, ZERO).
+
+    This pre-aggregation avoids row multiplication when joining to invoices.
+    """
+    if not invoice_ids:
+        return {}
+    stmt = (
+        select(
+            Payment.invoice_id,
+            func.count(Payment.id),
+            func.coalesce(func.sum(Payment.amount), ZERO),
+        )
+        .where(
+            Payment.invoice_id.in_(invoice_ids),
+            Payment.payment_method == PaymentMethod.PDC,
+            Payment.pdc_status.in_([PDCStatus.RECEIVED, PDCStatus.DEPOSITED]),
+        )
+        .group_by(Payment.invoice_id)
+    )
+    result = await session.execute(stmt)
+    return {row[0]: (row[1], row[2]) for row in result.all()}
 
 
 async def _reconstruct_open_invoices(
@@ -287,8 +319,23 @@ async def ar_aging(
         )
     else:
         invoices = await _open_ar_invoices(session, workspace_id, client_id)
+
+    # Pre-aggregate PDC Outstanding per invoice to avoid row multiplication
+    invoice_ids = [inv.id for inv in invoices]
+    pdc_by_invoice = await _pdc_outstanding_by_invoice(
+        session, workspace_id, invoice_ids
+    )
+
     buckets = aging_buckets(invoices, resolved)
     outstanding = money(sum((inv.balance_due for inv in invoices), ZERO))
+
+    # Compute PDC Outstanding aggregates
+    total_pdc_count = 0
+    total_pdc_amount = ZERO
+    for inv in invoices:
+        cnt, amt = pdc_by_invoice.get(inv.id, (0, ZERO))
+        total_pdc_count += cnt
+        total_pdc_amount = money(total_pdc_amount + amt)
 
     if view == "detail":
         clients = await _client_names(
@@ -309,6 +356,8 @@ async def ar_aging(
                 "days_overdue": max(0, (resolved - inv.due_date).days),
                 "balance_due": inv.balance_due,
                 "bucket": _bucket_key((resolved - inv.due_date).days),
+                "pdc_outstanding_count": pdc_by_invoice.get(inv.id, (0, ZERO))[0],
+                "pdc_outstanding_amount": pdc_by_invoice.get(inv.id, (0, ZERO))[1],
             }
             for inv in invoices
         ]
@@ -317,6 +366,8 @@ async def ar_aging(
             "total_outstanding": outstanding,
             "buckets": buckets,
             "invoices": rows,
+            "pdc_outstanding_count": total_pdc_count,
+            "pdc_outstanding_amount": total_pdc_amount,
         }
 
     if view == "by_customer":
@@ -327,6 +378,13 @@ async def ar_aging(
         rows = []
         for cid, invs in per_client.items():
             cli = clients.get(cid)
+            # Per-client PDC aggregate
+            client_pdc_count = 0
+            client_pdc_amount = ZERO
+            for inv in invs:
+                cnt, amt = pdc_by_invoice.get(inv.id, (0, ZERO))
+                client_pdc_count += cnt
+                client_pdc_amount = money(client_pdc_amount + amt)
             rows.append(
                 {
                     "client": {
@@ -337,6 +395,8 @@ async def ar_aging(
                         sum((i.balance_due for i in invs), ZERO)
                     ),
                     "buckets": aging_buckets(invs, resolved),
+                    "pdc_outstanding_count": client_pdc_count,
+                    "pdc_outstanding_amount": client_pdc_amount,
                 }
             )
         rows.sort(key=lambda r: r["client"]["name"])
@@ -345,6 +405,8 @@ async def ar_aging(
             "total_outstanding": outstanding,
             "buckets": buckets,
             "customers": rows,
+            "pdc_outstanding_count": total_pdc_count,
+            "pdc_outstanding_amount": total_pdc_amount,
         }
 
     client_ids = {inv.client_id for inv in invoices}
@@ -354,4 +416,6 @@ async def ar_aging(
         "invoice_count": len(invoices),
         "total_outstanding": outstanding,
         "buckets": buckets,
+        "pdc_outstanding_count": total_pdc_count,
+        "pdc_outstanding_amount": total_pdc_amount,
     }

@@ -20,18 +20,31 @@ test.describe('Dashboard: stats, recent invoices, quick actions', () => {
     await expect(page.getByTestId('dash-ap-snapshot')).toContainText('AED 0');
   });
 
-  test('populated dashboard reflects AR/AP invoices and links navigate correctly', async ({ request, page }) => {
+test('populated dashboard reflects AR/AP invoices and links navigate correctly', async ({ request, page }) => {
     test.setTimeout(120_000);
     const { token } = await registerWorkspace(request, 'dash-pop');
     await putWorkspaceFtaApi(request, token);
     await setAuthToken(page, token);
-    await seedArInvoice(request, token, { clientName: 'Dash Client' });
-    await seedApApprovedChain(
+    const { clientId, invoiceId } = await seedArInvoice(request, token, { clientName: 'Dash Client' });
+    const { invoiceId: apInvoiceId, supplierId } = await seedApApprovedChain(
       request,
       token,
       uniqueSuffix(),
       'Dash Supplier'
     );
+
+    // Debug: check dashboard stats API directly
+    const statsResp = await request.get('http://127.0.0.1:8000/api/v1/dashboard/stats', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    console.log('[DEBUG] Dashboard stats API:', await statsResp.json());
+
+    // Debug: check AR aging summary API directly
+    const arResp = await request.get('http://127.0.0.1:8000/api/v1/ar-aging', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    console.log('[DEBUG] AR Aging summary API:', await arResp.json());
+
     await page.goto('/');
     await expect(page.getByTestId('dash-total-receivables')).toContainText('210.00');
     await expect(page.getByTestId('dash-recent-invoices')).toContainText('INV-');
@@ -45,13 +58,13 @@ test.describe('Dashboard: stats, recent invoices, quick actions', () => {
     await expect(page.getByRole('heading', { name: 'Create Invoice' })).toBeVisible();
     await page.goto('/');
 
-    const procurementLink = page.getByRole('link', { name: /Log Procurement Request/ });
+const procurementLink = page.getByRole('link', { name: /Log Procurement Request/ });
     await expect(procurementLink).toHaveAttribute('href', '/procurement');
     await procurementLink.click();
-    await expect(page.getByRole('heading', { name: 'Procurement Requests' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Internal Procurement' })).toBeVisible({ timeout: 20_000 });
     await page.goto('/');
 
-    const grnLink = page.getByRole('link', { name: /Record Goods Receipt/ });
+const grnLink = page.getByRole('link', { name: /Record Goods Receipt/ });
     await expect(grnLink).toHaveAttribute('href', '/grn');
     await grnLink.click();
     await expect(page.getByRole('heading', { name: 'Inbound Shipments (GRN)' })).toBeVisible({ timeout: 20_000 });

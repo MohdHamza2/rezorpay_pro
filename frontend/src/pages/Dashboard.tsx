@@ -16,6 +16,7 @@ import {
   User,
   ArrowRight,
   Banknote,
+  CreditCard,
 } from 'lucide-react';
 import styles from './Dashboard.module.css';
 
@@ -108,6 +109,19 @@ export const Dashboard = () => {
             Stock awaiting inspection &amp; posting
           </div>
         </div>
+      {/* AR PDC Outstanding — operational metric, not a balance due component */}
+        <div className={styles.statCard}>
+          <div className={styles.statHeader}>
+            <span className={styles.statLabel}>AR PDC Outstanding</span>
+            <CreditCard className={styles.statIcon} style={{ color: '#7c3aed' }} size={20} />
+          </div>
+          <div className={styles.statValue} data-testid="dash-ar-pdc-outstanding">
+            AED {formatAed(stats?.ar_pdc_outstanding_amount ?? 0)}
+          </div>
+          <div className={styles.statTrend} style={{ color: '#4b5563' }}>
+            {stats?.ar_pdc_outstanding_count ?? 0} instrument(s) — RECEIVED + DEPOSITED
+          </div>
+        </div>
       </div>
 
       <div className={styles.widgetContainer}>
@@ -161,6 +175,9 @@ export const Dashboard = () => {
               <span className={styles.snapshotCount}>
                 {arSummary?.invoice_count ?? 0} invoice(s), {arSummary?.client_count ?? 0} customer(s)
               </span>
+              <span className={styles.snapshotCount} style={{ color: '#7c3aed', fontSize: '0.85em' }}>
+                PDC: {arSummary?.pdc_outstanding_count ?? 0} × AED {formatAed(arSummary?.pdc_outstanding_amount ?? 0)}
+              </span>
             </Link>
             <Link to="/reports" className={styles.snapshotItem}>
               <span className={styles.snapshotLabel}>
@@ -171,6 +188,9 @@ export const Dashboard = () => {
               </span>
               <span className={styles.snapshotCount}>
                 {apSummary?.invoice_count ?? 0} invoice(s), {apSummary?.supplier_count ?? 0} supplier(s)
+              </span>
+              <span className={styles.snapshotCount} style={{ color: '#7c3aed', fontSize: '0.85em' }}>
+                AP PDC: {apSummary?.pdc_outstanding_count ?? 0} × AED {formatAed(apSummary?.pdc_outstanding_amount ?? 0)}
               </span>
             </Link>
           </div>

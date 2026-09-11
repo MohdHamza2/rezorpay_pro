@@ -208,7 +208,7 @@ consistency fixes bundled with the surface they touch.
 | 2026-09-08 | E1: migration `e1f0aabb01aa` adds missing `check_amount_debited_nonneg` on invoices (model declared since Wave 28, never migrated) | done |
 | 2026-09-08 | E2-E5: docs-only — ROADMAP=authoritative numbering (AP 21-25/comm 26-28/reporting 29), MASTER_PLAN_V3 table marked superseded, STATE Wave 29 committed + Wave 27 implemented, STACK Wave 29 = reporting, India Category 11 = deferred market wave | done |
 | 2026-09-08 | 1.3: statement export PDF/CSV (`GET /clients/{id}/statement/export`, `/suppliers/{id}/statement/export`; `statement_export_service` CSV+PDF, pdf_service `AP_STATEMENT`; Reports page Statement dropdown; 10 tests; commit `6eb7309`) | done |
-| 2026-09-09 | 1.4: Playwright E2E for Reports/Dashboard — 11 tests (`dashboard.spec.ts`: 3, `reports.spec.ts`: 6, `reports-isolation.spec.ts`: 1, `member-gating.spec.ts`: 1); helpers: `seedArInvoice`, `seedApApprovedChain`, `recordArPayment`, `recordApPayment`, `seedDbMember`, `setAuthToken`; fixed `toLocalIso` timezone bug; added semantic `data-testid` to Dashboard/Reports | done |
+| 2026-09-09 | 1.4: Playwright E2E for Reports/Dashboard — 11 tests (`dashboard.spec.ts`: 3, `reports.spec.ts`: 6, `reports-isolation.spec.ts`: 1, `member-gating.spec.ts`: 1); helpers: `seedArInvoice`, `seedApApprovedChain`, `recordArPayment`, `recordApPayment`, `seedDbMember`, `setAuthToken`; fixed `toLocalIso` timezone bug; added semantic `data-testid` to Dashboard/Reports | done (`8cbe614`) |
 | | | |
 
 ---
