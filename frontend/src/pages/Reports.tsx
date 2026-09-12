@@ -168,6 +168,9 @@ const AgingTab = ({ side }: AgingTabProps) => {
         buckets: row.buckets,
         pdc_outstanding_count: row.pdc_outstanding_count ?? 0,
         pdc_outstanding_amount: row.pdc_outstanding_amount ?? 0,
+        // AR has no landed cost (D-22 is AP-side only) — always 0
+        landed_cost_outstanding_count: 0,
+        landed_cost_outstanding_amount: 0,
       }))
     : ((byEntityData as ApAgingBySupplier | undefined)?.suppliers ?? []).map((row) => ({
         id: row.supplier.id,
@@ -176,6 +179,8 @@ const AgingTab = ({ side }: AgingTabProps) => {
         buckets: row.buckets,
         pdc_outstanding_count: row.pdc_outstanding_count ?? 0,
         pdc_outstanding_amount: row.pdc_outstanding_amount ?? 0,
+        landed_cost_outstanding_count: row.landed_cost_outstanding_count ?? 0,
+        landed_cost_outstanding_amount: row.landed_cost_outstanding_amount ?? 0,
       }));
 
   const closeDetail = () => {
@@ -320,6 +325,12 @@ const AgingTab = ({ side }: AgingTabProps) => {
               ))}
               <th className={styles.num}>PDC Count</th>
               <th className={styles.num}>PDC Amount</th>
+              {!isAr && (
+                <>
+                  <th className={styles.num}>LC Count</th>
+                  <th className={styles.num}>LC Amount</th>
+                </>
+              )}
               <th></th>
             </tr>
           </thead>
@@ -346,6 +357,14 @@ const AgingTab = ({ side }: AgingTabProps) => {
                 <td className={styles.num}>
                   AED {formatAed(row.pdc_outstanding_amount ?? 0)}
                 </td>
+                {!isAr && (
+                  <>
+                    <td className={styles.num}>{row.landed_cost_outstanding_count ?? 0}</td>
+                    <td className={styles.num}>
+                      AED {formatAed(row.landed_cost_outstanding_amount ?? 0)}
+                    </td>
+                  </>
+                )}
                 <td className={styles.entityCells}>
                   <button
                     className={styles.linkBtn}

@@ -50,6 +50,7 @@ from app.models.rfq_counter import RFQCounter
 from app.models.spo import SupplierPurchaseOrder, SupplierPurchaseOrderItem
 from app.models.spo_counter import SPOCounter
 from app.models.grn import GoodsReceiptNote, GRNItem
+from app.models.landed_cost import LandedCostAllocation
 from app.models.grn_counter import GRNCounter
 from app.models.supplier_invoice import SupplierInvoice, SupplierInvoiceItem
 from app.models.quotation import Quotation, QuotationStatus
@@ -177,6 +178,7 @@ __all__ = [
     "SPOCounter",
     "GoodsReceiptNote",
     "GRNItem",
+    "LandedCostAllocation",
     "GRNCounter",
     "SupplierInvoice",
     "SupplierInvoiceItem",

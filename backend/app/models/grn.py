@@ -1,7 +1,7 @@
 import uuid
 import enum
 from decimal import Decimal
-from typing import List, Optional
+from typing import List, Optional, TYPE_CHECKING
 from datetime import date, datetime, timezone
 from sqlmodel import Field, Relationship, SQLModel
 from sqlalchemy import (
@@ -12,7 +12,11 @@ from sqlalchemy import (
     CheckConstraint,
     UniqueConstraint,
     DateTime,
+    Numeric,
 )
+
+if TYPE_CHECKING:
+    from app.models.landed_cost import LandedCostAllocation
 
 
 class GRNStatus(str, enum.Enum):
@@ -121,4 +125,17 @@ class GRNItem(SQLModel, table=True):
     )
     notes: Optional[str] = Field(sa_column=Column(Text), default=None)
 
+    # Landed cost fields (D-22)
+    landed_cost_allocated: Decimal = Field(
+        default=Decimal("0.00"),
+        sa_column=Column(Numeric(12, 2), nullable=False, default="0.00"),
+    )
+    landed_cost_per_unit: Decimal = Field(
+        default=Decimal("0.0000"),
+        sa_column=Column(Numeric(12, 4), nullable=False, default="0.0000"),
+    )
+
     grn: GoodsReceiptNote = Relationship(back_populates="items")
+    landed_cost_allocations: List["LandedCostAllocation"] = Relationship(
+        back_populates="grn_item"
+    )

@@ -42,12 +42,12 @@ localhost/127.0.0.1 ports 5173/5174/5175.
 | 1.2 | Historical balance-reconstruction aging mode (Wave 30 item 1.2, commit `bdebb32`-era): AR `historical=true` — balances rebuilt from payment/credit/debit ledger as of `as_of`. Terminology locked as **historical balance reconstruction, NOT a point-in-time lifecycle snapshot**: uses today's status eligibility; historical status transitions are not reconstructed (documented in service/router docstrings + addendum §2.3 + UI tooltip) | completed |
 | 1.3 | Reports-page statement export (PDF/CSV) — today only per-client/per-supplier pages | completed (`6eb7309`) |
 | 1.4 | Playwright E2E for Reports/Dashboard | completed |
-| 1.5 | `pdc_outstanding` + workspace-wide AR aging dashboard field pack | not started |
+| 1.5 | `pdc_outstanding` + workspace-wide AR aging dashboard field pack | completed (`7d896e0`) |
 
 ### 2.2 Purchasing / GRN (candidate "Wave 31")
 | # | Item | Status |
 |---|---|---|
-| 2.1 | **D-22 Landed cost allocation** into inventory valuation (deferred "post-Wave-29") | not started |
+| 2.1 | **D-22 Landed cost allocation** — GRN-line landed cost tracking (capitalization at GRN disposition, pre-aggregation + LEFT JOIN allocation) | in progress |
 | 2.2 | SPO amendments persistence (`SPOAmendmentCreate` is dead code; partial-confirmation branch is `pass`) | not started |
 | 2.3 | RFQ award flow | not started |
 | 2.4 | Supplier child-table CRUD (product identifiers / UOM conversions / prices) | partial (models only) |
@@ -209,6 +209,8 @@ consistency fixes bundled with the surface they touch.
 | 2026-09-08 | E2-E5: docs-only — ROADMAP=authoritative numbering (AP 21-25/comm 26-28/reporting 29), MASTER_PLAN_V3 table marked superseded, STATE Wave 29 committed + Wave 27 implemented, STACK Wave 29 = reporting, India Category 11 = deferred market wave | done |
 | 2026-09-08 | 1.3: statement export PDF/CSV (`GET /clients/{id}/statement/export`, `/suppliers/{id}/statement/export`; `statement_export_service` CSV+PDF, pdf_service `AP_STATEMENT`; Reports page Statement dropdown; 10 tests; commit `6eb7309`) | done |
 | 2026-09-09 | 1.4: Playwright E2E for Reports/Dashboard — 11 tests (`dashboard.spec.ts`: 3, `reports.spec.ts`: 6, `reports-isolation.spec.ts`: 1, `member-gating.spec.ts`: 1); helpers: `seedArInvoice`, `seedApApprovedChain`, `recordArPayment`, `recordApPayment`, `seedDbMember`, `setAuthToken`; fixed `toLocalIso` timezone bug; added semantic `data-testid` to Dashboard/Reports | done (`8cbe614`) |
+| 2026-09-12 | 1.5: PDC Outstanding dashboard and aging (`7d896e0`) — docs status catch-up (was shipped without AUDIT/STATE update) | done (`7d896e0`) |
+| 2026-09-12 | 2.1 (D-22): GRN-line landed cost tracking — `landed_cost_allocations` + `grn_items` LC columns, migration `985774b20cc8`, DRAFT creation on item add/inline GRN create, capitalization at disposition (accepted qty only), validation-only supplier matching, AP aging LC aggregates, AP Reports LC columns; 7 new tests in `tests/test_landed_cost.py`; backend 444 passed, E2E reports/dashboard 11 passed | in progress |
 | | | |
 
 ---

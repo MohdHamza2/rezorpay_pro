@@ -73,6 +73,9 @@ export interface ApAgingSummary {
   // AP PDC Outstanding — operational PDC instrument metric, not a balance due component
   pdc_outstanding_count: number;
   pdc_outstanding_amount: number;
+  // AP Landed Cost Outstanding (D-22) — operational landed cost metric, not a balance due component
+  landed_cost_outstanding_count: number;
+  landed_cost_outstanding_amount: number;
 }
 
 export interface ApAgingDetailRow {
@@ -88,6 +91,9 @@ export interface ApAgingDetailRow {
   // Per-supplier-invoice PDC outstanding aggregate (RECEIVED + DEPOSITED only)
   pdc_outstanding_count: number;
   pdc_outstanding_amount: number;
+  // Per-supplier-invoice Landed Cost outstanding aggregate (D-22, CAPITALIZED only)
+  landed_cost_outstanding_count: number;
+  landed_cost_outstanding_amount: number;
 }
 
 export interface ApAgingDetail {
@@ -98,6 +104,9 @@ export interface ApAgingDetail {
   // PDC Outstanding aggregates
   pdc_outstanding_count: number;
   pdc_outstanding_amount: number;
+  // Landed Cost Outstanding aggregates (D-22)
+  landed_cost_outstanding_count: number;
+  landed_cost_outstanding_amount: number;
 }
 
 export interface ApAgingSupplierRow {
@@ -107,6 +116,9 @@ export interface ApAgingSupplierRow {
   // Per-supplier PDC outstanding aggregate (RECEIVED + DEPOSITED only)
   pdc_outstanding_count: number;
   pdc_outstanding_amount: number;
+  // Per-supplier Landed Cost outstanding aggregate (D-22, CAPITALIZED only)
+  landed_cost_outstanding_count: number;
+  landed_cost_outstanding_amount: number;
 }
 
 export interface ApAgingBySupplier {
@@ -117,6 +129,9 @@ export interface ApAgingBySupplier {
   // PDC Outstanding aggregates
   pdc_outstanding_count: number;
   pdc_outstanding_amount: number;
+  // Landed Cost Outstanding aggregates (D-22)
+  landed_cost_outstanding_count: number;
+  landed_cost_outstanding_amount: number;
 }
 
 export const getArAgingSummary = async (

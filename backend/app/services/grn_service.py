@@ -14,8 +14,15 @@ from app.models.inventory import (
     TransactionType,
     WarehouseBin,
 )
+from app.models.landed_cost import (
+    AllocationBasis,
+    LandedCostAllocation,
+    LandedCostStatus,
+    LandedCostType,
+)
 from app.models.spo import SupplierPurchaseOrderItem
 from app.services.grn_number import GRNNumberService
+from sqlalchemy import func
 
 from app.schemas.grn import (
     GRNCreate,
@@ -46,7 +53,110 @@ class GRNService:
         session.add(grn)
         await session.flush()
 
+        # D-22 §7.1: inline items (with optional landed_cost_items) create
+        # GRNItem rows plus DRAFT landed cost allocations.
+        for item_in in data.items or []:
+            spo_item = await session.get(SupplierPurchaseOrderItem, item_in.spo_item_id)
+            if not spo_item:
+                raise HTTPException(status_code=404, detail="SPO item not found")
+
+            item_dump = item_in.model_dump()
+            lc_items = item_dump.pop("landed_cost_items", None)
+            item = GRNItem(
+                grn_id=grn.id,
+                quantity_ordered_snapshot=spo_item.quantity_ordered,
+                quantity_confirmed_snapshot=spo_item.quantity_confirmed,
+                quantity_accepted=item_dump.get(
+                    "quantity_received", 0
+                ),  # Satisfy DB constraint initially
+                **item_dump,
+            )
+            session.add(item)
+            await session.flush()
+            await GRNService._create_landed_cost_allocations(
+                session, workspace_id, user_id, grn, item, lc_items
+            )
+
         return grn
+
+    @staticmethod
+    async def _create_landed_cost_allocations(
+        session: AsyncSession,
+        workspace_id: uuid.UUID,
+        user_id: uuid.UUID,
+        grn: GoodsReceiptNote,
+        item: GRNItem,
+        landed_cost_items,
+    ) -> None:
+        """Create DRAFT landed cost allocations for a GRN item (D-22 §7.1).
+
+        One row per entry, linked to the GRN item. Amounts are stored at
+        2 decimals. MANUAL basis requires an explicit allocation_factor.
+        Source fields are populated so the
+        uq_landed_cost_source idempotency constraint is enforceable.
+        Reprocessing the same item never duplicates rows (guard below).
+        """
+        if not landed_cost_items:
+            return
+
+        # Idempotency guard (D-22-06): an item that already has allocations
+        # must not gain duplicates when reprocessed.
+        existing = await session.execute(
+            select(func.count(LandedCostAllocation.id)).where(
+                LandedCostAllocation.grn_item_id == item.id
+            )
+        )
+        if existing.scalar_one() > 0:
+            return
+
+        # Normalize: callers pass model_dump() output (nested dicts) or
+        # LandedCostItemCreate objects — accept both.
+        from app.schemas.grn import LandedCostItemCreate
+
+        normalized = [
+            lc if isinstance(lc, LandedCostItemCreate) else LandedCostItemCreate(**lc)
+            for lc in landed_cost_items
+        ]
+
+        for lc in normalized:
+            basis = (
+                lc.allocation_basis.value
+                if isinstance(lc.allocation_basis, AllocationBasis)
+                else str(lc.allocation_basis)
+            )
+            if basis == AllocationBasis.MANUAL.value and lc.allocation_factor is None:
+                raise HTTPException(
+                    status_code=422,
+                    detail="allocation_factor is required for MANUAL allocation basis",
+                )
+            component = (
+                lc.component_type.value
+                if isinstance(lc.component_type, LandedCostType)
+                else str(lc.component_type)
+            )
+            session.add(
+                LandedCostAllocation(
+                    workspace_id=workspace_id,
+                    grn_id=grn.id,
+                    grn_item_id=item.id,
+                    spo_item_id=item.spo_item_id,
+                    component_type=component,
+                    amount=lc.amount.quantize(Decimal("0.01")),
+                    currency=lc.currency,
+                    allocation_basis=basis,
+                    allocation_factor=(
+                        lc.allocation_factor
+                        if lc.allocation_factor is not None
+                        else Decimal("1.0")
+                    ),
+                    source_document_type="GRN",
+                    source_document_id=grn.id,
+                    source_line_id=uuid.uuid4(),
+                    status=LandedCostStatus.DRAFT,
+                    created_by=user_id,
+                )
+            )
+        await session.flush()
 
     @staticmethod
     async def update_grn(
@@ -96,6 +206,7 @@ class GRNService:
         workspace_id: uuid.UUID,
         grn_id: uuid.UUID,
         data: GRNItemCreate,
+        user_id: uuid.UUID,
     ) -> GRNItem:
         grn = await session.get(GoodsReceiptNote, grn_id)
         if not grn or grn.workspace_id != workspace_id:
@@ -111,6 +222,8 @@ class GRNService:
             raise HTTPException(status_code=404, detail="SPO item not found")
 
         dump_data = data.model_dump()
+        # D-22 §7.1: landed_cost_items are allocation entries, not GRNItem columns.
+        lc_items = dump_data.pop("landed_cost_items", None)
         item = GRNItem(
             grn_id=grn.id,
             quantity_ordered_snapshot=spo_item.quantity_ordered,
@@ -122,6 +235,9 @@ class GRNService:
         )
         session.add(item)
         await session.flush()
+        await GRNService._create_landed_cost_allocations(
+            session, workspace_id, user_id, grn, item, lc_items
+        )
         return item
 
     @staticmethod
@@ -213,6 +329,44 @@ class GRNService:
             raise HTTPException(
                 status_code=400, detail="Over-receipt tolerance exceeded"
             )
+
+        # Landed cost capitalization (D-22) - for accepted quantities
+        if data.quantity_accepted > 0:
+            # Sum up DRAFT and ALLOCATED landed cost allocations for this GRN item
+            pdc_result = await session.execute(
+                select(
+                    func.coalesce(
+                        func.sum(LandedCostAllocation.amount), Decimal("0.00")
+                    )
+                ).where(
+                    LandedCostAllocation.grn_item_id == item.id,
+                    LandedCostAllocation.status.in_(
+                        [LandedCostStatus.DRAFT, LandedCostStatus.ALLOCATED]
+                    ),
+                )
+            )
+            landed_cost_allocated = pdc_result.scalar_one()
+
+            if landed_cost_allocated > 0:
+                item.landed_cost_allocated = landed_cost_allocated
+                item.landed_cost_per_unit = (
+                    landed_cost_allocated / Decimal(str(data.quantity_accepted))
+                ).quantize(Decimal("0.0001"))
+
+                # Update landed cost allocation statuses to CAPITALIZED
+                await session.execute(
+                    LandedCostAllocation.__table__.update()
+                    .where(
+                        LandedCostAllocation.grn_item_id == item.id,
+                        LandedCostAllocation.status.in_(
+                            [LandedCostStatus.DRAFT, LandedCostStatus.ALLOCATED]
+                        ),
+                    )
+                    .values(
+                        status=LandedCostStatus.CAPITALIZED,
+                        capitalized_at=datetime.now(timezone.utc),
+                    )
+                )
 
         # Update item disposition
         item.quantity_accepted = data.quantity_accepted

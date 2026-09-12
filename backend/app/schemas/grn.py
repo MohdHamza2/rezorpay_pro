@@ -5,6 +5,15 @@ from datetime import date, datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.grn import GRNStatus
+from app.models.landed_cost import LandedCostType, AllocationBasis
+
+
+class LandedCostItemCreate(BaseModel):
+    component_type: LandedCostType
+    amount: Decimal = Field(gt=0)
+    currency: str = Field(default="AED", max_length=3)
+    allocation_basis: AllocationBasis = Field(default=AllocationBasis.QUANTITY)
+    allocation_factor: Optional[Decimal] = None
 
 
 class GRNItemBase(BaseModel):
@@ -24,7 +33,7 @@ class GRNItemBase(BaseModel):
 
 
 class GRNItemCreate(GRNItemBase):
-    pass
+    landed_cost_items: Optional[List[LandedCostItemCreate]] = None
 
 
 class GRNItemResponse(GRNItemBase):
@@ -41,6 +50,9 @@ class GRNItemResponse(GRNItemBase):
     rejection_reason: Optional[str] = None
     inspected_by: Optional[uuid.UUID] = None
     inspected_at: Optional[datetime] = None
+    # Landed cost fields (D-22)
+    landed_cost_allocated: Decimal = Field(default=Decimal("0.00"))
+    landed_cost_per_unit: Decimal = Field(default=Decimal("0.0000"))
 
 
 class GRNBase(BaseModel):
@@ -55,7 +67,7 @@ class GRNBase(BaseModel):
 
 
 class GRNCreate(GRNBase):
-    pass
+    items: List[GRNItemCreate] = []
 
 
 class GRNUpdate(BaseModel):

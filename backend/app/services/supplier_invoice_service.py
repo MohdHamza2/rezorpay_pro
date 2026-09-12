@@ -17,6 +17,8 @@ from app.schemas.supplier_invoices import (
 )
 from app.models.spo import SupplierPurchaseOrder, SupplierPurchaseOrderItem
 from app.models.grn import GoodsReceiptNote, GRNItem, GRNStatus
+from app.models.landed_cost import LandedCostAllocation, LandedCostStatus
+from sqlalchemy import func
 
 
 class SupplierInvoiceService:
@@ -160,6 +162,70 @@ class SupplierInvoiceService:
         if abs(item.vat_amount - expected_vat) > tolerance:
             item.variance_tax = item.vat_amount - expected_vat
             return MatchResult.FAILED_TAX
+
+        # 7. Landed Cost Validation (D-22) - validation only
+        # Check if GRN item has landed cost allocations
+        stmt_lc = select(
+            func.coalesce(func.sum(LandedCostAllocation.amount), Decimal("0"))
+        ).where(
+            LandedCostAllocation.grn_item_id.in_(
+                select(GRNItem.id).where(GRNItem.spo_item_id == item.spo_item_id)
+            ),
+            LandedCostAllocation.status == LandedCostStatus.CAPITALIZED,
+        )
+        total_landed_cost = (await session.execute(stmt_lc)).scalar_one()
+
+        if total_landed_cost > Decimal("0"):
+            # Calculate expected landed cost per unit for this invoice item
+            # We need to find the total accepted quantity for this SPO item across all GRNs
+            stmt_qty = (
+                select(func.coalesce(func.sum(GRNItem.quantity_accepted), Decimal("0")))
+                .join(GoodsReceiptNote)
+                .where(
+                    GRNItem.spo_item_id == item.spo_item_id,
+                    GoodsReceiptNote.status.in_(
+                        [GRNStatus.PARTIALLY_ACCEPTED, GRNStatus.ACCEPTED]
+                    ),
+                )
+            )
+            total_accepted_qty_all_grns = (await session.execute(stmt_qty)).scalar_one()
+
+            if total_accepted_qty_all_grns > Decimal("0"):
+                landed_cost_per_unit = (
+                    total_landed_cost / total_accepted_qty_all_grns
+                ).quantize(Decimal("0.0001"))
+                expected_landed_cost_for_item = (
+                    landed_cost_per_unit * item.quantity
+                ).quantize(Decimal("0.01"))
+
+                # Check if invoice item total_price includes landed cost.
+                # The item.total_price should be at least the discount-adjusted
+                # product net plus the expected landed cost share. A small
+                # tolerance absorbs 2dp quantization noise between the GRN-side
+                # per-unit rounding and the supplier's own landed cost math.
+                discount_pct = item.discount_percent or Decimal("0")
+                if discount_pct < Decimal("0"):
+                    discount_pct = Decimal("0")
+                if discount_pct > Decimal("100"):
+                    discount_pct = Decimal("100")
+                product_net = (
+                    item.unit_price
+                    * item.quantity
+                    * (Decimal("1") - discount_pct / Decimal("100"))
+                ).quantize(Decimal("0.01"))
+                expected_min_total = (
+                    product_net + expected_landed_cost_for_item
+                ).quantize(Decimal("0.01"))
+                tolerance = max(
+                    Decimal("0.05"),
+                    (expected_landed_cost_for_item * Decimal("0.01")).quantize(
+                        Decimal("0.01")
+                    ),
+                )
+
+                if item.total_price < expected_min_total - tolerance:
+                    item.variance_price = expected_min_total - item.total_price
+                    return MatchResult.FAILED_PRICE
 
         return MatchResult.PASSED
 

@@ -25,10 +25,13 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.models.payment import PaymentMethod, PaymentStatus, PDCStatus
 from app.models.supplier import Supplier
 from app.models.supplier_invoice import SupplierInvoice, SupplierInvoiceStatus
+from app.models.supplier_invoice import SupplierInvoiceItem
 from app.models.supplier_payment import (
     SupplierPayment,
     SupplierPaymentIdempotencyKey,
 )
+from app.models.landed_cost import LandedCostAllocation, LandedCostStatus
+from app.models.grn import GRNItem
 from app.schemas.common import ErrorCode
 from app.services.credit_control_service import aging_buckets, utc_today
 from app.services.customer_po_support import raise_error
@@ -340,16 +343,26 @@ class SupplierPaymentService:
             session, workspace_id, supplier_invoice_ids
         )
 
+        # Pre-aggregate Landed Cost Outstanding per supplier invoice to avoid row multiplication
+        lc_by_invoice = await _landed_cost_outstanding_by_supplier_invoice(
+            session, workspace_id, supplier_invoice_ids
+        )
+
         buckets = ap_aging_buckets(invoices, resolved)
         outstanding = money(sum((inv.balance_due for inv in invoices), ZERO))
 
         # Compute PDC Outstanding aggregates
         total_pdc_count = 0
         total_pdc_amount = ZERO
+        total_lc_count = 0
+        total_lc_amount = ZERO
         for inv in invoices:
             cnt, amt = pdc_by_invoice.get(inv.id, (0, ZERO))
             total_pdc_count += cnt
             total_pdc_amount = money(total_pdc_amount + amt)
+            lc_cnt, lc_amt = lc_by_invoice.get(inv.id, (0, ZERO))
+            total_lc_count += lc_cnt
+            total_lc_amount = money(total_lc_amount + lc_amt)
 
         if view == "detail":
             suppliers = await cls._supplier_names(
@@ -372,6 +385,12 @@ class SupplierPaymentService:
                     "bucket": _bucket_of(inv, resolved),
                     "pdc_outstanding_count": pdc_by_invoice.get(inv.id, (0, ZERO))[0],
                     "pdc_outstanding_amount": pdc_by_invoice.get(inv.id, (0, ZERO))[1],
+                    "landed_cost_outstanding_count": lc_by_invoice.get(
+                        inv.id, (0, ZERO)
+                    )[0],
+                    "landed_cost_outstanding_amount": lc_by_invoice.get(
+                        inv.id, (0, ZERO)
+                    )[1],
                 }
                 for inv in invoices
             ]
@@ -382,6 +401,8 @@ class SupplierPaymentService:
                 "invoices": rows,
                 "pdc_outstanding_count": total_pdc_count,
                 "pdc_outstanding_amount": total_pdc_amount,
+                "landed_cost_outstanding_count": total_lc_count,
+                "landed_cost_outstanding_amount": total_lc_amount,
             }
 
         if view == "by_supplier":
@@ -397,10 +418,15 @@ class SupplierPaymentService:
                 # Per-supplier PDC aggregate
                 supplier_pdc_count = 0
                 supplier_pdc_amount = ZERO
+                supplier_lc_count = 0
+                supplier_lc_amount = ZERO
                 for inv in invs:
                     cnt, amt = pdc_by_invoice.get(inv.id, (0, ZERO))
                     supplier_pdc_count += cnt
                     supplier_pdc_amount = money(supplier_pdc_amount + amt)
+                    lc_cnt, lc_amt = lc_by_invoice.get(inv.id, (0, ZERO))
+                    supplier_lc_count += lc_cnt
+                    supplier_lc_amount = money(supplier_lc_amount + lc_amt)
                 rows.append(
                     {
                         "supplier": {
@@ -414,6 +440,8 @@ class SupplierPaymentService:
                         "buckets": ap_aging_buckets(invs, resolved),
                         "pdc_outstanding_count": supplier_pdc_count,
                         "pdc_outstanding_amount": supplier_pdc_amount,
+                        "landed_cost_outstanding_count": supplier_lc_count,
+                        "landed_cost_outstanding_amount": supplier_lc_amount,
                     }
                 )
             rows.sort(key=lambda r: r["supplier"]["name"])
@@ -424,6 +452,8 @@ class SupplierPaymentService:
                 "suppliers": rows,
                 "pdc_outstanding_count": total_pdc_count,
                 "pdc_outstanding_amount": total_pdc_amount,
+                "landed_cost_outstanding_count": total_lc_count,
+                "landed_cost_outstanding_amount": total_lc_amount,
             }
 
         supplier_ids = {inv.supplier_id for inv in invoices}
@@ -478,6 +508,43 @@ async def _pdc_outstanding_by_supplier_invoice(
             SupplierPayment.pdc_status.in_([PDCStatus.RECEIVED, PDCStatus.DEPOSITED]),
         )
         .group_by(SupplierPayment.supplier_invoice_id)
+    )
+    result = await session.execute(stmt)
+    return {row[0]: (row[1], row[2]) for row in result.all()}
+
+
+async def _landed_cost_outstanding_by_supplier_invoice(
+    session: AsyncSession,
+    workspace_id: uuid.UUID,
+    supplier_invoice_ids: Sequence[uuid.UUID],
+) -> dict[uuid.UUID, tuple[int, Decimal]]:
+    """Pre-aggregate AP Landed Cost Outstanding (CAPITALIZED) per supplier invoice.
+
+    Returns a mapping: supplier_invoice_id -> (count, amount) for landed cost allocations
+    with status = CAPITALIZED on the GRN lines linked to the supplier invoice.
+    Invoices with no landed cost are not present in the result; callers should default to (0, ZERO).
+
+    This pre-aggregation avoids row multiplication when joining to invoices.
+    """
+    if not supplier_invoice_ids:
+        return {}
+    stmt = (
+        select(
+            SupplierInvoice.id,
+            func.count(LandedCostAllocation.id),
+            func.coalesce(func.sum(LandedCostAllocation.amount), ZERO),
+        )
+        .join(
+            SupplierInvoiceItem,
+            SupplierInvoiceItem.supplier_invoice_id == SupplierInvoice.id,
+        )
+        .join(GRNItem, GRNItem.id == SupplierInvoiceItem.grn_item_id)
+        .join(LandedCostAllocation, LandedCostAllocation.grn_item_id == GRNItem.id)
+        .where(
+            SupplierInvoice.id.in_(supplier_invoice_ids),
+            LandedCostAllocation.status == LandedCostStatus.CAPITALIZED,
+        )
+        .group_by(SupplierInvoice.id)
     )
     result = await session.execute(stmt)
     return {row[0]: (row[1], row[2]) for row in result.all()}

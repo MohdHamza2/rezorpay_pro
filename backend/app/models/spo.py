@@ -1,11 +1,14 @@
 import uuid
 from datetime import datetime, timezone, date
 from decimal import Decimal
-from typing import Optional, List
+from typing import Optional, List, TYPE_CHECKING
 from enum import Enum
 
 from sqlalchemy import Column, DateTime, Date, Numeric, UniqueConstraint, Text
 from sqlmodel import Field, Relationship, SQLModel
+
+if TYPE_CHECKING:
+    from app.models.landed_cost import LandedCostAllocation
 
 
 class ProcurementMethod(str, Enum):
@@ -182,6 +185,9 @@ class SupplierPurchaseOrderItem(SQLModel, table=True):
     expected_delivery_date: Optional[date] = Field(default=None, sa_column=Column(Date))
 
     spo: SupplierPurchaseOrder = Relationship(back_populates="items")
+    landed_cost_allocations: List["LandedCostAllocation"] = Relationship(
+        back_populates="spo_item"
+    )
 
 
 class SPODeliverySchedule(SQLModel, table=True):

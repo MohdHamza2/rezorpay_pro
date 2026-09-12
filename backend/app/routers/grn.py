@@ -80,8 +80,9 @@ async def add_grn_item(
     data: GRNItemCreate,
     session: AsyncSession = Depends(get_session),
     workspace_id: uuid.UUID = Depends(get_current_workspace_id),
+    user: User = Depends(get_current_user),
 ):
-    await GRNService.add_grn_item(session, workspace_id, id, data)
+    await GRNService.add_grn_item(session, workspace_id, id, data, user.id)
     await session.commit()
 
     # Return updated GRN
