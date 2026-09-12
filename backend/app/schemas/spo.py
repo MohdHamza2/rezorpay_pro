@@ -4,7 +4,12 @@ from decimal import Decimal
 from typing import Optional, List
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.spo import ProcurementMethod, SPOStatus
+from app.models.spo import (
+    ProcurementMethod,
+    SPOAmendmentField,
+    SPOAmendmentStatus,
+    SPOStatus,
+)
 
 
 class SPOItemBase(BaseModel):
@@ -61,6 +66,33 @@ class SPOCreate(BaseModel):
     items: List[SPOItemCreate]
 
 
+class SPOAmendmentLineResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    amendment_id: uuid.UUID
+    spo_item_id: uuid.UUID
+    field_name: SPOAmendmentField
+    old_value: Optional[str]
+    new_value: Optional[str]
+
+
+class SPOAmendmentResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    spo_id: uuid.UUID
+    amendment_number: int
+    status: SPOAmendmentStatus
+    reason: str
+    requires_supplier_reconfirmation: bool
+    amended_by: Optional[uuid.UUID]
+    approved_by: Optional[uuid.UUID]
+    created_at: datetime
+    applied_at: Optional[datetime]
+    lines: List[SPOAmendmentLineResponse] = []
+
+
 class SPOResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -95,11 +127,27 @@ class SPOResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     items: List[SPOItemResponse] = []
+    amendments: List[SPOAmendmentResponse] = []
+
+
+class SPOAmendmentLineCreate(BaseModel):
+    spo_item_id: uuid.UUID
+    field_name: SPOAmendmentField
+    # Canonical string form of the proposed value: Decimal string for
+    # QUANTITY_ORDERED / UNIT_PRICE, ISO date for DELIVERY_DATE, raw text
+    # for DELIVERY_TERMS / OTHER.
+    new_value: str = Field(..., min_length=1, max_length=255)
 
 
 class SPOAmendmentCreate(BaseModel):
     reason: str = Field(..., min_length=10)
-    lines: List[dict]  # Define a more specific model for amendment lines if needed
+    lines: List[SPOAmendmentLineCreate] = Field(..., min_length=1)
+
+
+class SPOAmendmentApplyRequest(BaseModel):
+    # Attestation that the supplier reconfirmed the amended terms out of band.
+    # Required (422) when the amendment requires supplier reconfirmation.
+    supplier_reconfirmed: bool = False
 
 
 class SPOAcknowledgeLine(BaseModel):

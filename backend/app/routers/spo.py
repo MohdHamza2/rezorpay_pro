@@ -8,10 +8,17 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.database import get_session
 from app.models.user import User
-from app.models.spo import SupplierPurchaseOrder
+from app.models.spo import SPOAmendment, SupplierPurchaseOrder
 from app.auth.dependencies import get_current_active_user, get_current_workspace_id
 from app.schemas.common import SuccessResponse
-from app.schemas.spo import SPOCreate, SPOResponse, SPOAcknowledgeReq
+from app.schemas.spo import (
+    SPOAmendmentApplyRequest,
+    SPOAmendmentCreate,
+    SPOAmendmentResponse,
+    SPOCreate,
+    SPOResponse,
+    SPOAcknowledgeReq,
+)
 from app.services.spo_service import SPOService
 
 router = APIRouter(prefix="/spos", tags=["SPOs"])
@@ -78,6 +85,57 @@ async def acknowledge_spo(
     return SuccessResponse(data=spo)
 
 
+@router.post(
+    "/{spo_id}/amendments", response_model=SuccessResponse[SPOAmendmentResponse]
+)
+async def propose_amendment(
+    spo_id: uuid.UUID,
+    data: SPOAmendmentCreate,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_active_user),
+):
+    amendment = await SPOService.propose_amendment(
+        session, current_user.workspace_id, spo_id, data, current_user.id
+    )
+    await session.commit()
+    return SuccessResponse(data=amendment)
+
+
+@router.post(
+    "/{spo_id}/amendments/{amendment_id}/approve",
+    response_model=SuccessResponse[SPOAmendmentResponse],
+)
+async def approve_amendment(
+    spo_id: uuid.UUID,
+    amendment_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_active_user),
+):
+    amendment = await SPOService.approve_amendment(
+        session, current_user.workspace_id, spo_id, amendment_id, current_user.id
+    )
+    await session.commit()
+    return SuccessResponse(data=amendment)
+
+
+@router.post(
+    "/{spo_id}/amendments/{amendment_id}/apply",
+    response_model=SuccessResponse[SPOAmendmentResponse],
+)
+async def apply_amendment(
+    spo_id: uuid.UUID,
+    amendment_id: uuid.UUID,
+    data: SPOAmendmentApplyRequest,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_active_user),
+):
+    amendment = await SPOService.apply_amendment(
+        session, current_user.workspace_id, spo_id, amendment_id, data
+    )
+    await session.commit()
+    return SuccessResponse(data=amendment)
+
+
 @router.post("/{spo_id}/cancel", response_model=SuccessResponse[SPOResponse])
 async def cancel_spo(
     spo_id: uuid.UUID,
@@ -98,7 +156,12 @@ async def list_spos(
 ):
     result = await session.execute(
         select(SupplierPurchaseOrder)
-        .options(selectinload(SupplierPurchaseOrder.items))
+        .options(
+            selectinload(SupplierPurchaseOrder.items),
+            selectinload(SupplierPurchaseOrder.amendments).selectinload(
+                SPOAmendment.lines
+            ),
+        )
         .where(SupplierPurchaseOrder.workspace_id == workspace_id)
         .order_by(SupplierPurchaseOrder.created_at.desc())
     )
@@ -113,7 +176,12 @@ async def get_spo(
 ):
     result = await session.execute(
         select(SupplierPurchaseOrder)
-        .options(selectinload(SupplierPurchaseOrder.items))
+        .options(
+            selectinload(SupplierPurchaseOrder.items),
+            selectinload(SupplierPurchaseOrder.amendments).selectinload(
+                SPOAmendment.lines
+            ),
+        )
         .where(SupplierPurchaseOrder.id == spo_id)
         .where(SupplierPurchaseOrder.workspace_id == workspace_id)
     )

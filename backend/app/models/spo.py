@@ -242,6 +242,7 @@ class SPOAmendment(SQLModel, table=True):
     )
 
     spo: SupplierPurchaseOrder = Relationship(back_populates="amendments")
+    lines: List["SPOAmendmentLine"] = Relationship(back_populates="amendment")
 
 
 class SPOAmendmentLine(SQLModel, table=True):
@@ -258,6 +259,8 @@ class SPOAmendmentLine(SQLModel, table=True):
     field_name: SPOAmendmentField = Field(nullable=False)
     old_value: Optional[str] = Field(default=None, max_length=255)
     new_value: Optional[str] = Field(default=None, max_length=255)
+
+    amendment: Optional["SPOAmendment"] = Relationship(back_populates="lines")
 
 
 class SPOStatusHistory(SQLModel, table=True):

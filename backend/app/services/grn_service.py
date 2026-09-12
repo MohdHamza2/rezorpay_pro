@@ -20,7 +20,7 @@ from app.models.landed_cost import (
     LandedCostStatus,
     LandedCostType,
 )
-from app.models.spo import SupplierPurchaseOrderItem
+from app.models.spo import SupplierPurchaseOrder, SupplierPurchaseOrderItem
 from app.services.grn_number import GRNNumberService
 from sqlalchemy import func
 
@@ -42,6 +42,20 @@ class GRNService:
         data: GRNCreate,
     ) -> GoodsReceiptNote:
         grn_number = await GRNNumberService.generate_grn_number(session, workspace_id)
+
+        if data.spo_id is not None:
+            # SPO-014: no receiving against an SPO with an unresolved amendment.
+            blocked = await session.execute(
+                select(SupplierPurchaseOrder.has_open_amendment).where(
+                    SupplierPurchaseOrder.id == data.spo_id,
+                    SupplierPurchaseOrder.workspace_id == workspace_id,
+                )
+            )
+            if blocked.scalar_one_or_none():
+                raise HTTPException(
+                    status_code=400,
+                    detail="SPO has an open amendment; resolve it before receiving",
+                )
 
         grn = GoodsReceiptNote(
             workspace_id=workspace_id,
