@@ -51,7 +51,7 @@ localhost/127.0.0.1 ports 5173/5174/5175.
 | 2.2 | SPO amendments persistence (`SPOAmendmentCreate` is dead code; partial-confirmation branch is `pass`) | not started |
 | 2.3 | RFQ award flow | not started |
 | 2.4 | Supplier child-table CRUD (product identifiers / UOM conversions / prices) | partial (models only) |
-| 2.5 | Inventory `/adjust` tightening (OWNER/ADMIN only + reason + ledger) | partial |
+| 2.5 | Inventory `/adjust` tightening (OWNER/ADMIN only + reason + ledger) | completed (close-out: existing delivery-notes implementation already satisfied scope; no code changes) |
 | 2.6 | Supplier-invoice event/history table | not started |
 | 2.7 | Purchase-return VAT treatment (supplier-credit tax wave) | not started |
 | 2.8 | Warehouse returns receiving workflow | not started |
