@@ -18,6 +18,8 @@ from app.schemas.supplier_invoices import (
 from app.models.spo import SupplierPurchaseOrder, SupplierPurchaseOrderItem
 from app.models.grn import GoodsReceiptNote, GRNItem, GRNStatus
 from app.models.landed_cost import LandedCostAllocation, LandedCostStatus
+from app.models.supplier_invoice_event import SupplierInvoiceEventType
+from app.services.supplier_invoice_events import emit_event
 from sqlalchemy import func
 
 
@@ -27,6 +29,7 @@ class SupplierInvoiceService:
         session: AsyncSession,
         workspace_id: uuid.UUID,
         invoice_in: SupplierInvoiceCreate,
+        user_id: uuid.UUID,
     ) -> SupplierInvoice:
         # Check for duplicates (C-38)
         stmt = select(SupplierInvoice).where(
@@ -81,6 +84,19 @@ class SupplierInvoiceService:
             )
             session.add(db_item)
 
+        await emit_event(
+            session,
+            db_invoice.id,
+            workspace_id,
+            SupplierInvoiceEventType.CREATED,
+            user_id,
+            previous_status=None,
+            new_status=SupplierInvoiceStatus.RECEIVED.value,
+            metadata={
+                "supplier_invoice_number": db_invoice.supplier_invoice_number,
+                "total_amount": str(db_invoice.total_amount),
+            },
+        )
         await session.commit()
         await session.refresh(db_invoice)
         await session.refresh(db_invoice, ["items"])
@@ -234,6 +250,7 @@ class SupplierInvoiceService:
         session: AsyncSession,
         invoice_id: uuid.UUID,
         workspace_id: uuid.UUID,
+        user_id: uuid.UUID,
     ) -> SupplierInvoice:
         stmt = select(SupplierInvoice).where(
             SupplierInvoice.id == invoice_id,
@@ -253,6 +270,15 @@ class SupplierInvoiceService:
             )
 
         invoice.status = SupplierInvoiceStatus.PENDING_MATCHING
+        await emit_event(
+            session,
+            invoice.id,
+            workspace_id,
+            SupplierInvoiceEventType.MATCH_SUBMITTED,
+            user_id,
+            previous_status=SupplierInvoiceStatus.RECEIVED.value,
+            new_status=SupplierInvoiceStatus.PENDING_MATCHING.value,
+        )
         await session.flush()
 
         # Load items
@@ -272,8 +298,28 @@ class SupplierInvoiceService:
 
         if overall_result == MatchResult.PASSED:
             invoice.status = SupplierInvoiceStatus.MATCHED
+            await emit_event(
+                session,
+                invoice.id,
+                workspace_id,
+                SupplierInvoiceEventType.MATCHED,
+                user_id,
+                previous_status=SupplierInvoiceStatus.PENDING_MATCHING.value,
+                new_status=SupplierInvoiceStatus.MATCHED.value,
+                metadata={"match_result": overall_result.value},
+            )
         else:
             invoice.status = SupplierInvoiceStatus.DISCREPANCY
+            await emit_event(
+                session,
+                invoice.id,
+                workspace_id,
+                SupplierInvoiceEventType.DISCREPANCY,
+                user_id,
+                previous_status=SupplierInvoiceStatus.PENDING_MATCHING.value,
+                new_status=SupplierInvoiceStatus.DISCREPANCY.value,
+                metadata={"match_result": overall_result.value},
+            )
 
         await session.commit()
         await session.refresh(invoice)
@@ -286,6 +332,7 @@ class SupplierInvoiceService:
         invoice_id: uuid.UUID,
         workspace_id: uuid.UUID,
         resolution: SupplierInvoiceDiscrepancyResolution,
+        user_id: uuid.UUID,
     ) -> SupplierInvoice:
         stmt = select(SupplierInvoice).where(
             SupplierInvoice.id == invoice_id,
@@ -304,6 +351,17 @@ class SupplierInvoiceService:
         invoice.status = SupplierInvoiceStatus.APPROVED
         invoice.approved_at = datetime.now(timezone.utc)
 
+        notes = resolution.notes or ""
+        await emit_event(
+            session,
+            invoice.id,
+            workspace_id,
+            SupplierInvoiceEventType.DISCREPANCY_RESOLVED,
+            user_id,
+            previous_status=SupplierInvoiceStatus.DISCREPANCY.value,
+            new_status=SupplierInvoiceStatus.APPROVED.value,
+            metadata={"notes": notes[:200]},
+        )
         await session.commit()
         await session.refresh(invoice)
         await session.refresh(invoice, ["items"])
@@ -314,6 +372,7 @@ class SupplierInvoiceService:
         session: AsyncSession,
         invoice_id: uuid.UUID,
         workspace_id: uuid.UUID,
+        user_id: uuid.UUID,
     ) -> SupplierInvoice:
         stmt = select(SupplierInvoice).where(
             SupplierInvoice.id == invoice_id,
@@ -338,6 +397,15 @@ class SupplierInvoiceService:
         invoice.status = SupplierInvoiceStatus.APPROVED
         invoice.approved_at = datetime.now(timezone.utc)
 
+        await emit_event(
+            session,
+            invoice.id,
+            workspace_id,
+            SupplierInvoiceEventType.APPROVED,
+            user_id,
+            previous_status=SupplierInvoiceStatus.MATCHED.value,
+            new_status=SupplierInvoiceStatus.APPROVED.value,
+        )
         await session.commit()
         await session.refresh(invoice)
         await session.refresh(invoice, ["items"])

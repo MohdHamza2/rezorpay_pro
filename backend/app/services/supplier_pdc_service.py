@@ -18,8 +18,10 @@ from sqlalchemy import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.models.payment import PaymentMethod, PaymentStatus, PDCStatus
-from app.models.supplier_invoice import SupplierInvoice
+from app.models.supplier_invoice import SupplierInvoice, SupplierInvoiceStatus
+from app.models.supplier_invoice_event import SupplierInvoiceEventType
 from app.models.supplier_payment import SupplierPayment
+from app.services.supplier_invoice_events import emit_event
 from app.models.user import User, UserRole
 from app.schemas.common import ErrorCode
 from app.services.credit_control_service import utc_today
@@ -201,7 +203,25 @@ class SupplierPdcService:
         payment.pdc_status = PDCStatus.CLEARED
         payment.updated_at = _now()
         await session.flush()
+        previous_status = invoice.status
         SupplierPaymentService._settle_invoice(invoice, payment.amount)
+        await emit_event(
+            session,
+            invoice.id,
+            workspace_id,
+            (
+                SupplierInvoiceEventType.PAID
+                if invoice.status == SupplierInvoiceStatus.PAID
+                else SupplierInvoiceEventType.PARTIALLY_PAID
+            ),
+            user.id,
+            previous_status=previous_status.value,
+            new_status=invoice.status.value,
+            metadata={
+                "supplier_payment_id": str(payment.id),
+                "amount": str(payment.amount),
+            },
+        )
         logger.info(
             "supplier_pdc_cleared",
             extra={

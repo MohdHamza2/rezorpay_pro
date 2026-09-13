@@ -27,7 +27,9 @@ from app.models.supplier_debit_note import (
     SupplierDebitNoteStatus,
 )
 from app.models.supplier_invoice import SupplierInvoice, SupplierInvoiceStatus
+from app.models.supplier_invoice_event import SupplierInvoiceEventType
 from app.services.customer_po_support import raise_error
+from app.services.supplier_invoice_events import emit_event
 from app.services.line_money import money
 from app.services.supplier_debit_note_number import SupplierDebitNoteNumberService
 from app.schemas.common import ErrorCode
@@ -151,6 +153,7 @@ class SupplierDebitNoteService:
         workspace_id: uuid.UUID,
         note_id: uuid.UUID,
         supplier_invoice_id: uuid.UUID,
+        user_id: uuid.UUID,
     ) -> SupplierDebitNote:
         note = await cls._require_note(session, workspace_id, note_id, for_update=True)
         if note.status == SupplierDebitNoteStatus.APPLIED:
@@ -215,6 +218,19 @@ class SupplierDebitNoteService:
         note.applied_at = _now()
         note.updated_at = _now()
         await session.flush()
+        await emit_event(
+            session,
+            invoice.id,
+            workspace_id,
+            SupplierInvoiceEventType.DEBIT_NOTE_APPLIED,
+            user_id,
+            previous_status=invoice.status.value,
+            new_status=invoice.status.value,
+            metadata={
+                "debit_note_id": str(note.id),
+                "amount": str(note.amount),
+            },
+        )
         return note
 
     # ---------------------------------------------------------------- cancel

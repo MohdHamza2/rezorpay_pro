@@ -59,6 +59,10 @@ from app.models.grn import GoodsReceiptNote, GRNItem
 from app.models.landed_cost import LandedCostAllocation
 from app.models.grn_counter import GRNCounter
 from app.models.supplier_invoice import SupplierInvoice, SupplierInvoiceItem
+from app.models.supplier_invoice_event import (
+    SupplierInvoiceEvent,
+    SupplierInvoiceEventType,
+)
 from app.models.quotation import Quotation, QuotationStatus
 from app.models.quotation_item import QuotationItem
 from app.models.quotation_event import QuotationEvent, QuotationEventType
@@ -191,6 +195,8 @@ __all__ = [
     "GRNCounter",
     "SupplierInvoice",
     "SupplierInvoiceItem",
+    "SupplierInvoiceEvent",
+    "SupplierInvoiceEventType",
     "Quotation",
     "QuotationStatus",
     "QuotationItem",

@@ -12,6 +12,7 @@ from app.models.supplier_invoice import SupplierInvoice
 from app.schemas.common import SuccessResponse
 from app.schemas.supplier_invoices import (
     SupplierInvoiceCreate,
+    SupplierInvoiceEventResponse,
     SupplierInvoiceResponse,
     SupplierInvoiceDiscrepancyResolution,
 )
@@ -27,7 +28,7 @@ async def create_supplier_invoice(
     current_user: User = Depends(get_current_user),
 ):
     invoice = await supplier_invoice_service.create_supplier_invoice(
-        session, current_user.workspace_id, invoice_in
+        session, current_user.workspace_id, invoice_in, current_user.id
     )
     return SuccessResponse(data=invoice)
 
@@ -72,7 +73,7 @@ async def submit_matching(
     current_user: User = Depends(get_current_user),
 ):
     invoice = await supplier_invoice_service.submit_matching(
-        session, id, current_user.workspace_id
+        session, id, current_user.workspace_id, current_user.id
     )
     return SuccessResponse(data=invoice)
 
@@ -87,7 +88,7 @@ async def resolve_discrepancy(
     current_user: User = Depends(get_current_user),
 ):
     invoice = await supplier_invoice_service.resolve_discrepancy(
-        session, id, current_user.workspace_id, resolution
+        session, id, current_user.workspace_id, resolution, current_user.id
     )
     return SuccessResponse(data=invoice)
 
@@ -99,6 +100,36 @@ async def approve_invoice(
     current_user: User = Depends(get_current_user),
 ):
     invoice = await supplier_invoice_service.approve_invoice(
-        session, id, current_user.workspace_id
+        session, id, current_user.workspace_id, current_user.id
     )
     return SuccessResponse(data=invoice)
+
+
+@router.get(
+    "/{id}/audit-log",
+    response_model=SuccessResponse[List[SupplierInvoiceEventResponse]],
+)
+async def get_supplier_invoice_audit_log(
+    id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    from app.models.supplier_invoice_event import SupplierInvoiceEvent
+
+    invoice_stmt = select(SupplierInvoice).where(
+        SupplierInvoice.id == id,
+        SupplierInvoice.workspace_id == current_user.workspace_id,
+    )
+    invoice = (await session.execute(invoice_stmt)).scalar_one_or_none()
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    event_stmt = (
+        select(SupplierInvoiceEvent)
+        .where(
+            SupplierInvoiceEvent.supplier_invoice_id == id,
+            SupplierInvoiceEvent.workspace_id == current_user.workspace_id,
+        )
+        .order_by(SupplierInvoiceEvent.created_at.asc(), SupplierInvoiceEvent.id.asc())
+    )
+    events = (await session.execute(event_stmt)).scalars().all()
+    return SuccessResponse(data=list(events))

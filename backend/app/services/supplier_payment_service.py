@@ -32,6 +32,8 @@ from app.models.supplier_payment import (
 )
 from app.models.landed_cost import LandedCostAllocation, LandedCostStatus
 from app.models.grn import GRNItem
+from app.models.supplier_invoice_event import SupplierInvoiceEventType
+from app.services.supplier_invoice_events import emit_event
 from app.schemas.common import ErrorCode
 from app.services.credit_control_service import aging_buckets, utc_today
 from app.services.customer_po_support import raise_error
@@ -202,9 +204,28 @@ class SupplierPaymentService:
         )
 
         # Step 7: recompute the stored amount_paid / balance_due columns.
-        # PDC stays PENDING until CLEARED — it does not touch the invoice.
+        # PDC stays PENDING until CLEARED — it does not touch the invoice,
+        # so no invoice event is emitted for a mere PDC record.
         if not is_pdc:
+            previous_status = invoice.status
             cls._settle_invoice(invoice, amount)
+            await emit_event(
+                session,
+                invoice.id,
+                workspace_id,
+                (
+                    SupplierInvoiceEventType.PAID
+                    if invoice.status == SupplierInvoiceStatus.PAID
+                    else SupplierInvoiceEventType.PARTIALLY_PAID
+                ),
+                user_id,
+                previous_status=previous_status.value,
+                new_status=invoice.status.value,
+                metadata={
+                    "supplier_payment_id": str(payment.id),
+                    "amount": str(amount),
+                },
+            )
 
         return payment
 

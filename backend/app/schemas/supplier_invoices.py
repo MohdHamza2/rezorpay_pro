@@ -5,6 +5,7 @@ from datetime import datetime
 import uuid
 
 from app.models.supplier_invoice import SupplierInvoiceStatus, MatchResult
+from app.models.supplier_invoice_event import SupplierInvoiceEventType
 
 
 class SupplierInvoiceItemBase(BaseModel):
@@ -80,3 +81,17 @@ class SupplierInvoiceResponse(SupplierInvoiceBase):
 
 class SupplierInvoiceDiscrepancyResolution(BaseModel):
     notes: str
+
+
+class SupplierInvoiceEventResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    supplier_invoice_id: uuid.UUID
+    workspace_id: uuid.UUID
+    event_type: SupplierInvoiceEventType
+    previous_status: Optional[str]
+    new_status: str
+    actor_id: uuid.UUID
+    metadata_log: dict
+    created_at: datetime

@@ -161,7 +161,7 @@ async def apply_supplier_debit_note(
     balance_due only (OWNER/ADMIN)."""
     _require_admin(user)
     note = await supplier_debit_note_service.apply(
-        session, workspace_id, note_id, data.supplier_invoice_id
+        session, workspace_id, note_id, data.supplier_invoice_id, user.id
     )
     await session.commit()
     return SuccessResponse(data=SupplierDebitNoteResponse.model_validate(note))
