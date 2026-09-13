@@ -115,6 +115,7 @@ class RFQ(SQLModel, table=True):
 
     items: List["RFQItem"] = Relationship(back_populates="rfq")
     responses: List["SupplierRFQResponse"] = Relationship(back_populates="rfq")
+    awards: List["RFQAward"] = Relationship(back_populates="rfq")
 
 
 class RFQItem(SQLModel, table=True):
@@ -194,6 +195,10 @@ class SupplierQuoteItem(SQLModel, table=True):
     quantity_available: Decimal = Field(sa_column=Column(Numeric(12, 2)))
     quoted_unit_price: Decimal = Field(sa_column=Column(Numeric(12, 2)))
     normalized_unit_price: Decimal = Field(sa_column=Column(Numeric(12, 2)))
+    # UOM the supplier quoted in. Defaults to the RFQ line UOM at intake;
+    # required input for the UOM-conversion step of comparison (Item 2.3).
+    # No discount column exists on quotes: normalization uses factor 1.0.
+    uom_id: Optional[uuid.UUID] = Field(default=None, foreign_key="units_of_measure.id")
 
     response: SupplierRFQResponse = Relationship(back_populates="quote_items")
 
@@ -219,7 +224,11 @@ class RFQAward(SQLModel, table=True):
     status: AwardStatus = Field(default=AwardStatus.DRAFT)
     justification: Optional[str] = Field(default=None, sa_column=Column(Text))
 
+    awarded_by: Optional[uuid.UUID] = Field(default=None, foreign_key="users.id")
+    approved_by: Optional[uuid.UUID] = Field(default=None, foreign_key="users.id")
+
     award_lines: List["RFQAwardLine"] = Relationship(back_populates="award")
+    rfq: Optional["RFQ"] = Relationship(back_populates="awards")
 
 
 class RFQAwardLine(SQLModel, table=True):

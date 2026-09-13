@@ -47,6 +47,7 @@ from app.models.rfq import (
     RFQAwardLine,
 )
 from app.models.rfq_counter import RFQCounter
+from app.models.rfq_award_counter import RFQAwardCounter
 from app.models.spo import (
     SupplierPurchaseOrder,
     SupplierPurchaseOrderItem,
@@ -178,6 +179,7 @@ __all__ = [
     "RFQAward",
     "RFQAwardLine",
     "RFQCounter",
+    "RFQAwardCounter",
     "SupplierPurchaseOrder",
     "SupplierPurchaseOrderItem",
     "SPOAmendment",

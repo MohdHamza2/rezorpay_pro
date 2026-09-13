@@ -52,6 +52,9 @@ class Workspace(SQLModel, table=True):
     spo_amendment_approval_threshold: Decimal = Field(
         default=Decimal("0.00"), sa_column=Column(Numeric(12, 2), nullable=False)
     )
+    rfq_award_approval_threshold: Decimal = Field(
+        default=Decimal("0.00"), sa_column=Column(Numeric(12, 2), nullable=False)
+    )
 
     # Timestamps
     created_at: datetime = Field(
