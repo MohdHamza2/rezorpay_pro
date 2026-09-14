@@ -103,6 +103,10 @@ class PurchaseReturnItem(SQLModel, table=True):
 
     quantity: Decimal = Field(max_digits=12, decimal_places=4)
     unit_price: Decimal = Field(max_digits=12, decimal_places=2)
+    vat_rate: Decimal = Field(default=Decimal("0.00"), max_digits=5, decimal_places=2)
+    vat_amount: Decimal = Field(
+        default=Decimal("0.00"), max_digits=12, decimal_places=2
+    )
     stock_out_qty: Decimal = Field(default=Decimal(0), max_digits=12, decimal_places=4)
 
     return_type: ReturnType = Field(

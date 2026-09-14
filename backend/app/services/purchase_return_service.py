@@ -283,6 +283,9 @@ class PurchaseReturnService:
         item,
     ) -> None:
         grn_item = await PurchaseReturnService._get_grn_item(session, item.grn_item_id)
+        spo_item = await session.get(SupplierPurchaseOrderItem, grn_item.spo_item_id)
+        vat_rate = spo_item.vat_rate if spo_item and spo_item.vat_rate else Decimal("0")
+        vat_amount = money(item.quantity * item.unit_price * vat_rate / Decimal("100"))
         session.add(
             PurchaseReturnItem(
                 purchase_return_id=purchase_return_id,
@@ -293,6 +296,8 @@ class PurchaseReturnService:
                 uom_id=grn_item.uom_id,
                 quantity=item.quantity,
                 unit_price=item.unit_price,
+                vat_rate=vat_rate,
+                vat_amount=vat_amount,
                 return_type=item.return_type,
                 notes=item.notes,
             )
@@ -488,7 +493,9 @@ class PurchaseReturnService:
     async def _auto_create_debit_note(
         session: AsyncSession, workspace_id: uuid.UUID, record: PurchaseReturn
     ) -> SupplierDebitNote:
-        total = money(sum((i.quantity * i.unit_price for i in record.items), ZERO))
+        subtotal = money(sum((i.quantity * i.unit_price for i in record.items), ZERO))
+        vat_amount = money(sum((i.vat_amount for i in record.items), ZERO))
+        total_amount = money(subtotal + vat_amount)
         dn_number = await SupplierDebitNoteNumberService.generate_debit_note_number(
             session, workspace_id
         )
@@ -497,7 +504,10 @@ class PurchaseReturnService:
             supplier_id=record.supplier_id,
             purchase_return_id=record.id,
             dn_number=dn_number,
-            amount=total,
+            amount=total_amount,
+            subtotal=subtotal,
+            vat_amount=vat_amount,
+            total_amount=total_amount,
             status=SupplierDebitNoteStatus.ISSUED,
             source_type="PURCHASE_RETURN",
             issue_date=record.return_date,
@@ -628,6 +638,10 @@ class PurchaseReturnService:
             existing = await cls._existing_auto_item(
                 session, record.id, grn_item.id, return_type
             )
+            vat_rate = (
+                spo_item.vat_rate if spo_item and spo_item.vat_rate else Decimal("0")
+            )
+            vat_amount = money(qty * unit_price * vat_rate / Decimal("100"))
             if existing is None:
                 await cls._assert_quantity_available(session, grn_item.id, qty)
                 session.add(
@@ -640,6 +654,8 @@ class PurchaseReturnService:
                         uom_id=grn_item.uom_id,
                         quantity=qty,
                         unit_price=unit_price,
+                        vat_rate=vat_rate,
+                        vat_amount=vat_amount,
                         stock_out_qty=ZERO,
                         return_type=return_type,
                     )
@@ -647,6 +663,7 @@ class PurchaseReturnService:
             else:
                 await cls._assert_quantity_available(session, grn_item.id, qty)
                 existing.quantity = Decimal(existing.quantity) + Decimal(qty)
+                existing.vat_amount = Decimal(existing.vat_amount) + vat_amount
         await session.flush()
 
     @staticmethod

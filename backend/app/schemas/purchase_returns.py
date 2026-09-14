@@ -17,6 +17,7 @@ class PurchaseReturnItemCreate(BaseModel):
     unit_price: Decimal = Field(gt=0)
     return_type: ReturnType
     notes: Optional[str] = None
+    vat_rate: Optional[Decimal] = Field(default=None, ge=0, le=100)
 
 
 class PurchaseReturnCreate(BaseModel):
@@ -39,14 +40,21 @@ class PurchaseReturnItemResponse(BaseModel):
     uom_id: UUID
     quantity: Decimal
     unit_price: Decimal
+    vat_rate: Decimal
+    vat_amount: Decimal
     stock_out_qty: Decimal
     return_type: ReturnType
     notes: Optional[str] = None
 
     @computed_field  # type: ignore[misc]
     @property
-    def total_price(self) -> Decimal:
+    def line_net(self) -> Decimal:
         return money(self.quantity * self.unit_price)
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def total_price(self) -> Decimal:
+        return money(self.line_net + self.vat_amount)
 
 
 class PurchaseReturnResponse(BaseModel):
@@ -68,4 +76,21 @@ class PurchaseReturnResponse(BaseModel):
     @computed_field  # type: ignore[misc]
     @property
     def total_value(self) -> Decimal:
+        """Gross total including VAT (for backward compatibility with existing consumers)."""
+        return money(
+            sum(
+                (i.quantity * i.unit_price + i.vat_amount for i in self.items),
+                Decimal("0"),
+            )
+        )
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def total_net(self) -> Decimal:
+        """Net total excluding VAT."""
         return money(sum((i.quantity * i.unit_price for i in self.items), Decimal("0")))
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def total_vat(self) -> Decimal:
+        return money(sum((i.vat_amount for i in self.items), Decimal("0")))

@@ -41,7 +41,7 @@ class SupplierDebitNote(SQLModel, table=True):
         UniqueConstraint(
             "workspace_id", "dn_number", name="uq_supplier_dn_workspace_number"
         ),
-        CheckConstraint("amount > 0", name="chk_sdn_amount_positive"),
+        CheckConstraint("total_amount > 0", name="chk_sdn_total_amount_positive"),
     )
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
@@ -53,6 +53,15 @@ class SupplierDebitNote(SQLModel, table=True):
 
     dn_number: str = Field(sa_column=Column(Text, nullable=False, index=True))
     amount: Decimal = Field(sa_column=Column(Numeric(12, 2), nullable=False))
+    subtotal: Decimal = Field(
+        default=Decimal("0.00"), sa_column=Column(Numeric(12, 2), nullable=False)
+    )
+    vat_amount: Decimal = Field(
+        default=Decimal("0.00"), sa_column=Column(Numeric(12, 2), nullable=False)
+    )
+    total_amount: Decimal = Field(
+        default=Decimal("0.00"), sa_column=Column(Numeric(12, 2), nullable=False)
+    )
     status: SupplierDebitNoteStatus = Field(
         sa_column=Column(
             SAEnum(SupplierDebitNoteStatus, name="supplierdebitnotestatus"),

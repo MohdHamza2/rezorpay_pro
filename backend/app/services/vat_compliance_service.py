@@ -39,6 +39,10 @@ from app.models.tax_debit_note import (
     TaxDebitNoteItem,
     TaxDebitNoteStatus,
 )
+from app.models.supplier_debit_note import (
+    SupplierDebitNote,
+    SupplierDebitNoteStatus,
+)
 from app.models.workspace import Workspace
 from app.services.ar_statement_service import (
     assert_from_not_after_to,
@@ -135,6 +139,17 @@ async def _load_supplier_invoices(
         select(SupplierInvoice)
         .where(SupplierInvoice.workspace_id == workspace_id)
         .where(SupplierInvoice.status != SupplierInvoiceStatus.CANCELLED),
+    )
+
+
+async def _load_applied_sdns(
+    session: AsyncSession, workspace_id: UUID
+) -> list[SupplierDebitNote]:
+    return await _scalars(
+        session,
+        select(SupplierDebitNote)
+        .where(SupplierDebitNote.workspace_id == workspace_id)
+        .where(SupplierDebitNote.status == SupplierDebitNoteStatus.APPLIED),
     )
 
 
@@ -244,6 +259,19 @@ async def build_report(
             business_date(si.invoice_date),
             si.supplier_invoice_number,
             str(si.id),
+        )
+    )
+
+    applied_sdns = [
+        sdn
+        for sdn in await _load_applied_sdns(session, workspace.id)
+        if in_period(business_date(sdn.applied_at), period_from, period_to)
+    ]
+    applied_sdns.sort(
+        key=lambda sdn: (
+            business_date(sdn.applied_at),
+            sdn.dn_number,
+            str(sdn.id),
         )
     )
 
@@ -367,6 +395,25 @@ async def build_report(
                 "status": si.status.value,
             }
         )
+    for sdn in applied_sdns:
+        supplier = suppliers.get(sdn.supplier_id)
+        # Compute VAT rate from vat_amount and subtotal
+        vat_rate = Decimal("0")
+        if sdn.subtotal > ZERO:
+            vat_rate = money(sdn.vat_amount * Decimal("100") / sdn.subtotal)
+        purchase_rows.append(
+            {
+                "supplier_invoice_number": sdn.dn_number,
+                "invoice_date": business_date(sdn.applied_at),
+                "supplier_name": supplier.name if supplier else None,
+                "supplier_trn": supplier.trn if supplier else None,
+                "currency": "AED",
+                "subtotal": sdn.subtotal,
+                "vat_amount": sdn.vat_amount,
+                "total_amount": sdn.total_amount,
+                "status": sdn.status.value,
+            }
+        )
 
     # vat_summary — line level, per-rate buckets (addendum §4).
     output: dict[Decimal, list] = {}
@@ -396,6 +443,17 @@ async def build_report(
         bucket = _bucket(input_buckets, item.vat_rate)
         bucket[0] += item.total_price - item.vat_amount
         bucket[1] += item.vat_amount
+        bucket[2] += 1
+    # Include applied SDNs in input VAT
+    for sdn in applied_sdns:
+        if sdn.currency != "AED":
+            continue
+        vat_rate = Decimal("0")
+        if sdn.subtotal > ZERO:
+            vat_rate = money(sdn.vat_amount * Decimal("100") / sdn.subtotal)
+        bucket = _bucket(input_buckets, vat_rate)
+        bucket[0] += sdn.subtotal
+        bucket[1] += sdn.vat_amount
         bucket[2] += 1
 
     summary_rows: list[dict] = []
