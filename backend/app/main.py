@@ -43,6 +43,9 @@ from app.routers.credit_notes import router as credit_notes_router
 from app.routers.debit_notes import router as debit_notes_router
 from app.routers.supplier_payments import router as supplier_payments_router
 from app.routers.purchase_returns import router as purchase_returns_router
+from app.routers.purchase_return_receipts import (
+    router as purchase_return_receipts_router,
+)
 from app.routers.supplier_debit_notes import router as supplier_debit_notes_router
 from app.routers.comms_emails import router as comms_emails_router
 from app.routers.comms_whatsapp import router as comms_whatsapp_router
@@ -189,6 +192,7 @@ app.include_router(credit_notes_router, prefix="/api/v1")
 app.include_router(debit_notes_router, prefix="/api/v1")
 app.include_router(supplier_payments_router, prefix="/api/v1")
 app.include_router(purchase_returns_router, prefix="/api/v1")
+app.include_router(purchase_return_receipts_router, prefix="/api/v1")
 app.include_router(supplier_debit_notes_router, prefix="/api/v1")
 app.include_router(comms_emails_router, prefix="/api/v1")
 app.include_router(comms_whatsapp_router, prefix="/api/v1")

@@ -122,6 +122,11 @@ from app.models.purchase_return import (
     PurchaseReturnStatus,
     ReturnType,
     PurchaseReturnCounter,
+    PurchaseReturnReceipt,
+    PurchaseReturnReceiptItem,
+    PurchaseReturnReceiptStatus,
+    ReturnCondition,
+    PurchaseReturnReceiptCounter,
 )
 from app.models.supplier_debit_note import (
     SupplierDebitNote,
@@ -250,6 +255,11 @@ __all__ = [
     "PurchaseReturnStatus",
     "ReturnType",
     "PurchaseReturnCounter",
+    "PurchaseReturnReceipt",
+    "PurchaseReturnReceiptItem",
+    "PurchaseReturnReceiptStatus",
+    "ReturnCondition",
+    "PurchaseReturnReceiptCounter",
     "SupplierDebitNote",
     "SupplierDebitNoteStatus",
     "SupplierDebitNoteCounter",
