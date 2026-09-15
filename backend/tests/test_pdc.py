@@ -748,7 +748,7 @@ def test_fta_cn_hold_overpay_alembic():
         text=True,
     )
     assert heads.returncode == 0, heads.stdout + heads.stderr
-    assert "6d27f753e9e3" in (heads.stdout + heads.stderr)
+    assert "b8f90cbf88f6" in (heads.stdout + heads.stderr)
     check = subprocess.run(
         [alembic_bin, "check"],
         cwd=BACKEND_DIR,

@@ -8,6 +8,8 @@
 > audits (frontend↔backend contracts, backend wiring, frontend routing/types,
 > planning/gaps docs) + manual verification of every critical claim.
 >
+> Wave 31 close-out refresh: **2026-09-15** · HEAD: **3cc624c** (origin/master in sync; items 2.1–2.9 shipped).
+>
 > Scope: everything EXCEPT the production/deployment phase (as instructed by user).
 
 ---
@@ -16,13 +18,13 @@
 
 | Check | Result |
 |---|---|
-| Backend full suite | **408 passed** (verified during Wave 29, ~9–11 min, ≥900s timeout) |
+| Backend full suite | **514 passed** (Wave 31 close-out, post guardian re-pin to `b8f90cbf88f6`; was 408 at Wave 29 audit) |
 | `ruff check` | Clean |
 | `black` | Clean except pre-existing drift in `tests/test_enquiries.py`, `tests/test_ar_statement.py` (unrelated) |
 | `alembic check` | Clean ("No new upgrade operations") |
 | Frontend `npm run build` | Clean (tsc + vite) |
 | Frontend `npx oxlint` | Clean (0 new warnings; 35 pre-existing in untouched files) |
-| Alembic chain | 38 revisions, single linear chain, one head + one root, no branches |
+| Alembic chain | 46 revisions, single linear chain, one head (`b8f90cbf88f6`) + one root, no branches |
 | `tsc --noEmit` (frontend) | Exit 0, zero diagnostics |
 
 **Known test-runtime quirks:** full suite needs ≥900s timeout (not a hang). Windows
@@ -47,15 +49,15 @@ localhost/127.0.0.1 ports 5173/5174/5175.
 ### 2.2 Purchasing / GRN (candidate "Wave 31")
 | # | Item | Status |
 |---|---|---|
-| 2.1 | **D-22 Landed cost allocation** — GRN-line landed cost tracking (capitalization at GRN disposition, pre-aggregation + LEFT JOIN allocation) | in progress |
-| 2.2 | SPO amendments persistence (`SPOAmendmentCreate` is dead code; partial-confirmation branch is `pass`) | not started |
-| 2.3 | RFQ award flow | not started |
-| 2.4 | Supplier child-table CRUD (product identifiers / UOM conversions / prices) | partial (models only) |
-| 2.5 | Inventory `/adjust` tightening (OWNER/ADMIN only + reason + ledger) | completed (close-out: existing delivery-notes implementation already satisfied scope; no code changes) |
-| 2.6 | Supplier-invoice event/history table | not started |
-| 2.7 | Purchase-return VAT treatment (supplier-credit tax wave) | not started |
-| 2.8 | Warehouse returns receiving workflow | not started |
-| 2.9 | UOM conversion multi-hop resolution | not started |
+| 2.1 | **D-22 Landed cost allocation** — GRN-line landed cost tracking (capitalization at GRN disposition, pre-aggregation + LEFT JOIN allocation) | completed (`a9f8794`) |
+| 2.2 | SPO amendments persistence (`SPOAmendmentCreate` is dead code; partial-confirmation branch is `pass`) | completed (`3df04a4`) |
+| 2.3 | RFQ award flow | completed (`ce03b1a`) |
+| 2.4 | Supplier child-table CRUD (product identifiers / UOM conversions / prices) | completed (`952f600`) — delivered scope was supplier-product links (`supplier_product_service.py` + `test_supplier_products.py`); the parenthetical names Wave 3 WP-1 product-master scope, already shipped, not re-implemented here |
+| 2.5 | Inventory `/adjust` tightening (OWNER/ADMIN only + reason + ledger) | completed (`621fb92`, close-out: existing delivery-notes implementation already satisfied scope; no code changes) |
+| 2.6 | Supplier-invoice event/history table | completed (`7b962f6`) |
+| 2.7 | Purchase-return VAT treatment (supplier-credit tax wave) | completed (`7940cc5`) |
+| 2.8 | Warehouse returns receiving workflow | completed (`fdbcbfb`) |
+| 2.9 | UOM conversion multi-hop resolution | completed (`3cc624c`, no migration; reusable resolver + 16 tests, no consumer rewiring) |
 
 ### 2.3 Tax / Compliance
 | # | Item | Status |
@@ -210,7 +212,16 @@ consistency fixes bundled with the surface they touch.
 | 2026-09-08 | 1.3: statement export PDF/CSV (`GET /clients/{id}/statement/export`, `/suppliers/{id}/statement/export`; `statement_export_service` CSV+PDF, pdf_service `AP_STATEMENT`; Reports page Statement dropdown; 10 tests; commit `6eb7309`) | done |
 | 2026-09-09 | 1.4: Playwright E2E for Reports/Dashboard — 11 tests (`dashboard.spec.ts`: 3, `reports.spec.ts`: 6, `reports-isolation.spec.ts`: 1, `member-gating.spec.ts`: 1); helpers: `seedArInvoice`, `seedApApprovedChain`, `recordArPayment`, `recordApPayment`, `seedDbMember`, `setAuthToken`; fixed `toLocalIso` timezone bug; added semantic `data-testid` to Dashboard/Reports | done (`8cbe614`) |
 | 2026-09-12 | 1.5: PDC Outstanding dashboard and aging (`7d896e0`) — docs status catch-up (was shipped without AUDIT/STATE update) | done (`7d896e0`) |
-| 2026-09-12 | 2.1 (D-22): GRN-line landed cost tracking — `landed_cost_allocations` + `grn_items` LC columns, migration `985774b20cc8`, DRAFT creation on item add/inline GRN create, capitalization at disposition (accepted qty only), validation-only supplier matching, AP aging LC aggregates, AP Reports LC columns; 7 new tests in `tests/test_landed_cost.py`; backend 444 passed, E2E reports/dashboard 11 passed | in progress |
+| 2026-09-12 | 2.1 (D-22): GRN-line landed cost tracking — `landed_cost_allocations` + `grn_items` LC columns, migration `985774b20cc8`, DRAFT creation on item add/inline GRN create, capitalization at disposition (accepted qty only), validation-only supplier matching, AP aging LC aggregates, AP Reports LC columns; 7 new tests in `tests/test_landed_cost.py`; backend 444 passed, E2E reports/dashboard 11 passed | done (`a9f8794`) |
+| 2026-09-12 | 2.2: SPO amendments persistence | done (`3df04a4`) |
+| 2026-09-13 | 2.3: RFQ award flow (quote intake + LOWEST_PRICE comparison + maker-checker approve + idempotent DRAFT SPO conversion) | done (`ce03b1a`) |
+| 2026-09-13 | 2.4: supplier-product links (`supplier_product_service.py` + `test_supplier_products.py`); row parenthetical (product identifiers / UOM conversions / prices CRUD) refers to Wave 3 WP-1 scope, already shipped | done (`952f600`) |
+| 2026-09-13 | 2.5: inventory `/adjust` tightening close-out — existing delivery-notes implementation already satisfied scope | done (`621fb92`, docs-only, no code changes) |
+| 2026-09-13 | 2.6: supplier-invoice event/history table | done (`7b962f6`) |
+| 2026-09-14 | 2.7: purchase-return VAT treatment (supplier-credit tax wave) | done (`7940cc5`) |
+| 2026-09-15 | 2.8: warehouse returns receiving workflow | done (`fdbcbfb`) |
+| 2026-09-15 | 2.9: UOM conversion multi-hop resolution (`uom_conversion_service.py` resolver + 16 tests, no migration, no consumer rewiring) | done (`3cc624c`) |
+| 2026-09-15 | Wave 31 close-out: §2.2 statuses flipped to completed, §1/STATE refreshed, guardian pins re-pointed to `b8f90cbf88f6` | done |
 | | | |
 
 ---
