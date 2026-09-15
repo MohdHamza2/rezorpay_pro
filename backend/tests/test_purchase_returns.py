@@ -344,7 +344,8 @@ def test_full_lifecycle_with_auto_sdn_and_stock_out():
         headers=headers,
     )
     assert r.json()["data"]["status"] == "PENDING_SUPPLIER"
-    assert r.json()["data"]["items"][0]["total_price"] == "200.00"
+    # 4 units at 50 with 5% VAT = 210.00 gross
+    assert r.json()["data"]["items"][0]["total_price"] == "210.00"
 
     item_id = pr["items"][0]["id"]
     before = asyncio.run(_on_hand(chain))
@@ -362,7 +363,8 @@ def test_full_lifecycle_with_auto_sdn_and_stock_out():
     ).json()["data"]
     assert dispatched["status"] == "COMPLETED"
     assert dispatched["items"][0]["stock_out_qty"] == "4.0000"
-    assert dispatched["total_value"] == "200.00"
+    # 4 units at 50 with 5% VAT = 210.00 gross
+    assert dispatched["total_value"] == "210.00"
 
     after = asyncio.run(_on_hand(chain))
     assert before - after == Decimal("4")
@@ -382,7 +384,8 @@ def test_full_lifecycle_with_auto_sdn_and_stock_out():
     note = notes[0]
     assert note["status"] == "ISSUED"
     assert note["source_type"] == "PURCHASE_RETURN"
-    assert note["amount"] == "200.00"
+    # 4 units at 50 with 5% VAT = 210.00 gross (total_amount)
+    assert note["amount"] == "210.00"
     assert note["dn_number"].startswith("SDN-")
 
 
@@ -505,7 +508,8 @@ def test_grn004_auto_return_quantities_and_price():
 
     notes = client.get("/api/v1/supplier-debit-notes", headers=headers).json()["data"]
     assert len(notes) == 1
-    assert notes[0]["amount"] == "1000.00"
+    # 10 units at 100 with 5% VAT = 1050.00 gross
+    assert notes[0]["amount"] == "1050.00"
 
 
 def test_auto_cumulative_cap_with_manual_return():
@@ -545,7 +549,9 @@ def test_auto_cumulative_cap_with_manual_return():
 
     notes = client.get("/api/v1/supplier-debit-notes", headers=headers).json()["data"]
     amounts = sorted(n["amount"] for n in notes)
-    assert amounts == ["250.00", "500.00"]
+    # Manual: 5 units at 50 with 5% VAT = 262.50 gross
+    # Auto: 10 units at 50 with 5% VAT = 525.00 gross
+    assert amounts == ["262.50", "525.00"]
 
 
 def test_zero_stock_out_when_nothing_available():

@@ -118,7 +118,10 @@ class SupplierDebitNoteService:
             workspace_id=workspace_id,
             supplier_id=data.supplier_id,
             dn_number=dn_number,
-            amount=money(data.amount),
+            amount=data.total_amount,
+            subtotal=data.subtotal,
+            vat_amount=data.vat_amount,
+            total_amount=data.total_amount,
             status=SupplierDebitNoteStatus.DRAFT,
             source_type="MANUAL",
             issue_date=data.issue_date,
@@ -200,17 +203,17 @@ class SupplierDebitNoteService:
                 "Debit note can only be applied to an APPROVED or PARTIALLY_PAID invoice",
             )
 
-        if note.amount > invoice.balance_due:
+        if note.total_amount > invoice.balance_due:
             raise_error(
                 status.HTTP_400_BAD_REQUEST,
                 ErrorCode.DEBIT_NOTE_EXCEEDS_BALANCE,
                 (
-                    f"Debit note amount ({note.amount}) exceeds invoice balance due "
+                    f"Debit note total amount ({note.total_amount}) exceeds invoice balance due "
                     f"({invoice.balance_due})"
                 ),
             )
 
-        invoice.balance_due = money(invoice.balance_due - note.amount)
+        invoice.balance_due = money(invoice.balance_due - note.total_amount)
         invoice.updated_at = _now()
 
         note.status = SupplierDebitNoteStatus.APPLIED
@@ -228,7 +231,7 @@ class SupplierDebitNoteService:
             new_status=invoice.status.value,
             metadata={
                 "debit_note_id": str(note.id),
-                "amount": str(note.amount),
+                "amount": str(note.total_amount),
             },
         )
         return note
